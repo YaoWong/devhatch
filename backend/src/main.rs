@@ -1,12 +1,19 @@
 mod filesystem;
+mod history;
+mod launch_path;
 mod terminal;
 
-use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use axum::{
     Router,
+    extract::Request,
+    http::StatusCode,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, patch},
 };
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use terminal::AppState;
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
@@ -24,17 +31,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root.join("data"));
     std::fs::create_dir_all(&data_dir)?;
+    let database_url = format!("sqlite://{}", data_dir.join("devhatch.sqlite3").display());
+    let options = SqliteConnectOptions::from_str(&database_url)?
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(options)
+        .await?;
+    sqlx::migrate!().run(&pool).await?;
 
-    let state = Arc::new(AppState::new(data_dir));
+    let history_pool = open_history_pool().await;
+    let state = Arc::new(AppState::new(data_dir, pool, history_pool));
     let api = Router::new()
         .route("/api/health", get(terminal::health))
         .route("/api/filesystem/directories", get(filesystem::directories))
+        .route("/api/agents", get(terminal::agents))
+        .route("/api/agents/opencode/history", get(history::list))
+        .route(
+            "/api/agents/opencode/history/{id}",
+            axum::routing::delete(history::remove),
+        )
+        .route(
+            "/api/agent-launch-paths",
+            get(launch_path::list).post(launch_path::create),
+        )
+        .route(
+            "/api/agent-launch-paths/{id}",
+            patch(launch_path::update).delete(launch_path::remove),
+        )
+        .route(
+            "/api/agent-launch-paths/{id}/touch",
+            axum::routing::post(launch_path::touch),
+        )
         .route("/api/terminals", get(terminal::list).post(terminal::create))
         .route(
             "/api/terminals/{id}",
             patch(terminal::rename).delete(terminal::remove),
         )
         .route("/api/terminals/{id}/socket", get(terminal::socket))
+        .route(
+            "/api/agent-sessions",
+            get(terminal::list_agents).post(terminal::create_agent),
+        )
+        .route(
+            "/api/agent-sessions/{id}",
+            patch(terminal::rename_agent).delete(terminal::remove_agent),
+        )
+        .route(
+            "/api/agent-sessions/{id}/socket",
+            get(terminal::agent_socket),
+        )
+        .layer(middleware::from_fn(require_loopback_host))
         .with_state(state.clone());
     let dist = project_root.join("dist");
     let app = if dist.exists() {
@@ -51,6 +101,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown(state))
         .await?;
     Ok(())
+}
+
+async fn require_loopback_host(request: Request, next: Next) -> Response {
+    let trusted = request
+        .headers()
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|host| matches!(host, "127.0.0.1:4173" | "localhost:4173"));
+    if !trusted {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    next.run(request).await
+}
+
+async fn open_history_pool() -> Option<sqlx::SqlitePool> {
+    let path = filesystem::home_dir().join(".local/share/opencode/opencode.db");
+    if !path.is_file() {
+        return None;
+    }
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .busy_timeout(Duration::from_secs(2));
+    SqlitePoolOptions::new()
+        .max_connections(2)
+        .after_connect(|connection, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA query_only = ON")
+                    .execute(connection)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect_with(options)
+        .await
+        .ok()
 }
 
 async fn shutdown(state: Arc<AppState>) {
