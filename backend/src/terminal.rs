@@ -293,6 +293,9 @@ impl TerminalSession {
         command.cwd(&cwd);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
+        if npm_default_editor() {
+            command.env_remove("EDITOR");
+        }
         let child = pair.slave.spawn_command(command)?;
         let killer = child.clone_killer();
         drop(pair.slave);
@@ -647,6 +650,12 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn npm_default_editor() -> bool {
+    env::var_os("npm_lifecycle_event").is_some()
+        && env::var("EDITOR").as_deref() == Ok("vi")
+        && env::var_os("VISUAL").is_none()
 }
 
 fn resolve_shell() -> String {

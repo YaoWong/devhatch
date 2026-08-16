@@ -38,7 +38,8 @@ type TerminalInfo = {
 }
 
 type ConnectionPhase = 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'exited'
-type RailPage = 'modes' | 'terminal'
+type RailPage = 'modes' | 'terminal' | 'settings'
+type WorkspaceMode = 'terminal' | 'settings'
 type RailMotion = 'forward' | 'return' | null
 type DirectoryListing = {
   path: string
@@ -378,6 +379,36 @@ function WorkspacePicker({ initialPath, onClose, onSelect }: { initialPath?: str
   )
 }
 
+function DeleteTerminalDialog({ terminal, deleting, onCancel, onConfirm }: { terminal: TerminalInfo; deleting: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    cancelRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleting) onCancel()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [deleting, onCancel])
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) onCancel() }}>
+      <div className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
+        <div className="delete-dialog-icon"><Trash2/></div>
+        <div className="delete-dialog-copy">
+          <h2 id="delete-dialog-title">Delete terminal?</h2>
+          <p id="delete-dialog-description">This will stop the running process and permanently remove <strong>{terminal.name}</strong>.</p>
+          <span>{terminal.cwd}</span>
+        </div>
+        <div className="delete-dialog-actions">
+          <button ref={cancelRef} className="dialog-cancel" disabled={deleting} onClick={onCancel}>Cancel</button>
+          <button className="dialog-delete" disabled={deleting} onClick={onConfirm}>{deleting ? 'Deleting…' : 'Delete terminal'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [sessions, setSessions] = useState<TerminalInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -387,9 +418,13 @@ function App() {
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null)
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({})
   const [railPage, setRailPage] = useState<RailPage>('modes')
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('terminal')
   const [railMotion, setRailMotion] = useState<RailMotion>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarHidden, setSidebarHidden] = useState(() => localStorage.getItem('devhatch-sidebar-hidden') === '1')
+  const [confirmTerminalDelete, setConfirmTerminalDelete] = useState(() => localStorage.getItem('devhatch-confirm-terminal-delete') !== '0')
+  const [deleteCandidate, setDeleteCandidate] = useState<TerminalInfo | null>(null)
+  const [deletingTerminal, setDeletingTerminal] = useState(false)
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -399,8 +434,11 @@ function App() {
   const selectedWorkspaceRef = useRef(selectedWorkspace)
   const modesPageRef = useRef<HTMLElement | null>(null)
   const terminalPageRef = useRef<HTMLElement | null>(null)
+  const settingsPageRef = useRef<HTMLElement | null>(null)
   const terminalModeRef = useRef<HTMLButtonElement | null>(null)
+  const settingsModeRef = useRef<HTMLButtonElement | null>(null)
   const terminalTitleRef = useRef<HTMLSpanElement | null>(null)
+  const settingsTitleRef = useRef<HTMLSpanElement | null>(null)
   const visibleSessions = useMemo(() => sessions.filter((session) => session.cwd === selectedWorkspace), [sessions, selectedWorkspace])
   const activeSession = visibleSessions.find((session) => session.id === activeId) ?? null
 
@@ -413,14 +451,15 @@ function App() {
   }, [])
 
   const animateRail = useCallback((page: RailPage, motion: Exclude<RailMotion, null>) => {
-    const source = terminalModeRef.current
-    const detail = terminalTitleRef.current
+    const detailPage = page === 'settings' || (page === 'modes' && railPage === 'settings') ? 'settings' : 'terminal'
+    const source = detailPage === 'settings' ? settingsModeRef.current : terminalModeRef.current
+    const detail = detailPage === 'settings' ? settingsTitleRef.current : terminalTitleRef.current
     const modesPage = modesPageRef.current
-    const terminalPage = terminalPageRef.current
-    if (!source || !detail || !modesPage || !terminalPage) return
+    const targetPage = detailPage === 'settings' ? settingsPageRef.current : terminalPageRef.current
+    if (!source || !detail || !modesPage || !targetPage) return
     if (motionTimer.current) window.clearTimeout(motionTimer.current)
 
-    const measuring = motion === 'forward' ? terminalPage : modesPage
+    const measuring = motion === 'forward' ? targetPage : modesPage
     measuring.classList.add('is-measuring')
     const sourceRect = source.getBoundingClientRect()
     const detailRect = detail.getBoundingClientRect()
@@ -449,13 +488,17 @@ function App() {
 
     setRailMotion(motion)
     setRailPage(page)
+    if (motion === 'forward' && page !== 'modes') {
+      setWorkspaceMode(page)
+      if (page === 'terminal') setFocusVersion((current) => current + 1)
+    }
     requestAnimationFrame(() => {
       const flight = document.createElement('span')
       flight.className = 'shared-title-flight'
       const icon = source.querySelector('svg')?.cloneNode(true)
       if (icon) flight.appendChild(icon)
       const label = document.createElement('span')
-      label.textContent = 'Terminal'
+      label.textContent = detailPage === 'settings' ? 'Settings' : 'Terminal'
       flight.appendChild(label)
       Object.assign(flight.style, {
         left: `${from.left}px`,
@@ -514,7 +557,7 @@ function App() {
       })
     })
     motionTimer.current = window.setTimeout(() => setRailMotion(null), motion === 'forward' ? 640 : 540)
-  }, [])
+  }, [railPage])
 
   useEffect(() => () => {
     if (motionTimer.current) window.clearTimeout(motionTimer.current)
@@ -586,7 +629,8 @@ function App() {
     }
   }, [activateSession])
 
-  const closeSession = useCallback(async (id: string) => {
+  const deleteSession = useCallback(async (id: string) => {
+    setDeletingTerminal(true)
     try {
       await deleteTerminal(id)
       const next = sessionsRef.current.filter((session) => session.id !== id)
@@ -605,7 +649,25 @@ function App() {
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setDeletingTerminal(false)
+      setDeleteCandidate(null)
     }
+  }, [])
+
+  const closeSession = useCallback((id: string) => {
+    const session = sessionsRef.current.find((item) => item.id === id)
+    if (!session) return
+    if (confirmTerminalDelete) {
+      setDeleteCandidate(session)
+      return
+    }
+    void deleteSession(id)
+  }, [confirmTerminalDelete, deleteSession])
+
+  const updateConfirmTerminalDelete = useCallback((enabled: boolean) => {
+    setConfirmTerminalDelete(enabled)
+    localStorage.setItem('devhatch-confirm-terminal-delete', enabled ? '1' : '0')
   }, [])
 
   const addWorkspace = useCallback((directory: string) => {
@@ -632,16 +694,17 @@ function App() {
   return (
     <main className={`app ${sidebarOpen ? 'drawer-open' : ''} ${sidebarHidden ? 'sidebar-hidden' : ''}`}>
       {workspacePickerOpen && <WorkspacePicker initialPath={selectedWorkspace ?? undefined} onClose={() => setWorkspacePickerOpen(false)} onSelect={addWorkspace} />}
+      {deleteCandidate && <DeleteTerminalDialog terminal={deleteCandidate} deleting={deletingTerminal} onCancel={() => setDeleteCandidate(null)} onConfirm={() => void deleteSession(deleteCandidate.id)} />}
       <button className="drawer-backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />
       <aside className="rail">
         <div className="brand"><div className="brand-mark"><DevHatchLogo /></div><div><strong>DevHatch</strong><small>Developer Workspace</small></div></div>
         <div className="rail-pages">
           <section ref={modesPageRef} className={`rail-page ${railPage === 'modes' ? 'active' : ''} ${railMotion === 'forward' ? 'forward-exit' : ''} ${railMotion === 'return' ? 'return-enter' : ''}`}>
             <nav className="primary-nav" aria-label="Workspace modes">
-              <button ref={terminalModeRef} className="nav-item active" onClick={() => animateRail('terminal', 'forward')}><SquareTerminal/><span>Terminal</span><b>{sessions.length}</b></button>
+              <button ref={terminalModeRef} className={`nav-item ${workspaceMode === 'terminal' ? 'active' : ''}`} onClick={() => animateRail('terminal', 'forward')}><SquareTerminal/><span>Terminal</span><b>{sessions.length}</b></button>
               <button className="nav-item disabled" title="Coming next"><Bot/><span>Agent CLI</span></button>
               <button className="nav-item disabled" title="Coming next"><Globe2/><span>Web Apps</span></button>
-              <button className="nav-item disabled" title="Coming next"><Settings/><span>Settings</span></button>
+              <button ref={settingsModeRef} className={`nav-item ${workspaceMode === 'settings' ? 'active' : ''}`} onClick={() => animateRail('settings', 'forward')}><Settings/><span>Settings</span></button>
             </nav>
             <div className="mode-footer">⌘ 1–4</div>
           </section>
@@ -666,17 +729,29 @@ function App() {
               <button className="path-add" onClick={() => setWorkspacePickerOpen(true)}><Plus/>Add Workspace</button>
             </div>
           </section>
+          <section ref={settingsPageRef} className={`rail-page ${railPage === 'settings' ? 'active' : ''} ${railMotion === 'forward' ? 'forward-enter' : ''} ${railMotion === 'return' ? 'return-exit' : ''}`}>
+            <div className="rail-page-title">
+              <button className="rail-back" aria-label="Back to modes" onClick={() => animateRail('modes', 'return')}><ArrowLeft/></button>
+              <span ref={settingsTitleRef} className="mode-title"><Settings/><strong>Settings</strong></span>
+            </div>
+            <div className={`rail-detail ${railMotion === 'forward' ? 'awaiting-title' : ''}`}>
+              <div className="menu-section">
+                <p className="menu-label">Sections</p>
+                <div className="settings-nav-item active"><SquareTerminal/><span>Terminal</span></div>
+              </div>
+            </div>
+          </section>
         </div>
       </aside>
 
       <section className="shell">
         <header className="topbar">
           <button className="icon-button menu-button" aria-label={window.innerWidth <= 920 ? sidebarOpen ? 'Close navigation' : 'Open navigation' : sidebarHidden ? 'Show sidebar' : 'Hide sidebar'} aria-expanded={window.innerWidth <= 920 ? sidebarOpen : !sidebarHidden} onClick={toggleSidebar}><Menu className="menu-icon-open"/><PanelLeftClose className="menu-icon-hide"/></button>
-          <div className="breadcrumb"><strong>Terminal</strong><span>{selectedWorkspace ? displayPath(selectedWorkspace, homePaths?.home, homePaths?.resolvedHome) : 'No workspace selected'}</span></div>
-          <div className="top-actions"><button className="secondary-button" onClick={() => void addSession(activeSession?.cwd ?? selectedWorkspace ?? undefined)}><Plus/><span>New terminal</span></button></div>
+          <div className="breadcrumb"><strong>{workspaceMode === 'settings' ? 'Settings' : 'Terminal'}</strong><span>{workspaceMode === 'settings' ? 'Preferences for your DevHatch workspace' : selectedWorkspace ? displayPath(selectedWorkspace, homePaths?.home, homePaths?.resolvedHome) : 'No workspace selected'}</span></div>
+          {workspaceMode === 'terminal' && <div className="top-actions"><button className="secondary-button" onClick={() => void addSession(activeSession?.cwd ?? selectedWorkspace ?? undefined)}><Plus/><span>New terminal</span></button></div>}
         </header>
 
-        <div className="terminal-workspace">
+        <div className={`terminal-workspace ${workspaceMode === 'terminal' ? '' : 'workspace-hidden'}`}>
           <div className="tabbar">
             <div className="tabs">
               {visibleSessions.map((session, index) => <button key={session.id} className={`tab ${session.id === activeId ? 'active' : ''}`} onClick={() => activateSession(session.id)}><span className={`tab-dot ${phases[session.id] ?? 'connecting'}`}/><span className="tab-name">{session.name || `Terminal ${index + 1}`}</span><span className="tab-actions"><span className="tab-action tab-rename" role="button" tabIndex={0} aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); void renameSession(session) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void renameSession(session) } }}><Pencil/></span><span className="tab-action tab-close" role="button" tabIndex={0} aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); void closeSession(session.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void closeSession(session.id) } }}><X/></span></span></button>)}
@@ -698,6 +773,19 @@ function App() {
           </footer>
           <div className="mobile-keys">{['Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→'].map((key) => <button key={key}>{key}</button>)}</div>
         </div>
+        {workspaceMode === 'settings' && <div className="settings-workspace">
+          <div className="settings-content">
+            <section className="settings-section">
+              <div className="settings-section-title"><h2>Terminal</h2><p>Control terminal session behavior.</p></div>
+              <div className="settings-group">
+                <label className="settings-row">
+                  <span><strong>Confirm before deleting terminal</strong><small>Ask before stopping a process and removing its terminal session.</small></span>
+                  <input type="checkbox" role="switch" checked={confirmTerminalDelete} onChange={(event) => updateConfirmTerminalDelete(event.target.checked)} />
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>}
       </section>
     </main>
   )
