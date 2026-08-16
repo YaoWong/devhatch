@@ -134,23 +134,30 @@ function DevHatchLogo() {
   )
 }
 
-function TerminalSurface({ session, active, onPhaseChange, onError }: { session: TerminalInfo; active: boolean; onPhaseChange: (id: string, phase: ConnectionPhase) => void; onError: (message: string) => void }) {
+function TerminalSurface({ session, active, focusVersion, onPhaseChange, onError }: { session: TerminalInfo; active: boolean; focusVersion: number; onPhaseChange: (id: string, phase: ConnectionPhase) => void; onError: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
+  const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const activateRef = useRef<(() => void) | null>(null)
   const retryRef = useRef<number | null>(null)
   const activeRef = useRef(active)
 
   useEffect(() => {
     activeRef.current = active
-    if (active) requestAnimationFrame(() => fitRef.current?.fit())
-  }, [active])
+    if (active) requestAnimationFrame(() => activateRef.current?.())
+    else terminalRef.current?.blur()
+  }, [active, focusVersion])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     let disposed = false
     let attempt = 0
+    let protocolReady = false
+    let inputBuffer = ''
+    let resizeFrame: number | null = null
+    let lastResize = ''
     let terminal: Terminal
     let fit: FitAddon
     try {
@@ -186,34 +193,72 @@ function TerminalSurface({ session, active, onPhaseChange, onError }: { session:
       onError(reason instanceof Error ? reason.message : String(reason))
       return
     }
+    terminalRef.current = terminal
     fitRef.current = fit
 
     const sendResize = () => {
       if (!activeRef.current) return
       try { fit.fit() } catch { return }
       const socket = socketRef.current
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }))
+      const dimensions = `${terminal.cols}x${terminal.rows}`
+      if (protocolReady && socket?.readyState === WebSocket.OPEN && dimensions !== lastResize) {
+        socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }))
+        lastResize = dimensions
+      }
+    }
+
+    const scheduleResize = () => {
+      if (resizeFrame !== null) return
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null
+        sendResize()
+      })
+    }
+
+    activateRef.current = () => {
+      sendResize()
+      terminal.focus()
     }
 
     const connect = () => {
       if (disposed) return
+      protocolReady = false
+      lastResize = ''
       onPhaseChange(session.id, attempt ? 'reconnecting' : 'connecting')
       const socket = new WebSocket(`${socketProtocol}//${window.location.host}/api/terminals/${session.id}/socket`)
       socketRef.current = socket
       socket.addEventListener('open', () => {
+        if (disposed || socketRef.current !== socket) return
         attempt = 0
-        onPhaseChange(session.id, 'connected')
-        sendResize()
       })
       socket.addEventListener('message', (event) => {
+        if (disposed || socketRef.current !== socket) return
         try {
           const message = JSON.parse(String(event.data)) as { type: string; data?: string }
-          if ((message.type === 'output' || message.type === 'snapshot') && message.data) terminal.write(message.data)
+          if (message.type === 'ready') {
+            sendResize()
+          }
+          if (message.type === 'snapshot') {
+            terminal.reset()
+            if (message.data) terminal.write(message.data)
+            protocolReady = true
+            onPhaseChange(session.id, 'connected')
+            sendResize()
+            if (inputBuffer) {
+              socket.send(JSON.stringify({ type: 'input', data: inputBuffer }))
+              inputBuffer = ''
+            }
+            if (activeRef.current) requestAnimationFrame(() => terminal.focus())
+          }
+          if (message.type === 'output' && message.data) terminal.write(message.data)
           if (message.type === 'exit') onPhaseChange(session.id, 'exited')
         } catch { return }
       })
       socket.addEventListener('close', (event) => {
-        if (disposed || event.code === 1000) return
+        if (disposed || socketRef.current !== socket) return
+        protocolReady = false
+        socketRef.current = null
+        if (event.code === 1000) return
         onPhaseChange(session.id, 'disconnected')
         const delay = Math.min(500 * 2 ** attempt, 5000)
         attempt += 1
@@ -223,20 +268,34 @@ function TerminalSurface({ session, active, onPhaseChange, onError }: { session:
 
     const input = terminal.onData((data) => {
       const socket = socketRef.current
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'input', data }))
+      if (protocolReady && socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'input', data }))
+        return
+      }
+      inputBuffer = (inputBuffer + data).slice(-64 * 1024)
     })
-    const observer = new ResizeObserver(sendResize)
+    const observer = new ResizeObserver(scheduleResize)
     observer.observe(container)
+    void document.fonts.ready.then(() => {
+      if (!disposed && activeRef.current) scheduleResize()
+    })
     connect()
+    if (activeRef.current) requestAnimationFrame(() => activateRef.current?.())
 
     return () => {
       disposed = true
+      protocolReady = false
       if (retryRef.current) window.clearTimeout(retryRef.current)
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame)
       observer.disconnect()
       input.dispose()
-      socketRef.current?.close(1000, 'surface closed')
+      const socket = socketRef.current
+      socketRef.current = null
+      socket?.close(1000, 'surface closed')
       terminal.dispose()
+      terminalRef.current = null
       fitRef.current = null
+      activateRef.current = null
     }
   }, [session.id, onPhaseChange, onError])
 
@@ -322,6 +381,7 @@ function WorkspacePicker({ initialPath, onClose, onSelect }: { initialPath?: str
 function App() {
   const [sessions, setSessions] = useState<TerminalInfo[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [focusVersion, setFocusVersion] = useState(0)
   const [workspaces, setWorkspaces] = useState<string[]>([])
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null)
@@ -334,12 +394,19 @@ function App() {
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const motionTimer = useRef<number | null>(null)
+  const sessionsRef = useRef(sessions)
+  const activeIdRef = useRef(activeId)
+  const selectedWorkspaceRef = useRef(selectedWorkspace)
   const modesPageRef = useRef<HTMLElement | null>(null)
   const terminalPageRef = useRef<HTMLElement | null>(null)
   const terminalModeRef = useRef<HTMLButtonElement | null>(null)
   const terminalTitleRef = useRef<HTMLSpanElement | null>(null)
   const visibleSessions = useMemo(() => sessions.filter((session) => session.cwd === selectedWorkspace), [sessions, selectedWorkspace])
   const activeSession = visibleSessions.find((session) => session.id === activeId) ?? null
+
+  useEffect(() => { sessionsRef.current = sessions }, [sessions])
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
+  useEffect(() => { selectedWorkspaceRef.current = selectedWorkspace }, [selectedWorkspace])
 
   const setPhase = useCallback((id: string, phase: ConnectionPhase) => {
     setPhases((current) => current[id] === phase ? current : { ...current, [id]: phase })
@@ -502,30 +569,44 @@ function App() {
       .finally(() => setBusy(false))
   }, [addSession])
 
+  const activateSession = useCallback((id: string) => {
+    setActiveId(id)
+    setFocusVersion((current) => current + 1)
+  }, [])
+
   const renameSession = useCallback(async (session: TerminalInfo) => {
     const name = window.prompt('Session name', session.name)?.trim()
     if (!name || name === session.name) return
-    setActiveId(session.id)
+    activateSession(session.id)
     try {
       const { terminal } = await renameTerminal(session.id, name)
       setSessions((current) => current.map((item) => item.id === terminal.id ? terminal : item))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
-  }, [])
+  }, [activateSession])
 
   const closeSession = useCallback(async (id: string) => {
     try {
       await deleteTerminal(id)
-      setSessions((current) => {
-        const next = current.filter((session) => session.id !== id)
-        setActiveId((selected) => selected === id ? next.find((session) => session.cwd === selectedWorkspace)?.id ?? null : selected)
-        return next
+      const next = sessionsRef.current.filter((session) => session.id !== id)
+      sessionsRef.current = next
+      setSessions(next)
+      setPhases((current) => {
+        const updated = { ...current }
+        delete updated[id]
+        return updated
       })
+      if (activeIdRef.current === id) {
+        const replacement = next.find((session) => session.cwd === selectedWorkspaceRef.current)?.id ?? null
+        activeIdRef.current = replacement
+        setActiveId(replacement)
+        if (replacement) setFocusVersion((current) => current + 1)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     }
-  }, [selectedWorkspace])
+  }, [])
 
   const addWorkspace = useCallback((directory: string) => {
     const normalized = logicalPath(directory, homePaths?.home, homePaths?.resolvedHome)
@@ -598,14 +679,14 @@ function App() {
         <div className="terminal-workspace">
           <div className="tabbar">
             <div className="tabs">
-              {visibleSessions.map((session, index) => <button key={session.id} className={`tab ${session.id === activeId ? 'active' : ''}`} onClick={() => setActiveId(session.id)}><span className={`tab-dot ${phases[session.id] ?? 'connecting'}`}/><span className="tab-name">{session.name || `Terminal ${index + 1}`}</span><span className="tab-actions"><span className="tab-action tab-rename" role="button" tabIndex={0} aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); void renameSession(session) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void renameSession(session) } }}><Pencil/></span><span className="tab-action tab-close" role="button" tabIndex={0} aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); void closeSession(session.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void closeSession(session.id) } }}><X/></span></span></button>)}
+              {visibleSessions.map((session, index) => <button key={session.id} className={`tab ${session.id === activeId ? 'active' : ''}`} onClick={() => activateSession(session.id)}><span className={`tab-dot ${phases[session.id] ?? 'connecting'}`}/><span className="tab-name">{session.name || `Terminal ${index + 1}`}</span><span className="tab-actions"><span className="tab-action tab-rename" role="button" tabIndex={0} aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); void renameSession(session) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void renameSession(session) } }}><Pencil/></span><span className="tab-action tab-close" role="button" tabIndex={0} aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); void closeSession(session.id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void closeSession(session.id) } }}><X/></span></span></button>)}
             </div>
           </div>
 
           <div className="stage">
             {busy && <div className="empty-state">Starting DevHatch…</div>}
             {!busy && !visibleSessions.length && <div className="empty-state"><strong>No terminal sessions are running</strong><button onClick={() => void addSession(selectedWorkspace ?? undefined)}>Create terminal</button></div>}
-            {sessions.map((session) => <TerminalSurface key={session.id} session={session} active={session.id === activeId && session.cwd === selectedWorkspace} onPhaseChange={setPhase} onError={setError} />)}
+            {sessions.map((session) => <TerminalSurface key={session.id} session={session} active={session.id === activeId && session.cwd === selectedWorkspace} focusVersion={focusVersion} onPhaseChange={setPhase} onError={setError} />)}
             {error && <div className="error-banner">{error}<button onClick={() => setError(null)}><X/></button></div>}
           </div>
 

@@ -2,7 +2,10 @@ use std::{
     env,
     io::{Read, Write},
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -64,6 +67,7 @@ struct TerminalSession {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    deleting: AtomicBool,
     events: broadcast::Sender<SessionEvent>,
 }
 
@@ -234,6 +238,7 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
     let Some(session) = session else {
         return error(StatusCode::NOT_FOUND, "TERMINAL_NOT_FOUND");
     };
+    session.deleting.store(true, Ordering::Release);
     session.terminate();
     StatusCode::NO_CONTENT.into_response()
 }
@@ -256,7 +261,8 @@ pub async fn socket(
     let Some(session) = session else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    upgrade.on_upgrade(move |socket| handle_socket(socket, session))
+    let socket_state = state.clone();
+    upgrade.on_upgrade(move |socket| handle_socket(socket, session, socket_state))
 }
 
 impl TerminalSession {
@@ -318,6 +324,7 @@ impl TerminalSession {
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
             killer: Mutex::new(killer),
+            deleting: AtomicBool::new(false),
             events,
         });
         Self::start_reader(&session, reader);
@@ -414,7 +421,26 @@ impl TerminalSession {
     }
 }
 
-async fn handle_socket(socket: WebSocket, session: Arc<TerminalSession>) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    session: Arc<TerminalSession>,
+    app_state: Arc<AppState>,
+) {
+    let registered = app_state
+        .sessions
+        .read()
+        .expect("sessions lock poisoned")
+        .get(&session.id)
+        .is_some_and(|current| Arc::ptr_eq(current, &session));
+    if !registered || session.deleting.load(Ordering::Acquire) {
+        let _ = socket
+            .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                code: 1000,
+                reason: "session terminated".into(),
+            })))
+            .await;
+        return;
+    }
     let (mut sender, mut receiver) = socket.split();
     let (view, snapshot, status, code, mut events) = {
         let state = session.state.lock().expect("session lock poisoned");
@@ -435,13 +461,12 @@ async fn handle_socket(socket: WebSocket, session: Arc<TerminalSession>) {
     {
         return;
     }
-    if !snapshot.is_empty()
-        && send_json(
-            &mut sender,
-            serde_json::json!({ "type": "snapshot", "data": snapshot }),
-        )
-        .await
-        .is_err()
+    if send_json(
+        &mut sender,
+        serde_json::json!({ "type": "snapshot", "data": snapshot }),
+    )
+    .await
+    .is_err()
     {
         return;
     }
@@ -476,7 +501,13 @@ async fn handle_socket(socket: WebSocket, session: Arc<TerminalSession>) {
                         }))).await;
                         break;
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        let _ = sender.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                            code: 1011,
+                            reason: "terminal output resync required".into(),
+                        }))).await;
+                        break;
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -498,8 +529,9 @@ async fn handle_client_message(
     match message {
         ClientMessage::Input { data } => {
             if let Some(data) = data.as_str().filter(|data| data.len() <= 64 * 1024) {
-                let running = session.state.lock().expect("session lock poisoned").status
-                    == SessionStatus::Running;
+                let running = !session.deleting.load(Ordering::Acquire)
+                    && session.state.lock().expect("session lock poisoned").status
+                        == SessionStatus::Running;
                 if running {
                     let _ = session
                         .writer
@@ -517,7 +549,12 @@ async fn handle_client_message(
                 state.cols = cols;
                 state.rows = rows;
                 state.updated_at = now();
-                (cols, rows, state.status == SessionStatus::Running)
+                (
+                    cols,
+                    rows,
+                    !session.deleting.load(Ordering::Acquire)
+                        && state.status == SessionStatus::Running,
+                )
             };
             if running {
                 let _ = session
