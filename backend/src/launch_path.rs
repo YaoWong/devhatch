@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     Json,
@@ -10,10 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{
-    filesystem::{path_string, resolve_path},
-    terminal::{AppState, now},
-};
+use crate::{clock::now, filesystem::validated_directory, state::AppState};
 
 const OPENCODE_AGENT_ID: &str = "opencode";
 
@@ -57,7 +54,7 @@ where
 
 pub async fn list(State(state): State<Arc<AppState>>) -> Response {
     match sqlx::query_as::<_, LaunchPath>("SELECT id, agent_id, path, alias, pinned, last_used_at, created_at, updated_at FROM agent_launch_paths ORDER BY pinned DESC, last_used_at DESC, COALESCE(NULLIF(alias, ''), path) COLLATE NOCASE")
-        .fetch_all(&state.pool).await
+        .fetch_all(state.pool()).await
     {
         Ok(paths) => Json(serde_json::json!({ "agentLaunchPaths": paths })).into_response(),
         Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
@@ -92,7 +89,7 @@ pub async fn create(
     };
     let result = sqlx::query_as::<_, LaunchPath>("INSERT INTO agent_launch_paths (id, agent_id, path, alias, pinned, last_used_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (agent_id, path) DO UPDATE SET last_used_at = excluded.last_used_at, updated_at = excluded.updated_at RETURNING id, agent_id, path, alias, pinned, last_used_at, created_at, updated_at")
         .bind(&item.id).bind(&item.agent_id).bind(&item.path).bind(&item.alias).bind(item.pinned)
-        .bind(item.last_used_at).bind(item.created_at).bind(item.updated_at).fetch_one(&state.pool).await;
+        .bind(item.last_used_at).bind(item.created_at).bind(item.updated_at).fetch_one(state.pool()).await;
     match result {
         Ok(item) => (
             StatusCode::CREATED,
@@ -120,7 +117,7 @@ pub async fn update(
         return error(StatusCode::BAD_REQUEST, "EMPTY_UPDATE");
     }
     let result = sqlx::query("UPDATE agent_launch_paths SET alias = CASE WHEN ? THEN ? ELSE alias END, pinned = COALESCE(?, pinned), updated_at = ? WHERE id = ?")
-        .bind(alias_supplied).bind(alias).bind(request.pinned).bind(now() as i64).bind(&id).execute(&state.pool).await;
+        .bind(alias_supplied).bind(alias).bind(request.pinned).bind(now() as i64).bind(&id).execute(state.pool()).await;
     match result {
         Ok(value) if value.rows_affected() == 1 => get(&state, &id).await,
         Ok(_) => not_found(),
@@ -141,7 +138,7 @@ pub async fn touch(State(state): State<Arc<AppState>>, Path(id): Path<String>) -
         .bind(now() as i64)
         .bind(now() as i64)
         .bind(&id)
-        .execute(&state.pool)
+        .execute(state.pool())
         .await
     {
         Ok(_) => get(&state, &id).await,
@@ -152,7 +149,7 @@ pub async fn touch(State(state): State<Arc<AppState>>, Path(id): Path<String>) -
 pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     match sqlx::query("DELETE FROM agent_launch_paths WHERE id = ?")
         .bind(id)
-        .execute(&state.pool)
+        .execute(state.pool())
         .await
     {
         Ok(value) if value.rows_affected() == 1 => StatusCode::NO_CONTENT.into_response(),
@@ -171,7 +168,7 @@ async fn get(state: &AppState, id: &str) -> Response {
 
 async fn find(state: &AppState, id: &str) -> Result<Option<LaunchPath>, sqlx::Error> {
     sqlx::query_as::<_, LaunchPath>("SELECT id, agent_id, path, alias, pinned, last_used_at, created_at, updated_at FROM agent_launch_paths WHERE id = ?")
-        .bind(id).fetch_optional(&state.pool).await
+        .bind(id).fetch_optional(state.pool()).await
 }
 
 fn validate_alias(value: Option<String>) -> Result<Option<String>, &'static str> {
@@ -188,17 +185,6 @@ fn validate_alias(value: Option<String>) -> Result<Option<String>, &'static str>
     }
 }
 
-pub fn validated_directory(value: &str) -> Result<String, &'static str> {
-    let path = resolve_path(value).map_err(|_| "INVALID_LAUNCH_PATH")?;
-    let metadata = fs::metadata(&path).map_err(|_| "INVALID_LAUNCH_PATH")?;
-    if !metadata.is_dir() {
-        return Err("INVALID_LAUNCH_PATH");
-    }
-    fs::canonicalize(path)
-        .map(path_string)
-        .map_err(|_| "INVALID_LAUNCH_PATH")
-}
-
 fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "AGENT_LAUNCH_PATH_NOT_FOUND")
 }
@@ -208,12 +194,11 @@ fn error(status: StatusCode, code: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_alias, validated_directory};
+    use super::validate_alias;
 
     #[test]
-    fn validates_alias_and_directory() {
+    fn validates_alias() {
         assert_eq!(validate_alias(Some("  ".into())).unwrap(), None);
         assert!(validate_alias(Some("x".repeat(121))).is_err());
-        assert!(validated_directory("/definitely/not/a/devhatch/path").is_err());
     }
 }

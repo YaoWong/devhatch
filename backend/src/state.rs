@@ -1,0 +1,137 @@
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
+
+use indexmap::IndexMap;
+use sqlx::SqlitePool;
+
+use crate::session::{Session, SessionKind, SessionView};
+
+pub struct AppState {
+    sessions: RwLock<IndexMap<String, Arc<Session>>>,
+    history_reconciliation: tokio::sync::Mutex<()>,
+    data_dir: PathBuf,
+    pool: SqlitePool,
+    history_pool: Option<SqlitePool>,
+}
+
+impl AppState {
+    pub fn new(data_dir: PathBuf, pool: SqlitePool, history_pool: Option<SqlitePool>) -> Self {
+        Self {
+            sessions: RwLock::new(IndexMap::new()),
+            history_reconciliation: tokio::sync::Mutex::new(()),
+            data_dir,
+            pool,
+            history_pool,
+        }
+    }
+
+    pub fn terminate_all(&self) {
+        for session in self
+            .sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+        {
+            session.terminate();
+        }
+    }
+
+    pub fn active_upstream_session_ids(&self) -> HashSet<String> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| session.kind() == SessionKind::Agent)
+            .filter_map(|session| session.upstream_session_id())
+            .collect()
+    }
+
+    pub fn owned_process_ids(&self) -> HashSet<u32> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .map(|session| session.process_id())
+            .collect()
+    }
+
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    pub(crate) fn history_pool(&self) -> Option<&SqlitePool> {
+        self.history_pool.as_ref()
+    }
+
+    pub(crate) fn history_reconciliation(&self) -> &tokio::sync::Mutex<()> {
+        &self.history_reconciliation
+    }
+
+    pub(crate) fn data_dir(&self) -> &PathBuf {
+        &self.data_dir
+    }
+
+    pub(crate) fn insert_session(&self, session: Arc<Session>) {
+        self.sessions
+            .write()
+            .expect("sessions lock poisoned")
+            .insert(session.id().to_string(), session);
+    }
+
+    pub(crate) fn session(&self, id: &str, kind: SessionKind) -> Option<Arc<Session>> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .get(id)
+            .filter(|session| session.kind() == kind)
+            .cloned()
+    }
+
+    pub(crate) fn session_count(&self, kind: SessionKind) -> usize {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| session.kind() == kind)
+            .count()
+    }
+
+    pub(crate) fn session_views(&self, kind: SessionKind) -> Vec<SessionView> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| session.kind() == kind)
+            .map(|session| session.view())
+            .collect()
+    }
+
+    pub(crate) fn contains_session(&self, session: &Arc<Session>) -> bool {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .get(session.id())
+            .is_some_and(|current| Arc::ptr_eq(current, session))
+    }
+
+    pub(crate) fn remove_session(&self, id: &str, kind: SessionKind) -> Option<Arc<Session>> {
+        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
+        sessions
+            .get(id)
+            .is_some_and(|session| session.kind() == kind)
+            .then(|| sessions.shift_remove(id).expect("session must exist"))
+    }
+
+    pub(crate) fn remove_session_if_same(&self, id: &str, session: &Arc<Session>) {
+        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
+        if sessions
+            .get(id)
+            .is_some_and(|current| Arc::ptr_eq(current, session))
+        {
+            sessions.shift_remove(id);
+        }
+    }
+}

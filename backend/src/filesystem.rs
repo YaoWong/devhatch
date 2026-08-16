@@ -7,8 +7,6 @@ use axum::{Json, extract::Query, http::StatusCode, response::IntoResponse};
 use path_clean::PathClean;
 use serde::{Deserialize, Serialize};
 
-use crate::terminal::default_cwd;
-
 #[derive(Deserialize)]
 pub struct DirectoryQuery {
     path: Option<String>,
@@ -102,6 +100,21 @@ pub fn resolve_path(value: &str) -> io::Result<PathBuf> {
     }
 }
 
+pub fn default_cwd() -> String {
+    env::var("DEVHATCH_CWD").unwrap_or_else(|_| path_string(home_dir()))
+}
+
+pub fn validated_directory(value: &str) -> Result<String, &'static str> {
+    let path = resolve_path(value).map_err(|_| "INVALID_LAUNCH_PATH")?;
+    let metadata = fs::metadata(&path).map_err(|_| "INVALID_LAUNCH_PATH")?;
+    if !metadata.is_dir() {
+        return Err("INVALID_LAUNCH_PATH");
+    }
+    fs::canonicalize(path)
+        .map(path_string)
+        .map_err(|_| "INVALID_LAUNCH_PATH")
+}
+
 pub fn path_string(path: impl AsRef<Path>) -> String {
     path.as_ref().to_string_lossy().into_owned()
 }
@@ -115,4 +128,15 @@ fn errno_name(code: i32) -> String {
         _ => "DIRECTORY_READ_FAILED",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_path, validated_directory};
+
+    #[test]
+    fn resolves_relative_paths_and_rejects_invalid_directories() {
+        assert!(resolve_path("relative").unwrap().is_absolute());
+        assert!(validated_directory("/definitely/not/a/devhatch/path").is_err());
+    }
 }

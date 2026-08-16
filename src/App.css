@@ -125,6 +125,9 @@
 .custom-select-option:disabled { opacity: .48; cursor: not-allowed; }
 .option-check { width: 14px; height: 14px; margin-left: auto; opacity: 0; }
 .custom-select-option.selected .option-check { opacity: 1; }
+.agent-install-message { display: grid; gap: 4px; margin-top: 8px; padding: 9px 10px; border: 1px solid #f1c9c3; border-radius: 9px; background: #fff7f5; color: #6e3028; font-size: 9px; line-height: 1.4; }
+.agent-install-message strong { font-size: 10px; }
+.agent-install-message code { overflow: hidden; padding: 5px 6px; border-radius: 5px; background: #f7e7e3; color: #56241e; font: 8px/1.4 "SF Mono", monospace; text-overflow: ellipsis; white-space: nowrap; user-select: all; }
 .config-default { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 9px; border: 1px solid #d2d2d7; border-radius: 9px; background: #fff; text-align: left; transition: border-color 150ms ease, background 150ms ease; }
 .config-default:hover { border-color: #b8b8bd; background: #fafafa; }
 .config-default > span { min-width: 0; flex: 1; }

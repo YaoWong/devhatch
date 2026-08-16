@@ -1,6 +1,11 @@
+mod agent;
+mod clock;
 mod filesystem;
 mod history;
 mod launch_path;
+mod session;
+mod session_socket;
+mod state;
 mod terminal;
 
 use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
@@ -14,7 +19,7 @@ use axum::{
     routing::{get, patch},
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use terminal::AppState;
+use state::AppState;
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -48,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api = Router::new()
         .route("/api/health", get(terminal::health))
         .route("/api/filesystem/directories", get(filesystem::directories))
-        .route("/api/agents", get(terminal::agents))
+        .route("/api/agents", get(agent::agents))
         .route("/api/agents/opencode/history", get(history::list))
         .route(
             "/api/agents/opencode/history/{id}",
@@ -72,18 +77,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             patch(terminal::rename).delete(terminal::remove),
         )
         .route("/api/terminals/{id}/socket", get(terminal::socket))
-        .route(
-            "/api/agent-sessions",
-            get(terminal::list_agents).post(terminal::create_agent),
-        )
+        .route("/api/agent-sessions", get(agent::list).post(agent::create))
         .route(
             "/api/agent-sessions/{id}",
-            patch(terminal::rename_agent).delete(terminal::remove_agent),
+            patch(agent::rename).delete(agent::remove),
         )
-        .route(
-            "/api/agent-sessions/{id}/socket",
-            get(terminal::agent_socket),
-        )
+        .route("/api/agent-sessions/{id}/socket", get(agent::socket))
         .layer(middleware::from_fn(require_loopback_host))
         .with_state(state.clone());
     let dist = project_root.join("dist");

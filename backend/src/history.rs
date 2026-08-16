@@ -10,10 +10,7 @@ use axum::{
 use serde::Serialize;
 use sqlx::{FromRow, Row, SqlitePool};
 
-use crate::{
-    filesystem::path_string,
-    terminal::{AppState, now},
-};
+use crate::{clock::now, filesystem::path_string, state::AppState};
 
 const RECENT_MILLIS: i64 = 5 * 60 * 1000;
 const REQUIRED_SESSION_COLUMNS: &[&str] = &[
@@ -62,7 +59,7 @@ struct HistoryItem {
 }
 
 pub async fn list(State(state): State<Arc<AppState>>) -> Response {
-    let Some(pool) = &state.history_pool else {
+    let Some(pool) = state.history_pool() else {
         return Json(serde_json::json!({ "available": false, "diagnostic": "OPENCODE_HISTORY_DATABASE_NOT_FOUND", "sessions": [] })).into_response();
     };
     if let Err(diagnostic) = validate_schema(pool).await {
@@ -149,7 +146,7 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
     if state.active_upstream_session_ids().contains(&id) {
         return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
     }
-    match resumable_session(state.history_pool.as_ref(), &id).await {
+    match resumable_session(state.history_pool(), &id).await {
         Ok(Some(_)) => {}
         Ok(None) => return error(StatusCode::NOT_FOUND, "UPSTREAM_SESSION_NOT_FOUND"),
         Err(_) => {
