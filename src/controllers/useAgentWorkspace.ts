@@ -1,17 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  createAgentLaunchConfig,
   createAgentLaunchPath,
   createAgentSession,
+  deleteAgentLaunchConfig,
   deleteAgentLaunchPath,
   deleteOpenCodeHistorySession,
   deleteRemoteSession,
   endpoints,
   renameRemoteSession,
   touchAgentLaunchPath,
+  updateAgentLaunchConfig,
   updateAgentLaunchPath,
 } from "../api";
 import { mergeAgentSessions, substituteHistoryTitles } from "../agentSelectors";
-import type { Agent, AgentLaunchPath, AgentSession, DeleteTarget, HistoryResponse } from "../types";
+import type {
+  Agent,
+  AgentLaunchConfig,
+  AgentLaunchConfigInput,
+  AgentLaunchPath,
+  AgentSession,
+  DeleteTarget,
+  HistoryResponse,
+} from "../types";
 import { logicalPath } from "../utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
@@ -34,9 +45,13 @@ export function useAgentWorkspace({
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [paths, setPaths] = useState<AgentLaunchPath[]>([]);
+  const [configs, setConfigs] = useState<AgentLaunchConfig[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryResponse>({ available: false, diagnostic: null, sessions: [] });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
+  const [includeSubdirectories, setIncludeSubdirectories] = useState(false);
   const [search, setSearch] = useState("");
   const sessionsRef = useRef<AgentSession[]>([]);
   const mutationVersion = useRef(0);
@@ -47,6 +62,19 @@ export function useAgentWorkspace({
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+
+  const applyConfigs = useCallback((next: AgentLaunchConfig[]) => {
+    setConfigs(next);
+    setSelectedConfigId((current) => {
+      if (current && next.some((config) => config.id === current)) return current;
+      return next.find((config) => config.isDefault)?.id ?? next[0]?.id ?? null;
+    });
+  }, []);
+
+  const refreshConfigs = useCallback(async () => {
+    const data = await endpoints.agentLaunchConfigs("opencode");
+    applyConfigs(data.agentLaunchConfigs);
+  }, [applyConfigs]);
 
   const refreshData = useCallback(async () => {
     const [agentData, pathData] = await Promise.all([endpoints.agents(), endpoints.agentPaths()]);
@@ -111,6 +139,10 @@ export function useAgentWorkspace({
   const initializePaths = useCallback((data: Awaited<ReturnType<typeof endpoints.agentPaths>>) => {
     setPaths(data.agentLaunchPaths);
   }, []);
+  const initializeConfigs = useCallback(
+    (data: Awaited<ReturnType<typeof endpoints.agentLaunchConfigs>>) => applyConfigs(data.agentLaunchConfigs),
+    [applyConfigs],
+  );
   const initializeSessions = useCallback(
     (data: Awaited<ReturnType<typeof endpoints.agentSessions>>, initialHomePaths: HomePaths) => {
       const normalized = data.agentSessions.map((session) => ({
@@ -145,7 +177,10 @@ export function useAgentWorkspace({
       }
       try {
         if (pathId) await touchAgentLaunchPath(pathId);
-        const { agentSession } = await createAgentSession(upstreamSessionId ? { upstreamSessionId } : { cwd });
+        const launchOptions = upstreamSessionId
+          ? { upstreamSessionId, launchConfigId: selectedConfigId ?? undefined }
+          : { cwd, launchConfigId: selectedConfigId ?? undefined };
+        const { agentSession } = await createAgentSession(launchOptions);
         const normalized = {
           ...agentSession,
           cwd: logicalPath(agentSession.cwd, homePaths?.home, homePaths?.resolvedHome),
@@ -164,7 +199,18 @@ export function useAgentWorkspace({
         reportError(reason instanceof Error ? reason.message : String(reason));
       }
     },
-    [agents, bumpFocus, closeSidebar, homePaths, onLaunched, refreshData, refreshHistory, reportError, selectedAgentId],
+    [
+      agents,
+      bumpFocus,
+      closeSidebar,
+      homePaths,
+      onLaunched,
+      refreshData,
+      refreshHistory,
+      reportError,
+      selectedAgentId,
+      selectedConfigId,
+    ],
   );
 
   const choosePath = useCallback(
@@ -180,12 +226,16 @@ export function useAgentWorkspace({
           });
           item = result.agentLaunchPath;
         }
-        await launch({ cwd: item.path, pathId: item.id });
+        setSelectedPathId(item.id);
+        setPaths((current) =>
+          current.some((entry) => entry.id === item.id) ? current : [...current, item],
+        );
+        closeSidebar();
       } catch (reason) {
         reportError(reason instanceof Error ? reason.message : String(reason));
       }
     },
-    [launch, paths, reportError, selectedAgentId],
+    [closeSidebar, paths, reportError, selectedAgentId],
   );
 
   const pinPath = useCallback(
@@ -220,6 +270,50 @@ export function useAgentWorkspace({
       await refreshData();
     },
     [refreshData],
+  );
+
+  const createConfig = useCallback(
+    async (input: AgentLaunchConfigInput) => {
+      try {
+        const { agentLaunchConfig } = await createAgentLaunchConfig(input);
+        await refreshConfigs();
+        setSelectedConfigId(agentLaunchConfig.id);
+        return true;
+      } catch (reason) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      }
+    },
+    [refreshConfigs, reportError],
+  );
+
+  const updateConfig = useCallback(
+    async (id: string, input: Partial<AgentLaunchConfigInput>) => {
+      try {
+        await updateAgentLaunchConfig(id, input);
+        await refreshConfigs();
+        setSelectedConfigId(id);
+        return true;
+      } catch (reason) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      }
+    },
+    [refreshConfigs, reportError],
+  );
+
+  const deleteConfig = useCallback(
+    async (id: string) => {
+      try {
+        await deleteAgentLaunchConfig(id);
+        await refreshConfigs();
+        return true;
+      } catch (reason) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      }
+    },
+    [refreshConfigs, reportError],
   );
 
   const deleteHistorySession = useCallback(
@@ -269,35 +363,62 @@ export function useAgentWorkspace({
   );
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
+  const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
   const activeSession = sessions.find((session) => session.id === activeId) ?? null;
   const selectedPaths = paths.filter((path) => path.agentId === selectedAgent?.id);
+  const selectedPath = selectedPaths.find((path) => path.id === selectedPathId) ?? null;
+  useEffect(() => {
+    if (selectedPathId && !selectedPath) setSelectedPathId(null);
+  }, [selectedPath, selectedPathId]);
   const displaySessions = useMemo(() => substituteHistoryTitles(sessions, history), [history, sessions]);
   const mergedSessions = useMemo(
-    () => mergeAgentSessions(displaySessions, history, search),
-    [displaySessions, history, search],
+    () =>
+      mergeAgentSessions(
+        displaySessions,
+        history,
+        search,
+        selectedPath?.path ?? null,
+        includeSubdirectories,
+        homePaths?.home,
+        homePaths?.resolvedHome,
+      ),
+    [displaySessions, history, homePaths, includeSubdirectories, search, selectedPath?.path],
   );
 
   return {
     sessions,
     agents,
     paths,
+    configs,
+    selectedConfigId,
+    selectedConfig,
     history,
     activeId,
     activeSession,
     selectedAgentId,
     selectedAgent,
     selectedPaths,
+    selectedPathId,
+    includeSubdirectories,
     displaySessions,
     mergedSessions,
     search,
     setSearch,
-    setSelectedAgentId,
+    setSelectedPathId,
+    setSelectedConfigId,
+    setIncludeSubdirectories,
+    setSelectedAgentId: (id: string) => {
+      setSelectedAgentId(id);
+      setSelectedPathId(null);
+    },
     setPaths,
     initializeAgents,
     initializePaths,
+    initializeConfigs,
     initializeSessions,
     onLaunched,
     refreshData,
+    refreshConfigs,
     refreshHistory,
     removeSession,
     launch,
@@ -305,6 +426,9 @@ export function useAgentWorkspace({
     pinPath,
     renamePath,
     deletePath,
+    createConfig,
+    updateConfig,
+    deleteConfig,
     deleteHistorySession,
     renameSession,
     deleteSession,

@@ -169,6 +169,7 @@ pub(crate) fn spawn(
             rows,
             agent_id: None,
             agent_name: None,
+            cleanup_path: None,
         },
         |_| {},
     )

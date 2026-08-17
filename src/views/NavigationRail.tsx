@@ -20,6 +20,7 @@ export function NavigationRail({
   onNavigate,
   terminalContent,
   agentContent,
+  webAppContent,
 }: {
   railPage: RailPage;
   railMotion: RailMotion;
@@ -33,6 +34,7 @@ export function NavigationRail({
   onNavigate: (page: RailPage, motion: Exclude<RailMotion, null>) => void;
   terminalContent: React.ReactNode;
   agentContent: React.ReactNode;
+  webAppContent: React.ReactNode;
 }) {
   const pageClass = (page: DetailMode) =>
     `rail-page ${railPage === page ? "active" : ""} ` +
@@ -65,10 +67,12 @@ export function NavigationRail({
               count={agentCount}
               onNavigate={onNavigate}
             />
-            <button className="nav-item disabled" title="Coming next">
-              <Globe2 />
-              <span>Web Apps</span>
-            </button>
+            <ModeButton
+              mode="webapp"
+              modeRefs={modeRefs}
+              active={workspaceMode === "webapp"}
+              onNavigate={onNavigate}
+            />
             <ModeButton
               mode="settings"
               modeRefs={modeRefs}
@@ -97,6 +101,16 @@ export function NavigationRail({
           onNavigate={onNavigate}
         >
           {agentContent}
+        </DetailPage>
+        <DetailPage
+          mode="webapp"
+          className={pageClass("webapp")}
+          railMotion={railMotion}
+          pageRefs={pageRefs}
+          titleRefs={titleRefs}
+          onNavigate={onNavigate}
+        >
+          {webAppContent}
         </DetailPage>
         <DetailPage
           mode="settings"
@@ -139,6 +153,7 @@ function ModeButton({
   const meta = {
     terminal: { icon: SquareTerminal, label: "Terminal" },
     agent: { icon: Bot, label: "Agent CLI" },
+    webapp: { icon: Globe2, label: "Web Apps" },
     settings: { icon: Settings, label: "Settings" },
   }[mode];
   const Icon = meta.icon;
@@ -177,6 +192,7 @@ function DetailPage({
   const meta = {
     terminal: { icon: SquareTerminal, label: "Terminal" },
     agent: { icon: Bot, label: "Agent CLI" },
+    webapp: { icon: Globe2, label: "Web Apps" },
     settings: { icon: Settings, label: "Settings" },
   }[mode];
   const Icon = meta.icon;

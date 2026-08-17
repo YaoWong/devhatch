@@ -7,7 +7,10 @@ use std::{
 use indexmap::IndexMap;
 use sqlx::SqlitePool;
 
-use crate::session::{Session, SessionKind, SessionView};
+use crate::{
+    session::{Session, SessionKind, SessionView},
+    web_app::WebAppManager,
+};
 
 pub struct AppState {
     sessions: RwLock<IndexMap<String, Arc<Session>>>,
@@ -15,16 +18,19 @@ pub struct AppState {
     data_dir: PathBuf,
     pool: SqlitePool,
     history_pool: Option<SqlitePool>,
+    web_apps: Arc<WebAppManager>,
 }
 
 impl AppState {
     pub fn new(data_dir: PathBuf, pool: SqlitePool, history_pool: Option<SqlitePool>) -> Self {
+        let web_apps = Arc::new(WebAppManager::new(&data_dir));
         Self {
             sessions: RwLock::new(IndexMap::new()),
             history_reconciliation: tokio::sync::Mutex::new(()),
             data_dir,
             pool,
             history_pool,
+            web_apps,
         }
     }
 
@@ -72,6 +78,10 @@ impl AppState {
 
     pub(crate) fn data_dir(&self) -> &PathBuf {
         &self.data_dir
+    }
+
+    pub(crate) fn web_apps(&self) -> Arc<WebAppManager> {
+        self.web_apps.clone()
     }
 
     pub(crate) fn insert_session(&self, session: Arc<Session>) {

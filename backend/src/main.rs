@@ -2,18 +2,20 @@ mod agent;
 mod clock;
 mod filesystem;
 mod history;
+mod launch_config;
 mod launch_path;
 mod session;
 mod session_socket;
 mod state;
 mod terminal;
+mod web_app;
 
 use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use axum::{
     Router,
     extract::Request,
-    http::StatusCode,
+    http::{Method, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, patch},
@@ -54,6 +56,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/health", get(terminal::health))
         .route("/api/filesystem/directories", get(filesystem::directories))
         .route("/api/agents", get(agent::agents))
+        .route(
+            "/api/agent-launch-configs",
+            get(launch_config::list).post(launch_config::create),
+        )
+        .route(
+            "/api/agent-launch-configs/{id}",
+            patch(launch_config::update).delete(launch_config::remove),
+        )
         .route("/api/agents/opencode/history", get(history::list))
         .route(
             "/api/agents/opencode/history/{id}",
@@ -83,6 +93,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             patch(agent::rename).delete(agent::remove),
         )
         .route("/api/agent-sessions/{id}/socket", get(agent::socket))
+        .route("/api/web-apps", get(web_app::list))
+        .route(
+            "/api/web-apps/open-design/install",
+            axum::routing::post(web_app::install),
+        )
+        .route(
+            "/api/web-apps/open-design/check-update",
+            axum::routing::post(web_app::check_update),
+        )
+        .route(
+            "/api/web-apps/open-design/update",
+            axum::routing::post(web_app::update),
+        )
+        .route(
+            "/api/web-apps/open-design/start",
+            axum::routing::post(web_app::start),
+        )
+        .route(
+            "/api/web-apps/open-design/stop",
+            axum::routing::post(web_app::stop),
+        )
         .layer(middleware::from_fn(require_loopback_host))
         .with_state(state.clone());
     let dist = project_root.join("dist");
@@ -103,12 +134,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn require_loopback_host(request: Request, next: Next) -> Response {
-    let trusted = request
+    let host = request
         .headers()
         .get("host")
+        .and_then(|value| value.to_str().ok());
+    let trusted = host.is_some_and(|host| matches!(host, "127.0.0.1:4173" | "localhost:4173"));
+    let origin = request
+        .headers()
+        .get("origin")
+        .and_then(|value| value.to_str().ok());
+    let cross_site = request
+        .headers()
+        .get("sec-fetch-site")
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|host| matches!(host, "127.0.0.1:4173" | "localhost:4173"));
-    if !trusted {
+        == Some("cross-site");
+    let trusted_origin = request.method() == Method::GET
+        || (!cross_site
+            && (origin.is_none()
+                || origin
+                    .zip(host)
+                    .is_some_and(|(origin, host)| matches!(origin.strip_prefix("http://"), Some(authority) if authority == host))));
+    if !trusted || !trusted_origin {
         return StatusCode::FORBIDDEN.into_response();
     }
     next.run(request).await
@@ -158,4 +204,5 @@ async fn shutdown(state: Arc<AppState>) {
         () = terminate => {},
     }
     state.terminate_all();
+    state.web_apps().shutdown().await;
 }

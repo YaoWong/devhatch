@@ -1,6 +1,6 @@
 import { Search, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { AgentSession, ConfirmAction, HistorySession } from "../types";
+import type { AgentLaunchPath, AgentSession, ConfirmAction, HistorySession } from "../types";
 import { displayPath } from "../utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
@@ -12,8 +12,11 @@ export function AgentSessionList({
   historyCount,
   activeId,
   search,
+  selectedPath,
+  includeSubdirectories,
   homePaths,
   onSearch,
+  onIncludeSubdirectoriesChange,
   onActivate,
   onResume,
   onDeleteLive,
@@ -25,8 +28,11 @@ export function AgentSessionList({
   historyCount: number;
   activeId: string | null;
   search: string;
+  selectedPath: AgentLaunchPath | null;
+  includeSubdirectories: boolean;
   homePaths: HomePaths;
   onSearch: (value: string) => void;
+  onIncludeSubdirectoriesChange: (enabled: boolean) => void;
   onActivate: (id: string) => void;
   onResume: (id: string) => Promise<void>;
   onDeleteLive: (session: AgentSession) => void;
@@ -44,7 +50,25 @@ export function AgentSessionList({
   return (
     <div className="menu-section sessions-section">
       <div className="sessions-heading">
-        <p className="menu-label">Sessions</p>
+        <div className="sessions-title-row">
+          <p className="menu-label">Sessions</p>
+          {selectedPath && (
+            <label className="session-scope-toggle">
+              <span>Subdirectories</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={includeSubdirectories}
+                onChange={(event) => onIncludeSubdirectoriesChange(event.target.checked)}
+              />
+            </label>
+          )}
+        </div>
+        {selectedPath && (
+          <div className="session-filter-path" title={selectedPath.path}>
+            {displayPath(selectedPath.path, homePaths?.home, homePaths?.resolvedHome)}
+          </div>
+        )}
         {sessionCount + historyCount > 7 && (
           <label className="session-search">
             <Search />

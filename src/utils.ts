@@ -23,6 +23,24 @@ export function displayPath(value: string, home?: string, resolvedHome?: string)
   return value;
 }
 
+export function pathMatches(
+  candidate: string,
+  selected: string,
+  includeSubdirectories: boolean,
+  home?: string,
+  resolvedHome?: string,
+) {
+  const normalize = (value: string) => {
+    const logical = logicalPath(value, home, resolvedHome);
+    return logical.length > 1 ? logical.replace(/\/+$/, "") : logical;
+  };
+  const candidatePath = normalize(candidate);
+  const selectedPath = normalize(selected);
+  if (candidatePath === selectedPath) return true;
+  if (!includeSubdirectories) return false;
+  return selectedPath === "/" ? candidatePath.startsWith("/") : candidatePath.startsWith(`${selectedPath}/`);
+}
+
 export function workspaceName(workspace: string) {
   return workspace.split("/").filter(Boolean).pop() || workspace;
 }

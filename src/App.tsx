@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Menu, PanelLeftClose, Plus } from "lucide-react";
+import { LoaderCircle, Menu, PanelLeftClose, Plus, Square } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { ActionDialog, DeleteSessionDialog } from "./Dialogs";
 import { WorkspacePicker } from "./WorkspacePicker";
@@ -7,6 +7,7 @@ import { useAgentWorkspace } from "./controllers/useAgentWorkspace";
 import { useInitialWorkspaceData } from "./controllers/useInitialWorkspaceData";
 import { useNavigation } from "./controllers/useNavigation";
 import { useTerminalWorkspace } from "./controllers/useTerminalWorkspace";
+import { useWebApps } from "./controllers/useWebApps";
 import type { ConfirmAction, ConnectionPhase, DeleteTarget, TerminalInfo } from "./types";
 import { displayPath } from "./utils";
 import { AgentRailPage } from "./views/AgentRailPage";
@@ -14,6 +15,7 @@ import { AgentWorkspace } from "./views/AgentWorkspace";
 import { NavigationRail } from "./views/NavigationRail";
 import { SettingsView } from "./views/SettingsView";
 import { TerminalWorkspace } from "./views/TerminalWorkspace";
+import { WebAppsRailPage, WebAppsWorkspace } from "./views/WebApps";
 import { WorkspaceList } from "./views/WorkspaceList";
 import "./App.css";
 
@@ -44,8 +46,15 @@ function App() {
     bumpFocus,
     onLaunched: closePicker,
   });
+  const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
 
-  const { initializeAgents, initializePaths, initializeSessions, deleteSession: deleteAgentSession } = agent;
+  const {
+    initializeAgents,
+    initializePaths,
+    initializeConfigs,
+    initializeSessions,
+    deleteSession: deleteAgentSession,
+  } = agent;
   const { initialize: initializeTerminals, deleteSession: deleteTerminalSession } = terminal;
 
   const markReady = useCallback(() => setBusy(false), []);
@@ -54,6 +63,7 @@ function App() {
     initializeAgents,
     initializeSessions,
     initializePaths,
+    initializeConfigs,
     onError: reportError,
     onReady: markReady,
   });
@@ -113,7 +123,11 @@ function App() {
   const modeSubtitle =
     navigation.workspaceMode === "settings"
       ? "Preferences for your DevHatch workspace"
-      : navigation.workspaceMode === "agent"
+      : navigation.workspaceMode === "webapp"
+        ? webApps.openDesign?.running
+          ? `OpenDesign v${webApps.openDesign.version ?? ""} · Running locally`
+          : "Install and run local developer web apps"
+        : navigation.workspaceMode === "agent"
         ? agent.activeSession
           ? `${displayPath(
               agent.activeSession.cwd,
@@ -192,7 +206,11 @@ function App() {
             agents={agent.agents}
             selectedAgentId={agent.selectedAgentId}
             selectedAgent={agent.selectedAgent}
+            configs={agent.configs}
+            selectedConfigId={agent.selectedConfigId}
             paths={agent.selectedPaths}
+            selectedPathId={agent.selectedPathId}
+            includeSubdirectories={agent.includeSubdirectories}
             activeSession={agent.activeSession}
             sessions={agent.sessions}
             historyCount={agent.history.sessions.length}
@@ -200,7 +218,13 @@ function App() {
             search={agent.search}
             homePaths={homePaths}
             onSelectAgent={agent.setSelectedAgentId}
+            onSelectConfig={agent.setSelectedConfigId}
+            onCreateConfig={agent.createConfig}
+            onUpdateConfig={agent.updateConfig}
+            onDeleteConfig={agent.deleteConfig}
             onChoosePath={() => setPickerPurpose("agent")}
+            onSelectPath={(id) => agent.setSelectedPathId(agent.selectedPathId === id ? null : id)}
+            onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
             onLaunch={(path) => void agent.launch({ cwd: path.path, pathId: path.id })}
             onPinPath={agent.pinPath}
             onRenamePath={agent.renamePath}
@@ -211,6 +235,15 @@ function App() {
             onDeleteLive={(session) => requestClose(session, true)}
             onConfirm={setConfirmAction}
             onDeleteHistory={agent.deleteHistorySession}
+          />
+        }
+        webAppContent={
+          <WebAppsRailPage
+            app={webApps.openDesign}
+            onInstall={webApps.install}
+            onStart={webApps.start}
+            onOpen={webApps.open}
+            onConfirm={setConfirmAction}
           />
         }
       />
@@ -234,6 +267,14 @@ function App() {
               >
                 <Plus />
                 <span>New terminal</span>
+              </button>
+            </div>
+          )}
+          {navigation.workspaceMode === "webapp" && webApps.openDesign?.running && (
+            <div className="top-actions">
+              <button className="secondary-button" disabled={webApps.operation !== null} onClick={() => void webApps.stop()}>
+                {webApps.operation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
+                <span>{webApps.operation === "stop" ? "Stopping…" : "Stop"}</span>
               </button>
             </div>
           )}
@@ -277,6 +318,19 @@ function App() {
           onError={reportError}
           onDismissError={() => setError(null)}
         />
+        {navigation.workspaceMode === "webapp" && (
+          <WebAppsWorkspace
+            app={webApps.openDesign}
+            operation={webApps.operation}
+            error={error}
+            onInstall={webApps.install}
+            onStart={webApps.start}
+            onUpdate={webApps.update}
+            onCheckUpdate={webApps.checkUpdate}
+            onConfirm={setConfirmAction}
+            onDismissError={() => setError(null)}
+          />
+        )}
         {navigation.workspaceMode === "settings" && (
           <SettingsView
             confirmDelete={confirmDelete}

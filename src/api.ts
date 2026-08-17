@@ -1,4 +1,14 @@
-import type { Agent, AgentLaunchPath, AgentSession, DirectoryListing, HistoryResponse, TerminalInfo } from "./types";
+import type {
+  Agent,
+  AgentLaunchConfig,
+  AgentLaunchConfigInput,
+  AgentLaunchPath,
+  AgentSession,
+  DirectoryListing,
+  HistoryResponse,
+  TerminalInfo,
+  WebApp,
+} from "./types";
 
 export async function requestJson<T>(url: string, options?: RequestInit, fallback = "Request failed") {
   const response = await fetch(url, options);
@@ -22,12 +32,36 @@ export function createTerminal(cwd?: string) {
   );
 }
 
-export function createAgentSession(options: { cwd?: string; upstreamSessionId?: string }) {
+export function createAgentSession(options: { cwd?: string; upstreamSessionId?: string; launchConfigId?: string }) {
   return requestJson<{ agentSession: AgentSession }>(
     "/api/agent-sessions",
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(options) },
     "Unable to launch agent session",
   );
+}
+
+export function createAgentLaunchConfig(input: AgentLaunchConfigInput) {
+  return requestJson<{ agentLaunchConfig: AgentLaunchConfig }>(
+    "/api/agent-launch-configs",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
+    "Unable to create launch config",
+  );
+}
+
+export function updateAgentLaunchConfig(id: string, input: Partial<AgentLaunchConfigInput>) {
+  return requestJson<{ agentLaunchConfig: AgentLaunchConfig }>(
+    `/api/agent-launch-configs/${id}`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
+    "Unable to update launch config",
+  );
+}
+
+export async function deleteAgentLaunchConfig(id: string) {
+  const response = await fetch(`/api/agent-launch-configs/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new Error(body?.message || body?.error || "Unable to delete launch config");
+  }
 }
 
 export function createAgentLaunchPath(options: { agentId: string | null; path: string; alias: null; pinned: false }) {
@@ -81,9 +115,54 @@ export async function deleteRemoteSession(route: string, id: string) {
   if (!response.ok && response.status !== 404) throw new Error("Unable to close session");
 }
 
+export function installOpenDesign() {
+  return requestJson<{ accepted: boolean }>(
+    "/api/web-apps/open-design/install",
+    { method: "POST" },
+    "Unable to start OpenDesign installation",
+  );
+}
+
+export function checkOpenDesignUpdate() {
+  return requestJson<{ webApp: WebApp }>(
+    "/api/web-apps/open-design/check-update",
+    { method: "POST" },
+    "Unable to check for OpenDesign updates",
+  );
+}
+
+export function updateOpenDesign() {
+  return requestJson<{ accepted: boolean }>(
+    "/api/web-apps/open-design/update",
+    { method: "POST" },
+    "Unable to update OpenDesign",
+  );
+}
+
+export function startOpenDesign() {
+  return requestJson<{ webApp: WebApp }>(
+    "/api/web-apps/open-design/start",
+    { method: "POST" },
+    "Unable to start OpenDesign",
+  );
+}
+
+export function stopOpenDesign() {
+  return requestJson<{ webApp: WebApp }>(
+    "/api/web-apps/open-design/stop",
+    { method: "POST" },
+    "Unable to stop OpenDesign",
+  );
+}
+
 export const endpoints = {
+  webApps: () => requestJson<{ webApps: WebApp[] }>("/api/web-apps"),
   agents: () => requestJson<{ agents: Agent[] }>("/api/agents"),
   agentPaths: () => requestJson<{ agentLaunchPaths: AgentLaunchPath[] }>("/api/agent-launch-paths"),
+  agentLaunchConfigs: (agentId = "opencode") =>
+    requestJson<{ agentLaunchConfigs: AgentLaunchConfig[] }>(
+      `/api/agent-launch-configs?agentId=${encodeURIComponent(agentId)}`,
+    ),
   agentSessions: () => requestJson<{ agentSessions: AgentSession[] }>("/api/agent-sessions"),
   history: () => requestJson<HistoryResponse>("/api/agents/opencode/history"),
   terminals: () =>

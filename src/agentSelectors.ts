@@ -1,4 +1,5 @@
 import type { AgentSession, HistoryResponse } from "./types";
+import { pathMatches } from "./utils";
 
 export function substituteHistoryTitles(sessions: AgentSession[], history: HistoryResponse) {
   const titles = new Map(history.sessions.map((session) => [session.id, session.title]));
@@ -11,7 +12,15 @@ export function substituteHistoryTitles(sessions: AgentSession[], history: Histo
   }));
 }
 
-export function mergeAgentSessions(sessions: AgentSession[], history: HistoryResponse, search: string) {
+export function mergeAgentSessions(
+  sessions: AgentSession[],
+  history: HistoryResponse,
+  search: string,
+  selectedPath: string | null,
+  includeSubdirectories: boolean,
+  home?: string,
+  resolvedHome?: string,
+) {
   const liveByUpstream = new Map(
     sessions.filter((session) => session.upstreamSessionId).map((session) => [session.upstreamSessionId, session]),
   );
@@ -23,6 +32,13 @@ export function mergeAgentSessions(sessions: AgentSession[], history: HistoryRes
       .map((live) => ({ live, history: undefined })),
     ...rows,
   ]
+    .filter(({ live, history: item }) => {
+      if (!selectedPath) return true;
+      return [live?.cwd, item?.directory].some(
+        (directory) =>
+          directory && pathMatches(directory, selectedPath, includeSubdirectories, home, resolvedHome),
+      );
+    })
     .filter(({ live, history: item }) =>
       `${live?.name ?? ""} ${live?.cwd ?? ""} ${item?.title ?? ""} ${item?.directory ?? ""}`
         .toLowerCase()

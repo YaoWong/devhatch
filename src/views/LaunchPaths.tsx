@@ -1,12 +1,12 @@
 import { ChevronLeft, ChevronRight, Folder, Pencil, Pin, Play, Plus, Trash2 } from "lucide-react";
 import type { AgentLaunchPath } from "../types";
-import { displayPath, logicalPath, workspaceName } from "../utils";
+import { displayPath, workspaceName } from "../utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
 export function LaunchPaths({
   paths,
-  activeCwd,
+  selectedPathId,
   available,
   homePaths,
   pathDisplay,
@@ -14,13 +14,14 @@ export function LaunchPaths({
   onDisplayChange,
   onPageChange,
   onChoose,
+  onSelect,
   onLaunch,
   onPin,
   onRename,
   onDelete,
 }: {
   paths: AgentLaunchPath[];
-  activeCwd?: string;
+  selectedPathId: string | null;
   available: boolean;
   homePaths: HomePaths;
   pathDisplay: "folder" | "full";
@@ -28,6 +29,7 @@ export function LaunchPaths({
   onDisplayChange: (mode: "folder" | "full") => void;
   onPageChange: (page: number) => void;
   onChoose: () => void;
+  onSelect: (path: AgentLaunchPath) => void;
   onLaunch: (path: AgentLaunchPath) => void;
   onPin: (path: AgentLaunchPath) => void;
   onRename: (path: AgentLaunchPath) => void;
@@ -51,9 +53,9 @@ export function LaunchPaths({
             <span className="path-mode-label">{pathDisplay === "folder" ? "Full path" : "Folder"}</span>
             <span className="path-mode-knob" />
           </button>
-          <button className="mini-action" disabled={!available} onClick={onChoose}>
+          <button className="mini-action" onClick={onChoose}>
             <Plus />
-            Launch
+            Add
           </button>
         </div>
       </div>
@@ -62,18 +64,26 @@ export function LaunchPaths({
           visiblePaths.map((item) => (
             <div
               key={item.id}
-              className={`agent-path-row ${
-                activeCwd === logicalPath(item.path, homePaths?.home, homePaths?.resolvedHome) ? "active" : ""
-              }`}
+              className={`agent-path-row ${selectedPathId === item.id ? "active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedPathId === item.id}
+              onClick={() => onSelect(item)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(item);
+                }
+              }}
             >
               <Folder />
-              <button className="path-main" title={item.path} disabled={!available} onClick={() => onLaunch(item)}>
+              <span className="path-main" title={item.path}>
                 <strong>{pathDisplay === "folder" ? item.alias || workspaceName(item.path) : item.path}</strong>
                 {pathDisplay === "folder" && (
                   <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>
                 )}
-              </button>
-              <span className="path-actions">
+              </span>
+              <span className="path-actions" onClick={(event) => event.stopPropagation()}>
                 <button
                   className={item.pinned ? "pinned" : ""}
                   aria-label={item.pinned ? "Unpin path" : "Pin path"}
@@ -83,7 +93,7 @@ export function LaunchPaths({
                 >
                   <Pin />
                 </button>
-                <button aria-label="Launch path" onClick={() => onLaunch(item)}>
+                <button aria-label="Launch path" disabled={!available} onClick={() => onLaunch(item)}>
                   <Play />
                 </button>
                 <button aria-label="Rename alias" onClick={() => onRename(item)}>

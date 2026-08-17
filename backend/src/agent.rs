@@ -2,13 +2,15 @@ use std::{
     collections::HashSet,
     env,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    os::unix::fs::PermissionsExt,
+    path::{Path as FilePath, PathBuf},
     sync::Arc,
     time::Duration,
 };
 
 use axum::{
     Json,
-    extract::{Path, State, WebSocketUpgrade},
+    extract::{Path, State, WebSocketUpgrade, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -20,6 +22,7 @@ use uuid::Uuid;
 
 use crate::{
     filesystem::{default_cwd, resolve_path},
+    launch_config::{self, AgentLaunchConfig},
     session::{Session, SessionEvent, SessionKind, SessionSpawn, dimension},
     session_socket,
     state::AppState,
@@ -30,7 +33,6 @@ use crate::{
 
 pub(crate) const ID: &str = "opencode";
 pub(crate) const NAME: &str = "OpenCode";
-const CONFIG_ID: &str = "opencode-default";
 const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
 
@@ -41,6 +43,7 @@ pub(crate) struct AgentCreateRequest {
     cols: Option<serde_json::Value>,
     rows: Option<serde_json::Value>,
     upstream_session_id: Option<String>,
+    launch_config_id: Option<String>,
 }
 
 impl AgentCreateRequest {
@@ -53,9 +56,11 @@ impl AgentCreateRequest {
     }
 }
 
-pub async fn agents(State(_state): State<Arc<AppState>>) -> Response {
+pub async fn agents(State(state): State<Arc<AppState>>) -> Response {
     let version = installed_version().await;
     let available = version.is_some();
+    let (launch_config_count, default_launch_config_id) =
+        launch_config::summary(&state).await.unwrap_or((0, None));
     Json(serde_json::json!({
         "agents": [{
             "id": ID,
@@ -63,8 +68,8 @@ pub async fn agents(State(_state): State<Arc<AppState>>) -> Response {
             "kind": "opencode",
             "available": available,
             "version": version,
-            "launchConfigCount": 1,
-            "defaultLaunchConfigId": CONFIG_ID,
+            "launchConfigCount": launch_config_count,
+            "defaultLaunchConfigId": default_launch_config_id,
             "enabled": true,
             "availability": if available { "available" } else { "unavailable" },
             "diagnostic": if available { serde_json::Value::Null } else { serde_json::Value::String("OPENCODE_NOT_FOUND".into()) }
@@ -89,11 +94,21 @@ pub async fn list(State(state): State<Arc<AppState>>) -> Json<serde_json::Value>
 
 pub async fn create(
     State(state): State<Arc<AppState>>,
-    Json(request): Json<AgentCreateRequest>,
+    request: Result<Json<AgentCreateRequest>, JsonRejection>,
 ) -> Response {
+    let Json(request) = match request {
+        Ok(request) => request,
+        Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
+    };
     if !available() {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     }
+    let launch_config =
+        match launch_config::resolve(&state, request.launch_config_id.as_deref()).await {
+            Ok(Some(config)) => config,
+            Ok(None) => return error(StatusCode::NOT_FOUND, "AGENT_LAUNCH_CONFIG_NOT_FOUND"),
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        };
     let is_new_session = request.upstream_session_id.is_none();
     let baseline_session_ids = if is_new_session {
         crate::history::root_session_ids(state.history_pool())
@@ -126,7 +141,12 @@ pub async fn create(
     if invalid_cwd(terminal_request.cwd.as_ref()) {
         return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
     }
-    let session = match spawn(state.clone(), terminal_request, upstream_session_id) {
+    let session = match spawn(
+        state.clone(),
+        terminal_request,
+        upstream_session_id,
+        launch_config,
+    ) {
         Ok(value) => value,
         Err(error) => {
             return (
@@ -209,7 +229,11 @@ fn executable_path() -> Option<std::path::PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
             .map(|path| path.join("opencode"))
-            .find(|path| path.is_file())
+            .find_map(|path| {
+                path.is_file()
+                    .then(|| std::fs::canonicalize(path).ok())
+                    .flatten()
+            })
     })
 }
 
@@ -217,6 +241,7 @@ pub(crate) fn spawn(
     state: Arc<AppState>,
     request: CreateRequest,
     upstream_session_id: Option<String>,
+    launch_config: AgentLaunchConfig,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
     let fallback_cwd = default_cwd();
     let requested_cwd = request
@@ -228,14 +253,40 @@ pub(crate) fn spawn(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
+    let executable = executable_path().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "opencode executable not found",
+        )
+    })?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
-    let shell = "opencode".to_string();
-    let mut command = CommandBuilder::new(&shell);
-    let event_endpoint = configure_command(&mut command, upstream_session_id.as_ref())?;
+    let run_dir = create_run_dir(state.data_dir())?;
+    let wrapper = run_dir.join("launch.sh");
+    if let Err(error) = write_wrapper(&wrapper, &launch_config) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let shell = executable.to_string_lossy().into_owned();
+    let mut command = CommandBuilder::new("/bin/sh");
+    command.arg(&wrapper);
+    command.arg(&executable);
+    let event_endpoint = match configure_command(&mut command, upstream_session_id.as_ref()) {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&run_dir);
+            return Err(error.into());
+        }
+    };
     configure_environment(&mut command, &cwd);
+    command.env("DEVHATCH_AGENT_ID", ID);
+    command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
+    command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
+    command.env("DEVHATCH_CWD", &cwd);
+    command.env("DEVHATCH_CONFIG_DIR", &run_dir);
     let endpoint = event_endpoint.clone();
-    let session = Session::spawn(
+    let cleanup_path = run_dir.clone();
+    let result = Session::spawn(
         state,
         SessionSpawn {
             command,
@@ -248,14 +299,49 @@ pub(crate) fn spawn(
             rows,
             agent_id: Some(ID),
             agent_name: Some(NAME),
+            cleanup_path: Some(cleanup_path),
         },
         move |session| {
             if let Some((port, password)) = endpoint {
                 start_event_watcher(session, port, password);
             }
         },
-    )?;
-    Ok(session)
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+fn create_run_dir(data_dir: &FilePath) -> std::io::Result<PathBuf> {
+    let root = data_dir.join("agent-runs");
+    std::fs::create_dir_all(&root)?;
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
+    let run_dir = root.join(Uuid::new_v4().to_string());
+    std::fs::create_dir(&run_dir)?;
+    std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(run_dir)
+}
+
+fn write_wrapper(path: &FilePath, config: &AgentLaunchConfig) -> std::io::Result<()> {
+    std::fs::write(path, wrapper_source(config))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+fn wrapper_source(config: &AgentLaunchConfig) -> String {
+    let mut source = String::from("#!/bin/sh\nset -e\n");
+    for script in [
+        &config.pre_launch_script,
+        &config.provider_script,
+        &config.tui_script,
+    ] {
+        source.push_str(script);
+        if !script.ends_with('\n') {
+            source.push('\n');
+        }
+    }
+    source.push_str("exec \"$@\"\n");
+    source
 }
 
 fn configure_command(
@@ -462,7 +548,10 @@ pub(crate) fn valid_upstream_session_id(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_created_session_event, sse_event_end, valid_upstream_session_id};
+    use super::{
+        parse_created_session_event, sse_event_end, valid_upstream_session_id, wrapper_source,
+    };
+    use crate::launch_config::AgentLaunchConfig;
 
     #[test]
     fn parses_root_session_created_events() {
@@ -480,6 +569,25 @@ mod tests {
         assert_eq!(
             parse_created_session_event(current),
             Some("ses_current".to_string())
+        );
+    }
+
+    #[test]
+    fn generates_wrapper_without_interpolating_command() {
+        let config = AgentLaunchConfig {
+            id: "id".into(),
+            agent_id: "opencode".into(),
+            name: "Name".into(),
+            is_default: true,
+            pre_launch_script: "export A='one'".into(),
+            provider_script: "printf '%s\\n' \"$A\"".into(),
+            tui_script: "case x in x) :;; esac".into(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        assert_eq!(
+            wrapper_source(&config),
+            "#!/bin/sh\nset -e\nexport A='one'\nprintf '%s\\n' \"$A\"\ncase x in x) :;; esac\nexec \"$@\"\n"
         );
     }
 

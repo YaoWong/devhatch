@@ -2,7 +2,15 @@ import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentIcon } from "../Branding";
 import { CustomSelect } from "../components";
-import type { Agent, AgentLaunchPath, AgentSession, ConfirmAction } from "../types";
+import type {
+  Agent,
+  AgentLaunchConfig,
+  AgentLaunchConfigInput,
+  AgentLaunchPath,
+  AgentSession,
+  ConfirmAction,
+} from "../types";
+import { AgentConfigDialog } from "./AgentConfigDialog";
 import { LaunchPaths } from "./LaunchPaths";
 import { AgentSessionList } from "./AgentSessionList";
 
@@ -14,7 +22,11 @@ export function AgentRailPage({
   agents,
   selectedAgentId,
   selectedAgent,
+  configs,
+  selectedConfigId,
   paths,
+  selectedPathId,
+  includeSubdirectories,
   activeSession,
   sessions,
   historyCount,
@@ -22,7 +34,13 @@ export function AgentRailPage({
   search,
   homePaths,
   onSelectAgent,
+  onSelectConfig,
+  onCreateConfig,
+  onUpdateConfig,
+  onDeleteConfig,
   onChoosePath,
+  onSelectPath,
+  onIncludeSubdirectoriesChange,
   onLaunch,
   onPinPath,
   onRenamePath,
@@ -38,7 +56,11 @@ export function AgentRailPage({
   agents: Agent[];
   selectedAgentId: string | null;
   selectedAgent: Agent | null;
+  configs: AgentLaunchConfig[];
+  selectedConfigId: string | null;
   paths: AgentLaunchPath[];
+  selectedPathId: string | null;
+  includeSubdirectories: boolean;
   activeSession: AgentSession | null;
   sessions: AgentSession[];
   historyCount: number;
@@ -46,7 +68,13 @@ export function AgentRailPage({
   search: string;
   homePaths: HomePaths;
   onSelectAgent: (id: string) => void;
+  onSelectConfig: (id: string) => void;
+  onCreateConfig: (input: AgentLaunchConfigInput) => Promise<boolean>;
+  onUpdateConfig: (id: string, input: AgentLaunchConfigInput) => Promise<boolean>;
+  onDeleteConfig: (id: string) => Promise<boolean>;
   onChoosePath: () => void;
+  onSelectPath: (id: string) => void;
+  onIncludeSubdirectoriesChange: (enabled: boolean) => void;
   onLaunch: (path: AgentLaunchPath) => void;
   onPinPath: (path: AgentLaunchPath) => Promise<void>;
   onRenamePath: (path: AgentLaunchPath, alias: string) => Promise<boolean>;
@@ -64,6 +92,8 @@ export function AgentRailPage({
   const [page, setPage] = useState(1);
   const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
   const [renameAlias, setRenameAlias] = useState("");
+  const [configOpen, setConfigOpen] = useState(false);
+  const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
 
@@ -82,6 +112,17 @@ export function AgentRailPage({
 
   return (
     <>
+      {configOpen && (
+        <AgentConfigDialog
+          configs={configs}
+          selectedConfigId={selectedConfigId}
+          onSelect={onSelectConfig}
+          onCreate={onCreateConfig}
+          onUpdate={onUpdateConfig}
+          onDelete={onDeleteConfig}
+          onClose={() => setConfigOpen(false)}
+        />
+      )}
       {renamePath && (
         <div
           className="dialog-backdrop"
@@ -137,12 +178,12 @@ export function AgentRailPage({
                 <code>curl -fsSL https://opencode.ai/install | bash</code>
               </div>
             )}
-            <button className="config-default" type="button">
+            <button className="config-default" type="button" onClick={() => setConfigOpen(true)}>
               <span>
                 <strong>Config</strong>
-                <small>OpenCode configuration</small>
+                <small>OpenCode launch scripts</small>
               </span>
-              <b>Default</b>
+              <b>{selectedConfig?.name ?? "None"}</b>
               <ChevronRight />
             </button>
           </>
@@ -152,7 +193,7 @@ export function AgentRailPage({
       </div>
       <LaunchPaths
         paths={paths}
-        activeCwd={activeSession?.cwd}
+        selectedPathId={selectedPathId}
         available={Boolean(selectedAgent?.available)}
         homePaths={homePaths}
         pathDisplay={pathDisplay}
@@ -160,6 +201,7 @@ export function AgentRailPage({
         onDisplayChange={updateDisplay}
         onPageChange={setPage}
         onChoose={onChoosePath}
+        onSelect={(path) => onSelectPath(path.id)}
         onLaunch={onLaunch}
         onPin={(path) => void onPinPath(path)}
         onRename={(path) => {
@@ -174,8 +216,11 @@ export function AgentRailPage({
         historyCount={historyCount}
         activeId={activeSession?.id ?? null}
         search={search}
+        selectedPath={paths.find((path) => path.id === selectedPathId) ?? null}
+        includeSubdirectories={includeSubdirectories}
         homePaths={homePaths}
         onSearch={onSearch}
+        onIncludeSubdirectoriesChange={onIncludeSubdirectoriesChange}
         onActivate={onActivateSession}
         onResume={onResume}
         onDeleteLive={onDeleteLive}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Settings, SquareTerminal } from "lucide-react";
+import { Bot, Globe2, Settings, SquareTerminal } from "lucide-react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../types";
 
 export function useNavigation(bumpFocus: () => void) {
@@ -13,22 +13,26 @@ export function useNavigation(bumpFocus: () => void) {
   const pageRefs = useRef<Record<DetailMode, HTMLElement | null>>({
     terminal: null,
     agent: null,
+    webapp: null,
     settings: null,
   });
   const modeRefs = useRef<Record<DetailMode, HTMLButtonElement | null>>({
     terminal: null,
     agent: null,
+    webapp: null,
     settings: null,
   });
   const titleRefs = useRef<Record<DetailMode, HTMLSpanElement | null>>({
     terminal: null,
     agent: null,
+    webapp: null,
     settings: null,
   });
   const modeMeta = useMemo(
     () => ({
       terminal: { label: "Terminal", icon: SquareTerminal },
       agent: { label: "Agent CLI", icon: Bot },
+      webapp: { label: "Web Apps", icon: Globe2 },
       settings: { label: "Settings", icon: Settings },
     }),
     [],
@@ -73,7 +77,7 @@ export function useNavigation(bumpFocus: () => void) {
       setRailPage(page);
       if (motion === "forward" && page !== "modes") {
         setWorkspaceMode(page);
-        if (page !== "settings") bumpFocus();
+        if (page === "terminal" || page === "agent") bumpFocus();
       }
       requestAnimationFrame(() => {
         const flight = document.createElement("span");

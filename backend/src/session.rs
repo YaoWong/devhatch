@@ -43,6 +43,7 @@ pub(crate) struct SessionSpawn {
     pub rows: u16,
     pub agent_id: Option<&'static str>,
     pub agent_name: Option<&'static str>,
+    pub cleanup_path: Option<PathBuf>,
 }
 
 struct SessionState {
@@ -116,6 +117,7 @@ impl Session {
     where
         F: FnOnce(&Arc<Self>),
     {
+        let cleanup_path = spawn.cleanup_path.clone();
         let pair = NativePtySystem::default().openpty(PtySize {
             rows: spawn.rows,
             cols: spawn.cols,
@@ -158,7 +160,7 @@ impl Session {
         app_state.insert_session(session.clone());
         Self::start_reader(&session, reader);
         started(&session);
-        Self::start_waiter(&session, child, app_state);
+        Self::start_waiter(&session, child, app_state, cleanup_path);
         Ok(session)
     }
 
@@ -352,12 +354,16 @@ impl Session {
         session: &Arc<Self>,
         mut child: Box<dyn portable_pty::Child + Send>,
         app_state: Arc<AppState>,
+        cleanup_path: Option<PathBuf>,
     ) {
         let weak = Arc::downgrade(session);
         let id = session.id.clone();
         let kind = session.kind;
         std::thread::spawn(move || {
             let status = child.wait();
+            if let Some(path) = cleanup_path {
+                let _ = std::fs::remove_dir_all(path);
+            }
             let Some(session) = weak.upgrade() else {
                 return;
             };

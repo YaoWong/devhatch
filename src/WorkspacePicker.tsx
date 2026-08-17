@@ -80,7 +80,7 @@ export function WorkspacePicker({
             <FolderOpen />
           </div>
           <div>
-            <h2 id="folder-picker-title">{launch ? "Launch Agent" : "Add Workspace"}</h2>
+            <h2 id="folder-picker-title">{launch ? "Add Launch Path" : "Add Workspace"}</h2>
             <p>Choose a folder on this machine</p>
           </div>
           <button className="picker-close" aria-label="Close" onClick={onClose}>
@@ -163,7 +163,7 @@ export function WorkspacePicker({
             disabled={!listing || loading || !!pickerError}
             onClick={() => listing && onSelect(listing.path)}
           >
-            {launch ? "Launch Session" : "Add Workspace"}
+            {launch ? "Add Launch Path" : "Add Workspace"}
           </button>
         </footer>
       </div>

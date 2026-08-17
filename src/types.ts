@@ -41,6 +41,23 @@ export type AgentLaunchPath = {
   createdAt: number;
   updatedAt: number;
 };
+
+export type AgentLaunchConfig = {
+  id: string;
+  agentId: string;
+  name: string;
+  isDefault: boolean;
+  preLaunchScript: string;
+  providerScript: string;
+  tuiScript: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type AgentLaunchConfigInput = Pick<
+  AgentLaunchConfig,
+  "agentId" | "name" | "isDefault" | "preLaunchScript" | "providerScript" | "tuiScript"
+>;
 export type HistorySession = {
   id: string;
   title: string;
@@ -61,10 +78,33 @@ export type ConfirmAction = {
   action: () => Promise<void>;
 };
 export type ConnectionPhase = "connecting" | "connected" | "reconnecting" | "disconnected" | "exited";
-export type DetailMode = "terminal" | "agent" | "settings";
+export type DetailMode = "terminal" | "agent" | "webapp" | "settings";
 export type RailPage = "modes" | DetailMode;
 export type WorkspaceMode = DetailMode;
 export type RailMotion = "forward" | "return" | null;
+export type WebApp = {
+  id: string;
+  name: string;
+  description: string;
+  installed: boolean;
+  installing: boolean;
+  updating: boolean;
+  checkingForUpdate: boolean;
+  updateAvailable: boolean;
+  progress: number;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+  running: boolean;
+  phase: "not-installed" | "preparing" | "downloading" | "installing" | "building" | "updating" | "installing-update" | "building-update" | "stopped" | "starting" | "running" | "failed";
+  version: string | null;
+  currentRevision: string | null;
+  remoteRevision: string | null;
+  latestVersion: string | null;
+  url: string | null;
+  installPath: string;
+  error: string | null;
+  prerequisites: { git: boolean; node24: boolean; corepack: boolean };
+};
 export type DirectoryListing = {
   path: string;
   parent: string | null;
