@@ -32,13 +32,10 @@ enum ClientMessage {
 pub(crate) fn upgrade(
     state: Arc<AppState>,
     id: String,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     upgrade: WebSocketUpgrade,
     kind: SessionKind,
 ) -> Response {
-    if !valid_origin(&headers) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let Some(session) = state.session(&id, kind) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -96,6 +93,9 @@ async fn handle_socket(mut socket: WebSocket, session: Arc<Session>, app_state: 
                 match event {
                     Ok(SessionEvent::Output(data)) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data })).await.is_err() { break; }
+                    }
+                    Ok(SessionEvent::UpstreamSessionChanged(id)) => {
+                        if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id })).await.is_err() { break; }
                     }
                     Ok(SessionEvent::Exit(code)) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "exit", "code": code })).await.is_err() { break; }
@@ -164,41 +164,4 @@ async fn send_json(
     value: serde_json::Value,
 ) -> Result<(), axum::Error> {
     sender.send(Message::Text(value.to_string().into())).await
-}
-
-fn valid_origin(headers: &HeaderMap) -> bool {
-    let Some(host) = headers.get("host").and_then(|value| value.to_str().ok()) else {
-        return false;
-    };
-    if !matches!(host, "127.0.0.1:4173" | "localhost:4173") {
-        return false;
-    }
-    let Some(origin) = headers.get("origin") else {
-        return true;
-    };
-    let Ok(origin) = origin.to_str() else {
-        return false;
-    };
-    origin
-        .strip_prefix("http://")
-        .or_else(|| origin.strip_prefix("https://"))
-        .and_then(|value| value.split('/').next())
-        == Some(host)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::valid_origin;
-    use axum::http::{HeaderMap, HeaderValue};
-
-    #[test]
-    fn validates_socket_origin_against_host() {
-        let mut headers = HeaderMap::new();
-        headers.insert("host", HeaderValue::from_static("localhost:4173"));
-        assert!(valid_origin(&headers));
-        headers.insert("origin", HeaderValue::from_static("http://localhost:4173"));
-        assert!(valid_origin(&headers));
-        headers.insert("origin", HeaderValue::from_static("http://example.com"));
-        assert!(!valid_origin(&headers));
-    }
 }

@@ -10,13 +10,70 @@ import type {
   WebApp,
 } from "./types";
 
+export type AuthStatus = {
+  initialized: boolean;
+  authenticated: boolean;
+  csrfToken: string | null;
+};
+
+let csrfToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function configureAuth(token: string | null, onUnauthorized?: () => void) {
+  csrfToken = token;
+  unauthorizedHandler = onUnauthorized ?? null;
+}
+
+function authenticatedOptions(options?: RequestInit): RequestInit | undefined {
+  if (!options) return options;
+  const method = (options.method ?? "GET").toUpperCase();
+  if (["GET", "HEAD", "OPTIONS"].includes(method) || !csrfToken) return options;
+  const headers = new Headers(options.headers);
+  headers.set("x-csrf-token", csrfToken);
+  return { ...options, headers };
+}
+
 export async function requestJson<T>(url: string, options?: RequestInit, fallback = "Request failed") {
-  const response = await fetch(url, options);
+  const response = await fetch(url, authenticatedOptions(options));
+  if (response.status === 401) unauthorizedHandler?.();
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
     throw new Error(body?.message || body?.error || fallback);
   }
   return response.json() as Promise<T>;
+}
+
+export async function requestEmpty(url: string, options: RequestInit, fallback: string, allowNotFound = false) {
+  const response = await fetch(url, authenticatedOptions(options));
+  if (response.status === 401) unauthorizedHandler?.();
+  if (!response.ok && !(allowNotFound && response.status === 404)) {
+    const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+    throw new Error(body?.message || body?.error || fallback);
+  }
+}
+
+export function authStatus() {
+  return requestJson<AuthStatus>("/api/auth/status");
+}
+
+export function setupAdmin(setupToken: string, password: string) {
+  return requestJson<AuthStatus>("/api/auth/setup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ setupToken, password }),
+  });
+}
+
+export function login(password: string) {
+  return requestJson<AuthStatus>("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function logout() {
+  return requestEmpty("/api/auth/logout", { method: "POST" }, "Unable to sign out");
 }
 
 export function listDirectories(directory?: string) {
@@ -56,12 +113,8 @@ export function updateAgentLaunchConfig(id: string, input: Partial<AgentLaunchCo
   );
 }
 
-export async function deleteAgentLaunchConfig(id: string) {
-  const response = await fetch(`/api/agent-launch-configs/${id}`, { method: "DELETE" });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
-    throw new Error(body?.message || body?.error || "Unable to delete launch config");
-  }
+export function deleteAgentLaunchConfig(id: string) {
+  return requestEmpty(`/api/agent-launch-configs/${id}`, { method: "DELETE" }, "Unable to delete launch config");
 }
 
 export function createAgentLaunchPath(options: { agentId: string | null; path: string; alias: null; pinned: false }) {
@@ -84,22 +137,16 @@ export function touchAgentLaunchPath(id: string) {
   return requestJson<unknown>(`/api/agent-launch-paths/${id}/touch`, { method: "POST" });
 }
 
-export async function deleteAgentLaunchPath(id: string) {
-  const response = await fetch(`/api/agent-launch-paths/${id}`, { method: "DELETE" });
-  if (!response.ok) throw new Error("Unable to delete path");
+export function deleteAgentLaunchPath(id: string) {
+  return requestEmpty(`/api/agent-launch-paths/${id}`, { method: "DELETE" }, "Unable to delete path");
 }
 
-export async function deleteOpenCodeHistorySession(id: string) {
-  const response = await fetch(`/api/agents/opencode/history/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-      message?: string;
-    } | null;
-    throw new Error(payload?.message || payload?.error || "Unable to delete OpenCode session");
-  }
+export function deleteOpenCodeHistorySession(id: string) {
+  return requestEmpty(
+    `/api/agents/opencode/history/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+    "Unable to delete OpenCode session",
+  );
 }
 
 export function renameRemoteSession(route: string, id: string, name: string) {
@@ -110,9 +157,8 @@ export function renameRemoteSession(route: string, id: string, name: string) {
   );
 }
 
-export async function deleteRemoteSession(route: string, id: string) {
-  const response = await fetch(`${route}/${id}`, { method: "DELETE" });
-  if (!response.ok && response.status !== 404) throw new Error("Unable to close session");
+export function deleteRemoteSession(route: string, id: string) {
+  return requestEmpty(`${route}/${id}`, { method: "DELETE" }, "Unable to close session", true);
 }
 
 export function installOpenDesign() {

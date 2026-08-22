@@ -160,8 +160,9 @@ pub async fn create(
         }
     };
     if is_new_session {
-        start_history_reconciler(&session, state, baseline_session_ids);
+        start_history_reconciler(&session, state.clone(), baseline_session_ids);
     }
+    start_fork_reconciler(&session, state);
     (
         StatusCode::CREATED,
         Json(serde_json::json!({ "agentSession": session.view() })),
@@ -285,6 +286,7 @@ pub(crate) fn spawn(
     command.env("DEVHATCH_CWD", &cwd);
     command.env("DEVHATCH_CONFIG_DIR", &run_dir);
     let endpoint = event_endpoint.clone();
+    let app_state = state.clone();
     let cleanup_path = run_dir.clone();
     let result = Session::spawn(
         state,
@@ -303,7 +305,7 @@ pub(crate) fn spawn(
         },
         move |session| {
             if let Some((port, password)) = endpoint {
-                start_event_watcher(session, port, password);
+                start_event_watcher(session, app_state.clone(), port, password);
             }
         },
     );
@@ -351,7 +353,6 @@ fn configure_command(
     if let Some(id) = upstream_session_id {
         command.arg("-s");
         command.arg(id);
-        return Ok(None);
     }
     let port = available_loopback_port()?;
     let password = Uuid::new_v4().to_string();
@@ -394,7 +395,7 @@ pub(crate) fn start_history_reconciler(
                 let Some(session) = weak.upgrade() else {
                     return;
                 };
-                session.assign_upstream_session_id(id);
+                session.update_upstream_session_id(id);
                 return;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
@@ -402,7 +403,45 @@ pub(crate) fn start_history_reconciler(
     });
 }
 
-pub(crate) fn start_event_watcher(session: &Arc<Session>, port: u16, password: String) {
+pub(crate) fn start_fork_reconciler(session: &Arc<Session>, app_state: Arc<AppState>) {
+    let weak = Arc::downgrade(session);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let Some(session) = weak.upgrade() else {
+                return;
+            };
+            if session.is_deleting() {
+                return;
+            }
+            let Some(current_id) = session.upstream_session_id() else {
+                continue;
+            };
+            let (directory, launched_at) = session.correlation_details();
+            drop(session);
+            let successor = crate::history::fork_successor_id(
+                app_state.history_pool(),
+                &current_id,
+                &directory,
+                launched_at,
+            )
+            .await;
+            if let Ok(Some(id)) = successor
+                && let Some(session) = weak.upgrade()
+                && !session.is_deleting()
+            {
+                session.update_upstream_session_id(id);
+            }
+        }
+    });
+}
+
+pub(crate) fn start_event_watcher(
+    session: &Arc<Session>,
+    app_state: Arc<AppState>,
+    port: u16,
+    password: String,
+) {
     let weak = Arc::downgrade(session);
     let mut events = session.subscribe();
     tokio::spawn(async move {
@@ -413,7 +452,7 @@ pub(crate) fn start_event_watcher(session: &Arc<Session>, port: u16, password: S
             Ok(client) => client,
             Err(_) => return,
         };
-        let url = format!("http://127.0.0.1:{port}/event");
+        let url = format!("http://127.0.0.1:{port}/global/event");
         loop {
             let deleting = weak.upgrade().is_none_or(|session| session.is_deleting());
             if deleting {
@@ -453,7 +492,7 @@ pub(crate) fn start_event_watcher(session: &Arc<Session>, port: u16, password: S
                 }
                 while let Some((end, delimiter_len)) = sse_event_end(&pending) {
                     let event = pending.drain(..end + delimiter_len).collect::<Vec<_>>();
-                    let Some(id) = parse_created_session_event(&event) else {
+                    let Some((directory, id)) = parse_created_session_event(&event) else {
                         continue;
                     };
                     let Some(session) = weak.upgrade() else {
@@ -462,8 +501,21 @@ pub(crate) fn start_event_watcher(session: &Arc<Session>, port: u16, password: S
                     if session.is_deleting() {
                         return;
                     }
-                    session.assign_upstream_session_id(id);
-                    return;
+                    let current = session.upstream_session_id();
+                    let belongs_to_session = match current.as_deref() {
+                        None => session.correlation_details().0 == directory,
+                        Some(current) => crate::history::fork_successor(
+                            app_state.history_pool(),
+                            current,
+                            &id,
+                            &directory,
+                        )
+                        .await
+                        .unwrap_or(false),
+                    };
+                    if belongs_to_session {
+                        session.update_upstream_session_id(id);
+                    }
                 }
             }
             if retry_or_stop(&mut events).await {
@@ -492,7 +544,7 @@ fn sse_event_end(pending: &[u8]) -> Option<(usize, usize)> {
         })
 }
 
-fn parse_created_session_event(event: &[u8]) -> Option<String> {
+fn parse_created_session_event(event: &[u8]) -> Option<(String, String)> {
     let event = std::str::from_utf8(event).ok()?.replace("\r\n", "\n");
     let data = event
         .lines()
@@ -501,10 +553,11 @@ fn parse_created_session_event(event: &[u8]) -> Option<String> {
         .collect::<Vec<_>>()
         .join("\n");
     let value = serde_json::from_str::<serde_json::Value>(&data).ok()?;
-    if value.get("type").and_then(serde_json::Value::as_str) != Some("session.created") {
+    let payload = value.get("payload").unwrap_or(&value);
+    if payload.get("type").and_then(serde_json::Value::as_str) != Some("session.created") {
         return None;
     }
-    let info = value
+    let info = payload
         .get("properties")
         .and_then(|properties| properties.get("info"))?;
     if info
@@ -513,13 +566,17 @@ fn parse_created_session_event(event: &[u8]) -> Option<String> {
     {
         return None;
     }
-    let id = value
+    let id = payload
         .get("properties")
         .and_then(|properties| properties.get("sessionID"))
         .and_then(serde_json::Value::as_str)
         .or_else(|| info.get("id").and_then(serde_json::Value::as_str));
+    let directory = value
+        .get("directory")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| info.get("directory").and_then(serde_json::Value::as_str))?;
     id.filter(|id| valid_upstream_session_id(id))
-        .map(str::to_string)
+        .map(|id| (directory.to_string(), id.to_string()))
 }
 
 async fn session_stopped(events: &mut broadcast::Receiver<SessionEvent>) {
@@ -528,7 +585,8 @@ async fn session_stopped(events: &mut broadcast::Receiver<SessionEvent>) {
             Ok(SessionEvent::Exit(_) | SessionEvent::Removed(_) | SessionEvent::Terminate) => {
                 return;
             }
-            Ok(SessionEvent::Output(_)) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+            Ok(SessionEvent::Output(_) | SessionEvent::UpstreamSessionChanged(_))
+            | Err(broadcast::error::RecvError::Lagged(_)) => {}
             Err(broadcast::error::RecvError::Closed) => return,
         }
     }
@@ -555,20 +613,20 @@ mod tests {
 
     #[test]
     fn parses_root_session_created_events() {
-        let event = b"data: {\"type\":\"session.created\",\"properties\":{\"info\":{\"id\":\"ses_abc-123_X\",\"parentID\":null}}}\r\n\r\n";
+        let event = b"data: {\"type\":\"session.created\",\"properties\":{\"info\":{\"id\":\"ses_abc-123_X\",\"directory\":\"/tmp\",\"parentID\":null}}}\r\n\r\n";
         assert_eq!(
             parse_created_session_event(event),
-            Some("ses_abc-123_X".to_string())
+            Some(("/tmp".to_string(), "ses_abc-123_X".to_string()))
         );
         assert_eq!(sse_event_end(event), Some((event.len() - 4, 4)));
 
         let child = b"data: {\"type\":\"session.created\",\"properties\":{\"info\":{\"id\":\"ses_child\",\"parentID\":\"ses_parent\"}}}\n\n";
         assert_eq!(parse_created_session_event(child), None);
 
-        let current = b"data: {\"type\":\"session.created\",\"properties\":{\"sessionID\":\"ses_current\",\"info\":{\"parentID\":null}}}\n\n";
+        let current = b"data: {\"directory\":\"/tmp\",\"payload\":{\"type\":\"session.created\",\"properties\":{\"sessionID\":\"ses_current\",\"info\":{\"directory\":\"/tmp\",\"parentID\":null}}}}\n\n";
         assert_eq!(
             parse_created_session_event(current),
-            Some("ses_current".to_string())
+            Some(("/tmp".to_string(), "ses_current".to_string()))
         );
     }
 

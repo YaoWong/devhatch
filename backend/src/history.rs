@@ -132,6 +132,75 @@ pub async fn unique_new_session(
     Ok(candidate.filter(|_| candidates.next().is_none()))
 }
 
+pub async fn fork_successor_id(
+    pool: Option<&SqlitePool>,
+    current_id: &str,
+    directory: &str,
+    launched_at: i64,
+) -> Result<Option<String>, ()> {
+    let Some(pool) = pool else { return Ok(None) };
+    validate_schema(pool).await.map_err(|_| ())?;
+    let current = sqlx::query_as::<_, (String, i64)>(
+        "SELECT title, time_created FROM session WHERE id = ? AND parent_id IS NULL AND time_archived IS NULL AND directory = ?",
+    )
+    .bind(current_id)
+    .bind(directory)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| ())?;
+    let Some((title, created_at)) = current else {
+        return Ok(None);
+    };
+    sqlx::query_scalar::<_, String>(
+        "SELECT id FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND directory = ? AND title = ? AND time_created > ? AND time_created >= ? ORDER BY time_created DESC LIMIT 1",
+    )
+    .bind(directory)
+    .bind(next_fork_title(&title))
+    .bind(created_at)
+    .bind(launched_at.saturating_sub(2_000))
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| ())
+}
+
+pub async fn fork_successor(
+    pool: Option<&SqlitePool>,
+    current_id: &str,
+    candidate_id: &str,
+    directory: &str,
+) -> Result<bool, ()> {
+    let Some(pool) = pool else { return Ok(false) };
+    validate_schema(pool).await.map_err(|_| ())?;
+    let rows = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT id, title, directory FROM session WHERE id IN (?, ?) AND parent_id IS NULL AND time_archived IS NULL",
+    )
+    .bind(current_id)
+    .bind(candidate_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|_| ())?;
+    let current = rows.iter().find(|row| row.0 == current_id);
+    let candidate = rows.iter().find(|row| row.0 == candidate_id);
+    Ok(current.zip(candidate).is_some_and(|(current, candidate)| {
+        current.2 == directory
+            && candidate.2 == directory
+            && candidate.1 == next_fork_title(&current.1)
+    }))
+}
+
+fn next_fork_title(title: &str) -> String {
+    let Some(prefix) = title.strip_suffix(')') else {
+        return format!("{title} (fork #1)");
+    };
+    let Some((base, number)) = prefix.rsplit_once(" (fork #") else {
+        return format!("{title} (fork #1)");
+    };
+    number.parse::<u64>().ok().map_or_else(
+        || format!("{title} (fork #1)"),
+        |number| format!("{base} (fork #{})", number + 1),
+    )
+}
+
 pub async fn resumable_session(pool: Option<&SqlitePool>, id: &str) -> Result<Option<String>, ()> {
     let Some(pool) = pool else { return Ok(None) };
     validate_schema(pool).await.map_err(|_| ())?;
@@ -275,7 +344,7 @@ fn canonical_identity(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryRow, Presence, presence_for};
+    use super::{HistoryRow, Presence, next_fork_title, presence_for};
     use std::collections::HashSet;
 
     fn row() -> HistoryRow {
@@ -289,6 +358,16 @@ mod tests {
             time_created: 1,
             time_updated: 1000,
         }
+    }
+
+    #[test]
+    fn increments_open_code_fork_titles() {
+        assert_eq!(next_fork_title("Original"), "Original (fork #1)");
+        assert_eq!(next_fork_title("Original (fork #1)"), "Original (fork #2)");
+        assert_eq!(
+            next_fork_title("Original (fork #x)"),
+            "Original (fork #x) (fork #1)"
+        );
     }
 
     #[test]

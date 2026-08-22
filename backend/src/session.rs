@@ -103,6 +103,7 @@ pub(crate) struct SessionSnapshot {
 #[derive(Clone)]
 pub(crate) enum SessionEvent {
     Output(String),
+    UpstreamSessionChanged(String),
     Exit(Option<u32>),
     Removed(Option<u32>),
     Terminate,
@@ -188,17 +189,18 @@ impl Session {
         (state.cwd.clone(), state.created_at as i64)
     }
 
-    pub(crate) fn assign_upstream_session_id(&self, id: String) {
+    pub(crate) fn update_upstream_session_id(&self, id: String) {
         let mut upstream = self
             .upstream_session_id
             .write()
             .expect("upstream session lock poisoned");
-        if upstream.is_some() {
+        if upstream.as_deref() == Some(&id) {
             return;
         }
-        *upstream = Some(id);
+        *upstream = Some(id.clone());
         drop(upstream);
         self.state.lock().expect("session lock poisoned").updated_at = now();
+        let _ = self.events.send(SessionEvent::UpstreamSessionChanged(id));
     }
 
     pub(crate) fn rename(&self, name: String) {

@@ -417,6 +417,8 @@
 .settings-row input:focus-visible { box-shadow: 0 0 0 3px rgb(0 113 227 / 22%); }
 .settings-row.static { cursor: default; }
 .settings-row.static > svg { width: 20px; height: 20px; flex: none; color: #86868b; }
+.settings-signout { flex: none; padding: 8px 13px; border: 1px solid #d2d2d7; border-radius: 99px; background: #fff; color: #d70015; font-size: 11px; font-weight: 600; cursor: pointer; }
+.settings-signout:hover { border-color: #d70015; background: #fff2f3; }
 .tabbar { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #e8e8ed; background: #fbfbfd; }
 .tabs { min-width: 0; display: flex; flex: 1; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }

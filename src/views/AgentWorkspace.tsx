@@ -20,6 +20,7 @@ export function AgentWorkspace({
   onChoosePath,
   onPhaseChange,
   onRemoved,
+  onUpstreamSessionChange,
   onError,
   onDismissError,
 }: {
@@ -39,6 +40,7 @@ export function AgentWorkspace({
   onChoosePath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved: (id: string) => void;
+  onUpstreamSessionChange: (id: string, upstreamSessionId: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
@@ -76,6 +78,7 @@ export function AgentWorkspace({
             focusVersion={focusVersion}
             onPhaseChange={onPhaseChange}
             onRemoved={onRemoved}
+            onUpstreamSessionChange={onUpstreamSessionChange}
             onError={onError}
           />
         ))}

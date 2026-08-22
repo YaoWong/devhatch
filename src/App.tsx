@@ -19,7 +19,7 @@ import { WebAppsRailPage, WebAppsWorkspace } from "./views/WebApps";
 import { WorkspaceList } from "./views/WorkspaceList";
 import "./App.css";
 
-function App() {
+function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const [focusVersion, setFocusVersion] = useState(0);
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null);
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
@@ -315,6 +315,7 @@ function App() {
           onChoosePath={() => setPickerPurpose("agent")}
           onPhaseChange={setPhase}
           onRemoved={agent.removeSession}
+          onUpstreamSessionChange={agent.updateUpstreamSession}
           onError={reportError}
           onDismissError={() => setError(null)}
         />
@@ -338,6 +339,7 @@ function App() {
               setConfirmDelete(enabled);
               localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
             }}
+            onLogout={onLogout}
           />
         )}
       </section>

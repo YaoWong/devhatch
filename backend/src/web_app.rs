@@ -25,6 +25,7 @@ const REVISION: &str = "eea8a8522dfc10951ff3e3575488c83ffcad8a33";
 const MANAGED_BRANCH: &str = "devhatch";
 const REPOSITORY: &str = "https://github.com/nexu-io/open-design.git";
 const PORT: u16 = 17456;
+const DEFAULT_PUBLIC_URL: &str = "https://work.yaowong.top:8443";
 
 pub(crate) struct WebAppManager {
     root: PathBuf,
@@ -142,7 +143,7 @@ impl WebAppManager {
             current_revision: update.current_revision.clone(),
             remote_revision: update.remote_revision.clone(),
             latest_version: update.latest_version.clone(),
-            url: running.then(|| format!("http://127.0.0.1:{PORT}")),
+            url: running.then(public_url),
             install_path: self.root.display().to_string(),
             error: progress.error,
             prerequisites: prerequisites(),
@@ -368,6 +369,7 @@ impl WebAppManager {
             .env("OD_PORT", PORT.to_string())
             .env("OD_WEB_PORT", PORT.to_string())
             .env("OD_DATA_DIR", self.root.join("data"))
+            .env("OD_ALLOWED_ORIGINS", public_url())
             .env_remove("BYTE_API_PROVIDER_ID")
             .env_remove("OPENCODE_CONFIG")
             .env_remove("OPENCODE_CONFIG_CONTENT")
@@ -837,6 +839,10 @@ fn process_matches(pid: u32) -> bool {
                 .windows(b"apps/daemon/dist/cli.js".len())
                 .any(|part| part == b"apps/daemon/dist/cli.js")
         })
+}
+
+fn public_url() -> String {
+    std::env::var("DEVHATCH_OPEN_DESIGN_URL").unwrap_or_else(|_| DEFAULT_PUBLIC_URL.to_string())
 }
 
 fn prerequisites() -> Prerequisites {

@@ -1,32 +1,32 @@
-# React + TypeScript + Vite
+# DevHatch
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Local browser workspace for terminals, OpenCode sessions, launch configurations, and developer web apps.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+DevHatch listens on `127.0.0.1:4173`. On first start, the server prints a one-time setup token. Open the UI, enter that token, and create an administrator password of at least 12 characters.
+
+## Checks
+
+```sh
+npm run lint
+npm run typecheck
+npm run build
+cargo test --manifest-path backend/Cargo.toml
+cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+```
+
+## HTTPS with Caddy
+
+Keep DevHatch bound to loopback and set the exact public origin:
+
+```sh
+DEVHATCH_PUBLIC_ORIGIN=https://devhatch.example.com DEVHATCH_SECURE_COOKIE=1 npm start
+```
+
+Set `DEVHATCH_DOMAIN=devhatch.example.com` for Caddy, then use `Caddyfile.example`. Caddy must run on the same host so the backend and OpenDesign remain inaccessible directly from the network. Set `DEVHATCH_OPEN_DESIGN_URL=https://devhatch.example.com:8443` when launching DevHatch. The public origin must include the scheme and any non-default port, without a path.

@@ -13,6 +13,7 @@ export function TerminalSurface({
   socketBase,
   onPhaseChange,
   onRemoved,
+  onUpstreamSessionChange,
   onError,
 }: {
   session: TerminalInfo;
@@ -21,6 +22,7 @@ export function TerminalSurface({
   socketBase: string;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved?: (id: string) => void;
+  onUpstreamSessionChange?: (id: string, upstreamSessionId: string) => void;
   onError: (message: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -30,9 +32,11 @@ export function TerminalSurface({
   const retryRef = useRef<number | null>(null);
   const activeRef = useRef(active);
   const onRemovedRef = useRef(onRemoved);
+  const onUpstreamSessionChangeRef = useRef(onUpstreamSessionChange);
   useEffect(() => {
     onRemovedRef.current = onRemoved;
-  }, [onRemoved]);
+    onUpstreamSessionChangeRef.current = onUpstreamSessionChange;
+  }, [onRemoved, onUpstreamSessionChange]);
   useEffect(() => {
     activeRef.current = active;
     if (active) requestAnimationFrame(() => activateRef.current?.());
@@ -134,8 +138,21 @@ export function TerminalSurface({
       socket.addEventListener("message", (event) => {
         if (disposed || socketRef.current !== socket) return;
         try {
-          const message = JSON.parse(String(event.data)) as { type: string; data?: string };
-          if (message.type === "ready") sendResize();
+          const message = JSON.parse(String(event.data)) as {
+            type: string;
+            data?: string;
+            upstreamSessionId?: string;
+            terminal?: { upstreamSessionId?: string };
+          };
+          if (message.type === "ready") {
+            sendResize();
+            if (message.terminal?.upstreamSessionId) {
+              onUpstreamSessionChangeRef.current?.(session.id, message.terminal.upstreamSessionId);
+            }
+          }
+          if (message.type === "upstreamSessionChanged" && message.upstreamSessionId) {
+            onUpstreamSessionChangeRef.current?.(session.id, message.upstreamSessionId);
+          }
           if (message.type === "snapshot") {
             terminal.reset();
             if (message.data) terminal.write(message.data);

@@ -1,0 +1,13 @@
+{$DEVHATCH_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:4173
+}
+
+https://{$DEVHATCH_DOMAIN}:8443 {
+    forward_auth 127.0.0.1:4173 {
+        uri /api/auth/verify
+        header_up Host {$DEVHATCH_DOMAIN}
+    }
+
+    reverse_proxy 127.0.0.1:17456
+}

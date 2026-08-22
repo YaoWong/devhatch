@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use sqlx::SqlitePool;
 
 use crate::{
+    auth::AuthState,
     session::{Session, SessionKind, SessionView},
     web_app::WebAppManager,
 };
@@ -19,10 +20,16 @@ pub struct AppState {
     pool: SqlitePool,
     history_pool: Option<SqlitePool>,
     web_apps: Arc<WebAppManager>,
+    auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(data_dir: PathBuf, pool: SqlitePool, history_pool: Option<SqlitePool>) -> Self {
+    pub fn new(
+        data_dir: PathBuf,
+        pool: SqlitePool,
+        history_pool: Option<SqlitePool>,
+        setup_token: Option<&str>,
+    ) -> Self {
         let web_apps = Arc::new(WebAppManager::new(&data_dir));
         Self {
             sessions: RwLock::new(IndexMap::new()),
@@ -31,6 +38,7 @@ impl AppState {
             pool,
             history_pool,
             web_apps,
+            auth: AuthState::new(setup_token),
         }
     }
 
@@ -82,6 +90,10 @@ impl AppState {
 
     pub(crate) fn web_apps(&self) -> Arc<WebAppManager> {
         self.web_apps.clone()
+    }
+
+    pub(crate) fn auth(&self) -> &AuthState {
+        &self.auth
     }
 
     pub(crate) fn insert_session(&self, session: Arc<Session>) {

@@ -1,4 +1,5 @@
 mod agent;
+mod auth;
 mod clock;
 mod filesystem;
 mod history;
@@ -15,7 +16,7 @@ use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc, time::Du
 use axum::{
     Router,
     extract::Request,
-    http::{Method, StatusCode},
+    http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, patch},
@@ -51,9 +52,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!().run(&pool).await?;
 
     let history_pool = open_history_pool().await;
-    let state = Arc::new(AppState::new(data_dir, pool, history_pool));
-    let api = Router::new()
+    let initialized =
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM admin_credentials WHERE id = 1)")
+            .fetch_one(&pool)
+            .await?
+            != 0;
+    let setup_token = (!initialized).then(|| {
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        println!("DevHatch setup token: {token}");
+        token
+    });
+    let state = Arc::new(AppState::new(
+        data_dir,
+        pool,
+        history_pool,
+        setup_token.as_deref(),
+    ));
+    let protected = Router::new()
         .route("/api/health", get(terminal::health))
+        .route("/api/auth/verify", get(auth::verify))
+        .route("/api/auth/logout", axum::routing::post(auth::logout))
         .route("/api/filesystem/directories", get(filesystem::directories))
         .route("/api/agents", get(agent::agents))
         .route(
@@ -114,7 +136,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/web-apps/open-design/stop",
             axum::routing::post(web_app::stop),
         )
-        .layer(middleware::from_fn(require_loopback_host))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
+    let api = Router::new()
+        .route("/api/auth/status", get(auth::status))
+        .route("/api/auth/setup", axum::routing::post(auth::setup))
+        .route("/api/auth/login", axum::routing::post(auth::login))
+        .merge(protected)
+        .route("/api/{*path}", axum::routing::any(api_not_found))
+        .layer(middleware::from_fn(require_trusted_request))
         .with_state(state.clone());
     let dist = project_root.join("dist");
     let app = if dist.exists() {
@@ -124,21 +156,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         api
     };
-    let address = SocketAddr::from(([127, 0, 0, 1], PORT));
-    let listener = TcpListener::bind(address).await?;
-    println!("DevHatch listening on http://{HOST}:{PORT}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown(state))
-        .await?;
+    let bind_host = env::var("DEVHATCH_BIND").unwrap_or_else(|_| HOST.to_string());
+    let address = format!("{bind_host}:{PORT}");
+    let listener = TcpListener::bind(&address).await?;
+    println!("DevHatch listening on http://{address}");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown(state))
+    .await?;
     Ok(())
 }
 
-async fn require_loopback_host(request: Request, next: Next) -> Response {
+async fn api_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        axum::Json(serde_json::json!({ "error": "NOT_FOUND" })),
+    )
+        .into_response()
+}
+
+async fn require_trusted_request(request: Request, next: Next) -> Response {
     let host = request
         .headers()
         .get("host")
         .and_then(|value| value.to_str().ok());
-    let trusted = host.is_some_and(|host| matches!(host, "127.0.0.1:4173" | "localhost:4173"));
+    let public_origin = env::var("DEVHATCH_PUBLIC_ORIGIN").ok();
+    let public_authority = public_origin
+        .as_deref()
+        .and_then(|origin| url::Url::parse(origin).ok())
+        .and_then(|origin| {
+            origin.host_str().map(|host| match origin.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host.to_string(),
+            })
+        });
+    let trusted_host = host.is_some_and(|host| {
+        matches!(host, "127.0.0.1:4173" | "localhost:4173")
+            || public_authority.as_deref() == Some(host)
+    });
     let origin = request
         .headers()
         .get("origin")
@@ -148,13 +205,23 @@ async fn require_loopback_host(request: Request, next: Next) -> Response {
         .get("sec-fetch-site")
         .and_then(|value| value.to_str().ok())
         == Some("cross-site");
-    let trusted_origin = request.method() == Method::GET
-        || (!cross_site
-            && (origin.is_none()
-                || origin
-                    .zip(host)
-                    .is_some_and(|(origin, host)| matches!(origin.strip_prefix("http://"), Some(authority) if authority == host))));
-    if !trusted || !trusted_origin {
+    let expected_origin = host.map(|host| {
+        if public_authority.as_deref() == Some(host) {
+            public_origin
+                .as_deref()
+                .unwrap_or_default()
+                .trim_end_matches('/')
+                .to_string()
+        } else {
+            format!("http://{host}")
+        }
+    });
+    let trusted_origin = !cross_site
+        && (origin.is_none()
+            || origin
+                .zip(expected_origin.as_deref())
+                .is_some_and(|(origin, expected)| origin == expected));
+    if !trusted_host || !trusted_origin {
         return StatusCode::FORBIDDEN.into_response();
     }
     next.run(request).await

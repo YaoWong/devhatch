@@ -1,7 +1,7 @@
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import { AuthGate } from './AuthGate.tsx'
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -31,7 +31,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary>
-      <App />
+      <AuthGate />
     </AppErrorBoundary>
   </StrictMode>,
 )

@@ -168,6 +168,20 @@ export function useAgentWorkspace({
     [refreshHistory],
   );
 
+  const updateUpstreamSession = useCallback(
+    (id: string, upstreamSessionId: string) => {
+      const current = sessionsRef.current.find((session) => session.id === id);
+      if (!current || current.upstreamSessionId === upstreamSessionId) return;
+      const next = sessionsRef.current.map((session) =>
+        session.id === id ? { ...session, upstreamSessionId } : session,
+      );
+      sessionsRef.current = next;
+      setSessions(next);
+      void refreshHistory();
+    },
+    [refreshHistory],
+  );
+
   const launch = useCallback(
     async ({ cwd, upstreamSessionId, pathId }: { cwd?: string; upstreamSessionId?: string; pathId?: string }) => {
       const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
@@ -421,6 +435,7 @@ export function useAgentWorkspace({
     refreshConfigs,
     refreshHistory,
     removeSession,
+    updateUpstreamSession,
     launch,
     choosePath,
     pinPath,
