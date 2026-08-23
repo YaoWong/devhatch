@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
-import { LoaderCircle, Menu, PanelLeftClose, Plus, Square } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
-import { ActionDialog, DeleteSessionDialog } from "./Dialogs";
-import { WorkspacePicker } from "./WorkspacePicker";
+import { AppDialogs } from "./app/AppDialogs";
+import { AppHeader } from "./app/AppHeader";
+import { AppNavigationRail } from "./app/AppNavigationRail";
+import { AppWorkspaceContent } from "./app/AppWorkspaceContent";
+import { getModeSubtitle } from "./app/modeSubtitle";
 import { useAgentWorkspace } from "./controllers/useAgentWorkspace";
 import { useInitialWorkspaceData } from "./controllers/useInitialWorkspaceData";
 import { useNavigation } from "./controllers/useNavigation";
@@ -10,16 +12,7 @@ import { useSkillsWorkspace } from "./controllers/useSkillsWorkspace";
 import { useTerminalWorkspace } from "./controllers/useTerminalWorkspace";
 import { useWebApps } from "./controllers/useWebApps";
 import type { ConfirmAction, ConnectionPhase, DeleteTarget, TerminalInfo } from "./types";
-import { displayPath } from "./utils";
-import { AgentRailPage } from "./views/AgentRailPage";
-import { AgentWorkspace } from "./views/AgentWorkspace";
-import { NavigationRail } from "./views/NavigationRail";
-import { SettingsView } from "./views/SettingsView";
-import { SkillsRailPage, type SkillsSection } from "./views/SkillsRailPage";
-import { SkillsWorkspace } from "./views/SkillsWorkspace";
-import { TerminalWorkspace } from "./views/TerminalWorkspace";
-import { WebAppsRailPage, WebAppsWorkspace } from "./views/WebApps";
-import { WorkspaceList } from "./views/WorkspaceList";
+import type { SkillsSection } from "./views/SkillsRailPage";
 import "./App.css";
 
 function App({ onLogout }: { onLogout: () => Promise<void> }) {
@@ -128,26 +121,14 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
     }
   };
 
-  const modeSubtitle =
-    navigation.workspaceMode === "settings"
-      ? "Preferences for your DevHatch workspace"
-      : navigation.workspaceMode === "skills"
-        ? "Repositories, reusable skills, and launch profiles"
-      : navigation.workspaceMode === "webapp"
-        ? webApps.openDesign?.running
-          ? `OpenDesign v${webApps.openDesign.version ?? ""} · Running locally`
-          : "Install and run local developer web apps"
-        : navigation.workspaceMode === "agent"
-        ? agent.activeSession
-          ? `${displayPath(
-              agent.activeSession.cwd,
-              homePaths?.home,
-              homePaths?.resolvedHome,
-            )} · ${agent.activeSession.agentName}`
-          : (agent.selectedAgent?.name ?? "No agent selected")
-        : terminal.selectedWorkspace
-          ? displayPath(terminal.selectedWorkspace, homePaths?.home, homePaths?.resolvedHome)
-          : "No workspace selected";
+  const modeSubtitle = getModeSubtitle({
+    mode: navigation.workspaceMode,
+    openDesign: webApps.openDesign,
+    activeAgentSession: agent.activeSession,
+    selectedAgent: agent.selectedAgent,
+    selectedWorkspace: terminal.selectedWorkspace,
+    homePaths,
+  });
 
   return (
     <main
@@ -155,215 +136,86 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
         `app ${navigation.sidebarOpen ? "drawer-open" : ""} ` + `${navigation.sidebarHidden ? "sidebar-hidden" : ""}`
       }
     >
-      {pickerPurpose && (
-        <WorkspacePicker
-          purpose={pickerPurpose}
-          initialPath={
-            pickerPurpose === "agent"
-              ? (agent.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
-              : (terminal.selectedWorkspace ?? undefined)
+      <AppDialogs
+        pickerPurpose={pickerPurpose}
+        pickerInitialPath={
+          pickerPurpose === "agent"
+            ? (agent.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
+            : (terminal.selectedWorkspace ?? undefined)
+        }
+        onClosePicker={closePicker}
+        onSelectPath={(path) => {
+          if (pickerPurpose === "agent") {
+            void agent.choosePath(path);
+          } else {
+            terminal.chooseWorkspace(path);
+            setPickerPurpose(null);
           }
-          onClose={() => setPickerPurpose(null)}
-          onSelect={(path) => {
-            if (pickerPurpose === "agent") {
-              void agent.choosePath(path);
-            } else {
-              terminal.chooseWorkspace(path);
-              setPickerPurpose(null);
-            }
-          }}
-        />
-      )}
-      {confirmAction && (
-        <ActionDialog
-          action={{ ...confirmAction, action: runConfirmAction }}
-          busy={actionBusy}
-          onClose={() => setConfirmAction(null)}
-        />
-      )}
-      {deleteCandidate && (
-        <DeleteSessionDialog
-          target={deleteCandidate}
-          deleting={deleting}
-          onCancel={() => setDeleteCandidate(null)}
-          onConfirm={() => void deleteSession(deleteCandidate)}
-        />
-      )}
+        }}
+        confirmAction={confirmAction}
+        actionBusy={actionBusy}
+        onRunConfirmAction={runConfirmAction}
+        onCloseConfirmAction={() => setConfirmAction(null)}
+        deleteCandidate={deleteCandidate}
+        deleting={deleting}
+        onCancelDelete={() => setDeleteCandidate(null)}
+        onConfirmDelete={() => {
+          if (deleteCandidate) void deleteSession(deleteCandidate);
+        }}
+      />
       <button className="drawer-backdrop" aria-label="Close navigation" onClick={navigation.closeSidebar} />
-      <NavigationRail
-        railPage={navigation.railPage}
-        railMotion={navigation.railMotion}
-        workspaceMode={navigation.workspaceMode}
-        terminalCount={terminal.sessions.length}
-        agentCount={agent.sessions.length}
-        modesPageRef={navigation.modesPageRef}
-        modeRefs={navigation.modeRefs}
-        pageRefs={navigation.pageRefs}
-        titleRefs={navigation.titleRefs}
-        onNavigate={navigation.animateRail}
-        terminalContent={
-          <WorkspaceList
-            workspaces={terminal.workspaces}
-            selectedWorkspace={terminal.selectedWorkspace}
-            homePaths={homePaths}
-            onSelect={terminal.activateWorkspace}
-            onAdd={() => setPickerPurpose("workspace")}
-          />
-        }
-        agentContent={
-          <AgentRailPage
-            busy={busy}
-            agents={agent.agents}
-            selectedAgentId={agent.selectedAgentId}
-            selectedAgent={agent.selectedAgent}
-            configs={agent.configs}
-            selectedConfigId={agent.selectedConfigId}
-            profiles={skills.profiles}
-            selectedProfileId={agent.selectedSkillProfileId}
-            paths={agent.selectedPaths}
-            selectedPathId={agent.selectedPathId}
-            includeSubdirectories={agent.includeSubdirectories}
-            activeSession={agent.activeSession}
-            sessions={agent.sessions}
-            historyCount={agent.history.sessions.length}
-            rows={agent.mergedSessions}
-            search={agent.search}
-            homePaths={homePaths}
-            onSelectAgent={agent.setSelectedAgentId}
-            onSelectConfig={agent.setSelectedConfigId}
-            onSelectProfile={agent.setSelectedSkillProfileId}
-            onCreateConfig={agent.createConfig}
-            onUpdateConfig={agent.updateConfig}
-            onDeleteConfig={agent.deleteConfig}
-            onChoosePath={() => setPickerPurpose("agent")}
-            onSelectPath={(id) => agent.setSelectedPathId(agent.selectedPathId === id ? null : id)}
-            onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
-            onLaunch={(path) => void agent.launch({ cwd: path.path, pathId: path.id })}
-            onPinPath={agent.pinPath}
-            onRenamePath={agent.renamePath}
-            onDeletePath={agent.deletePath}
-            onSearch={agent.setSearch}
-            onActivateSession={agent.activateSession}
-            onResume={(id) => agent.launch({ upstreamSessionId: id })}
-            onDeleteLive={(session) => requestClose(session, true)}
-            onConfirm={setConfirmAction}
-            onDeleteHistory={agent.deleteHistorySession}
-          />
-        }
-        skillsContent={<SkillsRailPage section={skillsSection} onSelect={setSkillsSection} />}
-        webAppContent={
-          <WebAppsRailPage
-            app={webApps.openDesign}
-            onInstall={webApps.install}
-            onStart={webApps.start}
-            onOpen={webApps.open}
-            onConfirm={setConfirmAction}
-          />
-        }
+      <AppNavigationRail
+        navigation={navigation}
+        terminal={terminal}
+        agent={agent}
+        skills={skills}
+        webApps={webApps}
+        homePaths={homePaths}
+        busy={busy}
+        skillsSection={skillsSection}
+        onSelectSkillsSection={setSkillsSection}
+        onPickWorkspace={() => setPickerPurpose("workspace")}
+        onPickAgentPath={() => setPickerPurpose("agent")}
+        onCloseAgentSession={(session) => requestClose(session, true)}
+        onConfirm={setConfirmAction}
       />
       <section className="shell">
-        <header className="topbar">
-          <button className="icon-button menu-button" aria-label="Toggle navigation" onClick={navigation.toggleSidebar}>
-            <Menu className="menu-icon-open" />
-            <PanelLeftClose className="menu-icon-hide" />
-          </button>
-          <div className="breadcrumb">
-            <strong>{navigation.modeMeta[navigation.workspaceMode].label}</strong>
-            <span>{modeSubtitle}</span>
-          </div>
-          {navigation.workspaceMode === "terminal" && (
-            <div className="top-actions">
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  void terminal.addTerminal(terminal.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
-                }
-              >
-                <Plus />
-                <span>New terminal</span>
-              </button>
-            </div>
-          )}
-          {navigation.workspaceMode === "webapp" && webApps.openDesign?.running && (
-            <div className="top-actions">
-              <button className="secondary-button" disabled={webApps.operation !== null} onClick={() => void webApps.stop()}>
-                {webApps.operation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
-                <span>{webApps.operation === "stop" ? "Stopping…" : "Stop"}</span>
-              </button>
-            </div>
-          )}
-        </header>
-        <TerminalWorkspace
-          visible={navigation.workspaceMode === "terminal"}
+        <AppHeader
+          mode={navigation.workspaceMode}
+          label={navigation.modeMeta[navigation.workspaceMode].label}
+          subtitle={modeSubtitle}
+          onToggleNavigation={navigation.toggleSidebar}
+          onNewTerminal={() =>
+            void terminal.addTerminal(terminal.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
+          }
+          webAppRunning={Boolean(webApps.openDesign?.running)}
+          webAppOperation={webApps.operation}
+          onStopWebApp={() => void webApps.stop()}
+        />
+        <AppWorkspaceContent
+          mode={navigation.workspaceMode}
+          terminal={terminal}
+          agent={agent}
+          skills={skills}
+          webApps={webApps}
           busy={busy}
-          sessions={terminal.sessions}
-          visibleSessions={terminal.visibleSessions}
-          activeId={terminal.activeId}
-          activeSession={terminal.activeSession}
-          selectedWorkspace={terminal.selectedWorkspace}
           phases={phases}
           focusVersion={focusVersion}
           error={error}
-          onActivate={terminal.activateSession}
-          onRename={terminal.renameSession}
-          onClose={(session) => requestClose(session, false)}
-          onCreate={(cwd) => void terminal.addTerminal(cwd)}
+          skillsSection={skillsSection}
+          confirmDelete={confirmDelete}
+          onCloseSession={requestClose}
+          onPickAgentPath={() => setPickerPurpose("agent")}
           onPhaseChange={setPhase}
           onError={reportError}
           onDismissError={() => setError(null)}
+          onConfirm={setConfirmAction}
+          onConfirmDeleteChange={(enabled) => {
+            setConfirmDelete(enabled);
+            localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
+          }}
+          onLogout={onLogout}
         />
-        <AgentWorkspace
-          visible={navigation.workspaceMode === "agent"}
-          busy={busy}
-          sessions={agent.sessions}
-          displaySessions={agent.displaySessions}
-          activeId={agent.activeId}
-          activeSession={agent.activeSession}
-          selectedAgent={agent.selectedAgent}
-          phases={phases}
-          focusVersion={focusVersion}
-          error={error}
-          onActivate={agent.activateSession}
-          onRename={agent.renameSession}
-          onClose={(session) => requestClose(session, true)}
-          onChoosePath={() => setPickerPurpose("agent")}
-          onPhaseChange={setPhase}
-          onRemoved={agent.removeSession}
-          onUpstreamSessionChange={agent.updateUpstreamSession}
-          onError={reportError}
-          onDismissError={() => setError(null)}
-        />
-        {navigation.workspaceMode === "webapp" && (
-          <WebAppsWorkspace
-            app={webApps.openDesign}
-            operation={webApps.operation}
-            error={error}
-            onInstall={webApps.install}
-            onStart={webApps.start}
-            onUpdate={webApps.update}
-            onCheckUpdate={webApps.checkUpdate}
-            onConfirm={setConfirmAction}
-            onDismissError={() => setError(null)}
-          />
-        )}
-        {navigation.workspaceMode === "skills" && (
-          <SkillsWorkspace
-            section={skillsSection}
-            controller={skills}
-            error={error}
-            onDismissError={() => setError(null)}
-          />
-        )}
-        {navigation.workspaceMode === "settings" && (
-          <SettingsView
-            confirmDelete={confirmDelete}
-            onConfirmDeleteChange={(enabled) => {
-              setConfirmDelete(enabled);
-              localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
-            }}
-            onLogout={onLogout}
-          />
-        )}
       </section>
     </main>
   );

@@ -1,0 +1,85 @@
+@media (prefers-reduced-motion: reduce) {
+  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
+
+@media (max-width: 920px) {
+  .app { padding: 0; gap: 0; }
+  .shell { border: 0; border-radius: 0; box-shadow: none; }
+  .app.sidebar-hidden { gap: 0; }
+  .app.sidebar-hidden .rail { width: min(320px, calc(100vw - 24px)); padding: 12px; border-inline-width: 1px; opacity: 1; pointer-events: auto; }
+  .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 30; width: min(320px, calc(100vw - 24px)); transform: translateX(calc(-100% - 24px)); transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
+  .drawer-open .rail { transform: translateX(0); }
+  .drawer-backdrop { position: fixed; inset: 0; z-index: 20; border: 0; background: rgb(29 29 31 / 35%); }
+  .drawer-open .drawer-backdrop { display: block; }
+  .drawer-open .menu-button .menu-icon-open { opacity: 0; transform: scale(.72) rotate(-8deg); }
+  .drawer-open .menu-button .menu-icon-hide { opacity: 1; transform: scale(1) rotate(0); }
+  .app:not(.drawer-open) .menu-button .menu-icon-open { opacity: 1; transform: scale(1) rotate(0); }
+  .app:not(.drawer-open) .menu-button .menu-icon-hide { opacity: 0; transform: scale(.72) rotate(8deg); }
+  .menu-button { display: inline-flex; }
+}
+
+@media (max-width: 640px) {
+  .picker-backdrop { padding: 0; }
+  .dialog-backdrop { padding: 14px; align-items: end; }
+  .config-dialog, .skill-manifest-dialog { width: 100%; max-height: calc(100vh - 28px); border-radius: 18px 18px 0 0; }
+  .skill-manifest-dialog { height: calc(100vh - 28px); }
+  .config-body { min-height: 0; max-height: calc(100vh - 108px); grid-template-columns: 1fr; overflow-y: auto; }
+  .config-body aside { max-height: 150px; border-right: 0; border-bottom: 1px solid #e8e8ed; }
+  .config-editor { overflow: visible; padding: 16px; }
+  .config-editor textarea { min-height: 220px; }
+  .delete-dialog { grid-template-columns: 42px minmax(0, 1fr); padding: 18px; border-radius: 20px; }
+  .delete-dialog-icon { width: 42px; height: 42px; }
+  .delete-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .folder-picker { width: 100%; height: 100%; border: 0; border-radius: 0; }
+  .picker-header { padding: 18px 16px 14px; }
+  .picker-toolbar { padding: 0 16px 12px; }
+  .picker-breadcrumbs { padding-inline: 16px; }
+  .picker-footer { display: grid; grid-template-columns: 1fr 1fr; padding: 14px 16px 18px; }
+  .picker-selection { grid-column: 1 / -1; margin: 0 0 6px; }
+  .picker-selection strong { max-width: calc(100vw - 32px); }
+  .shell { grid-template-rows: 56px minmax(0, 1fr); }
+  .topbar { padding: 0 12px; }
+  .secondary-button span { display: none; }
+  .secondary-button { width: 38px; padding: 0; }
+  .settings-content { width: calc(100% - 28px); padding: 24px 0 40px; }
+  .skills-workspace { padding: 20px 14px; }
+  .skills-scroll-controls { right: 14px; bottom: 14px; }
+  .skills-scroll-controls button { width: 44px; height: 44px; }
+  .skills-form, .repository-form, .compact-form, .create-skill-form { grid-template-columns: 1fr; }
+  .create-skill-form > div { justify-content: flex-end; }
+  .skills-toolbar { grid-template-columns: 1fr; }
+  .skills-filter { width: fit-content; }
+  .repository-card-header { align-items: flex-start; flex-wrap: wrap; }
+  .repository-summary { width: 100%; flex-basis: 100%; }
+  .repository-actions { width: 100%; justify-content: flex-end; padding-left: 47px; }
+  .skill-tree-toolbar { align-items: stretch; flex-direction: column; }
+  .skill-tree-toolbar > .skills-search { width: 100%; }
+  .tree-controls { margin-left: 0; }
+  .repository-rename { grid-template-columns: 1fr auto; }
+  .repository-rename input { grid-column: 1 / -1; }
+  .repository-sync-result { gap: 8px; }
+  .repository-skill-row { grid-template-columns: minmax(0, 1fr); padding-left: 34px; }
+  .repository-skill-row code { display: none; }
+  .skills-grid.two-column { grid-template-columns: 1fr; }
+  .profile-layout { grid-template-columns: 1fr; }
+  .profile-list { min-height: 0; border-right: 0; border-bottom: 1px solid #e8e8ed; }
+  .profile-skills-header { grid-template-columns: 1fr; align-items: stretch; }
+  .profile-skills-header .skills-search { width: 100%; }
+  .profile-header-actions { justify-content: flex-end; }
+  .profile-header-actions > * { flex: 1; }
+  .webapps-workspace { padding: 20px 14px; }
+  .webapp-hero { align-items: flex-start; gap: 18px; padding: 22px; }
+  .webapp-icon { width: 72px; height: 72px; }
+  .webapp-icon img { border-radius: 20px; }
+  .webapp-copy h2 { font-size: 22px; }
+  .webapp-detail-grid { grid-template-columns: 1fr; }
+  .webapp-actions { flex-wrap: wrap; }
+  .settings-section { grid-template-columns: 1fr; gap: 14px; }
+  .terminal-workspace { grid-template-rows: 48px minmax(0, 1fr) 38px 50px; }
+  .terminal-surface { padding: 8px 10px; }
+  .tab { min-width: 136px; }
+  .statusbar { padding: 0 12px; gap: 10px; }
+  .status-path, .statusbar span:last-child { display: none; }
+  .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid #e8e8ed; background: #fbfbfd; }
+  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; font: 10px/1 "SF Mono", monospace; }
+}

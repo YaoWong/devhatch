@@ -1,12 +1,11 @@
 use crate::{
     Error, Result, Skill, Skillink,
     filesystem::{copy_directory_safely, publish_directory, remove_managed_directory},
+    manifest::{MAX_MANIFEST_SIZE, parse_permissive},
     validation::{validate_description, validate_relative_path, validate_slug},
 };
 use std::{fs, path::Path};
 use uuid::Uuid;
-
-const MAX_MANIFEST_SIZE: u64 = 1024 * 1024;
 
 impl Skillink {
     pub async fn create_skill(&self, slug: &str, description: &str) -> Result<Skill> {
@@ -35,7 +34,7 @@ impl Skillink {
         if !source.join("SKILL.md").is_file() {
             return Err(Error::MissingManifest);
         }
-        let metadata = parse_frontmatter(&source.join("SKILL.md"))?;
+        let metadata = parse_permissive(&source.join("SKILL.md"))?;
         if let (Some(requested), Some(manifest)) = (slug, metadata.0.as_deref())
             && requested != manifest
         {
@@ -173,27 +172,6 @@ impl Skillink {
             .repository_revision(repository_id, revision)
             .join(relative))
     }
-}
-
-fn parse_frontmatter(path: &Path) -> Result<(Option<String>, Option<String>)> {
-    let content = fs::read_to_string(path)?;
-    let mut lines = content.lines();
-    if lines.next() != Some("---") {
-        return Ok((None, None));
-    }
-    let mut name = None;
-    let mut description = None;
-    for line in lines {
-        if line == "---" {
-            break;
-        }
-        if let Some(value) = line.strip_prefix("name:") {
-            name = Some(value.trim().trim_matches(['\'', '"']).to_owned());
-        } else if let Some(value) = line.strip_prefix("description:") {
-            description = Some(value.trim().trim_matches(['\'', '"']).to_owned());
-        }
-    }
-    Ok((name.filter(|value| !value.is_empty()), description))
 }
 
 #[cfg(test)]

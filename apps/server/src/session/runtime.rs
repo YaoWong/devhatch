@@ -2,112 +2,18 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     sync::{
-        Arc, Mutex, RwLock,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
 
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
-use serde::Serialize;
-use tokio::sync::broadcast;
+use portable_pty::{NativePtySystem, PtySize, PtySystem};
 use uuid::Uuid;
 
+use super::model::{Session, SessionEvent, SessionKind, SessionSpawn, SessionState, SessionStatus};
 use crate::{clock::now, filesystem::path_string, state::AppState};
 
 const OUTPUT_LIMIT: usize = 512 * 1024;
-
-pub(crate) struct Session {
-    id: String,
-    shell: String,
-    kind: SessionKind,
-    upstream_session_id: RwLock<Option<String>>,
-    process_id: u32,
-    state: Mutex<SessionState>,
-    master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
-    deleting: AtomicBool,
-    events: broadcast::Sender<SessionEvent>,
-    agent_id: Option<&'static str>,
-    agent_name: Option<&'static str>,
-}
-
-pub(crate) struct SessionSpawn {
-    pub command: CommandBuilder,
-    pub shell: String,
-    pub kind: SessionKind,
-    pub upstream_session_id: Option<String>,
-    pub cwd: PathBuf,
-    pub name: String,
-    pub cols: u16,
-    pub rows: u16,
-    pub agent_id: Option<&'static str>,
-    pub agent_name: Option<&'static str>,
-    pub cleanup_path: Option<PathBuf>,
-}
-
-struct SessionState {
-    name: String,
-    cwd: String,
-    status: SessionStatus,
-    cols: u16,
-    rows: u16,
-    created_at: u64,
-    updated_at: u64,
-    exit_code: Option<u32>,
-    output: String,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum SessionKind {
-    Terminal,
-    Agent,
-}
-
-#[derive(Clone, Copy, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum SessionStatus {
-    Running,
-    Exited,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SessionView {
-    id: String,
-    name: String,
-    cwd: String,
-    shell: String,
-    status: SessionStatus,
-    cols: u16,
-    rows: u16,
-    created_at: u64,
-    updated_at: u64,
-    exit_code: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    agent_id: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    agent_name: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    upstream_session_id: Option<String>,
-    kind: &'static str,
-}
-
-pub(crate) struct SessionSnapshot {
-    pub view: SessionView,
-    pub output: String,
-    pub status: SessionStatus,
-    pub exit_code: Option<u32>,
-}
-
-#[derive(Clone)]
-pub(crate) enum SessionEvent {
-    Output(String),
-    UpstreamSessionChanged(String),
-    Exit(Option<u32>),
-    Removed(Option<u32>),
-    Terminate,
-}
 
 impl Session {
     pub(crate) fn spawn<F>(
@@ -132,14 +38,14 @@ impl Session {
         let reader = pair.master.try_clone_reader()?;
         let writer = pair.master.take_writer()?;
         let timestamp = now();
-        let (events, _) = broadcast::channel(1024);
+        let (events, _) = tokio::sync::broadcast::channel(1024);
         let session = Arc::new(Self {
             id: Uuid::new_v4().to_string(),
             shell: spawn.shell,
             kind: spawn.kind,
-            upstream_session_id: RwLock::new(spawn.upstream_session_id),
+            upstream_session_id: std::sync::RwLock::new(spawn.upstream_session_id),
             process_id,
-            state: Mutex::new(SessionState {
+            state: std::sync::Mutex::new(SessionState {
                 name: spawn.name,
                 cwd: path_string(spawn.cwd),
                 status: SessionStatus::Running,
@@ -150,9 +56,9 @@ impl Session {
                 exit_code: None,
                 output: String::new(),
             }),
-            master: Mutex::new(pair.master),
-            writer: Mutex::new(writer),
-            killer: Mutex::new(killer),
+            master: std::sync::Mutex::new(pair.master),
+            writer: std::sync::Mutex::new(writer),
+            killer: std::sync::Mutex::new(killer),
             deleting: AtomicBool::new(false),
             events,
             agent_id: spawn.agent_id,
@@ -163,73 +69,6 @@ impl Session {
         started(&session);
         Self::start_waiter(&session, child, app_state, cleanup_path);
         Ok(session)
-    }
-
-    pub(crate) fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub(crate) fn kind(&self) -> SessionKind {
-        self.kind
-    }
-
-    pub(crate) fn process_id(&self) -> u32 {
-        self.process_id
-    }
-
-    pub(crate) fn upstream_session_id(&self) -> Option<String> {
-        self.upstream_session_id
-            .read()
-            .expect("upstream session lock poisoned")
-            .clone()
-    }
-
-    pub(crate) fn correlation_details(&self) -> (String, i64) {
-        let state = self.state.lock().expect("session lock poisoned");
-        (state.cwd.clone(), state.created_at as i64)
-    }
-
-    pub(crate) fn update_upstream_session_id(&self, id: String) {
-        let mut upstream = self
-            .upstream_session_id
-            .write()
-            .expect("upstream session lock poisoned");
-        if upstream.as_deref() == Some(&id) {
-            return;
-        }
-        *upstream = Some(id.clone());
-        drop(upstream);
-        self.state.lock().expect("session lock poisoned").updated_at = now();
-        let _ = self.events.send(SessionEvent::UpstreamSessionChanged(id));
-    }
-
-    pub(crate) fn rename(&self, name: String) {
-        let mut state = self.state.lock().expect("session lock poisoned");
-        state.name = name;
-        state.updated_at = now();
-    }
-
-    pub(crate) fn view(&self) -> SessionView {
-        let state = self.state.lock().expect("session lock poisoned");
-        self.view_from_state(&state)
-    }
-
-    pub(crate) fn snapshot_and_subscribe(
-        &self,
-    ) -> (SessionSnapshot, broadcast::Receiver<SessionEvent>) {
-        let state = self.state.lock().expect("session lock poisoned");
-        let events = self.events.subscribe();
-        let snapshot = SessionSnapshot {
-            view: self.view_from_state(&state),
-            output: state.output.clone(),
-            status: state.status,
-            exit_code: state.exit_code,
-        };
-        (snapshot, events)
-    }
-
-    pub(crate) fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
-        self.events.subscribe()
     }
 
     pub(crate) fn is_deleting(&self) -> bool {
@@ -284,29 +123,6 @@ impl Session {
             let _ = self.killer.lock().expect("killer lock poisoned").kill();
         }
         let _ = self.events.send(SessionEvent::Terminate);
-    }
-
-    fn view_from_state(&self, state: &SessionState) -> SessionView {
-        SessionView {
-            id: self.id.clone(),
-            name: state.name.clone(),
-            cwd: state.cwd.clone(),
-            shell: self.shell.clone(),
-            status: state.status,
-            cols: state.cols,
-            rows: state.rows,
-            created_at: state.created_at,
-            updated_at: state.updated_at,
-            exit_code: state.exit_code,
-            agent_id: self.agent_id,
-            agent_name: self.agent_name,
-            upstream_session_id: self.upstream_session_id(),
-            kind: if self.kind == SessionKind::Agent {
-                "agent"
-            } else {
-                "terminal"
-            },
-        }
     }
 
     fn start_reader(session: &Arc<Self>, mut reader: Box<dyn Read + Send>) {
@@ -386,32 +202,6 @@ impl Session {
     }
 }
 
-pub(crate) fn dimension(value: Option<&serde_json::Value>, fallback: u16) -> u16 {
-    let number = value
-        .and_then(value_to_number)
-        .unwrap_or(f64::from(fallback));
-    if !number.is_finite() {
-        return fallback;
-    }
-    number.trunc().clamp(1.0, 500.0) as u16
-}
-
-fn value_to_number(value: &serde_json::Value) -> Option<f64> {
-    match value {
-        serde_json::Value::Number(number) => number.as_f64(),
-        serde_json::Value::String(value) => value.trim().parse().ok().or_else(|| {
-            if value.trim().is_empty() {
-                Some(0.0)
-            } else {
-                None
-            }
-        }),
-        serde_json::Value::Bool(value) => Some(u8::from(*value).into()),
-        serde_json::Value::Null => Some(0.0),
-        _ => None,
-    }
-}
-
 fn trim_output(output: &mut String) {
     if output.len() <= OUTPUT_LIMIT {
         return;
@@ -425,15 +215,7 @@ fn trim_output(output: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{OUTPUT_LIMIT, dimension, trim_output};
-
-    #[test]
-    fn normalizes_dimensions() {
-        assert_eq!(dimension(Some(&serde_json::json!(0)), 120), 1);
-        assert_eq!(dimension(Some(&serde_json::json!(501)), 120), 500);
-        assert_eq!(dimension(Some(&serde_json::json!(" 20.9 ")), 120), 20);
-        assert_eq!(dimension(Some(&serde_json::json!([])), 120), 120);
-    }
+    use super::{OUTPUT_LIMIT, trim_output};
 
     #[test]
     fn trims_output_on_character_boundaries() {

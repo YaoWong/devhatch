@@ -1,4 +1,4 @@
-use super::{discovery::DiscoveredSkill, sync::PreparedSync};
+use super::{SyncPlan, discovery::DiscoveredSkill};
 use crate::{Error, Repository, Result, Skillink};
 use uuid::Uuid;
 
@@ -52,30 +52,29 @@ impl Skillink {
         Ok(())
     }
 
-    pub(super) async fn reconcile_repository(&self, prepared: &PreparedSync) -> Result<()> {
+    pub(super) async fn reconcile_repository(
+        &self,
+        repository: &Repository,
+        discovered: &[DiscoveredSkill],
+        plan: &SyncPlan,
+    ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
         let current: Option<(String, i64)> =
             sqlx::query_as("SELECT commit_hash, sync_version FROM repositories WHERE id = ?")
-                .bind(&prepared.repository.id)
+                .bind(&repository.id)
                 .fetch_optional(&mut *transaction)
                 .await?;
         let Some((commit, version)) = current else {
             return Err(Error::ConcurrentSync {
-                repository_id: prepared.repository.id.clone(),
+                repository_id: repository.id.clone(),
             });
         };
-        if commit != prepared.repository.commit_hash || version != prepared.repository.sync_version
-        {
+        if commit != repository.commit_hash || version != repository.sync_version {
             return Err(Error::ConcurrentSync {
-                repository_id: prepared.repository.id.clone(),
+                repository_id: repository.id.clone(),
             });
         }
-        for id in prepared
-            .plan
-            .remove
-            .iter()
-            .filter_map(|item| item.id.as_ref())
-        {
+        for id in plan.remove.iter().filter_map(|item| item.id.as_ref()) {
             let references: i64 =
                 sqlx::query_scalar("SELECT COUNT(*) FROM profile_skills WHERE skill_id = ?")
                     .bind(id)
@@ -87,38 +86,38 @@ impl Skillink {
                 });
             }
         }
-        for item in &prepared.plan.remove {
+        for item in &plan.remove {
             sqlx::query("DELETE FROM skills WHERE id = ? AND repository_id = ?")
                 .bind(item.id.as_deref())
-                .bind(&prepared.repository.id)
+                .bind(&repository.id)
                 .execute(&mut *transaction)
                 .await?;
         }
-        for skill in &prepared.discovered {
+        for skill in discovered {
             let existing: Option<String> = sqlx::query_scalar(
                 "SELECT id FROM skills WHERE repository_id = ? AND relative_path = ?",
             )
-            .bind(&prepared.repository.id)
+            .bind(&repository.id)
             .bind(&skill.relative_path)
             .fetch_optional(&mut *transaction)
             .await?;
             if let Some(id) = existing {
                 let update = sqlx::query("UPDATE skills SET slug = ?, description = ?, revision = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                    .bind(&skill.slug).bind(&skill.description).bind(&prepared.plan.new_commit).bind(id).execute(&mut *transaction).await;
+                    .bind(&skill.slug).bind(&skill.description).bind(&plan.new_commit).bind(id).execute(&mut *transaction).await;
                 map_skill_write(update, &skill.slug, &skill.relative_path)?;
             } else {
                 let insert = sqlx::query("INSERT INTO skills (id, slug, description, source_type, repository_id, revision, relative_path) VALUES (?, ?, ?, 'repository', ?, ?, ?)")
                     .bind(Uuid::new_v4().to_string()).bind(&skill.slug).bind(&skill.description)
-                    .bind(&prepared.repository.id).bind(&prepared.plan.new_commit).bind(&skill.relative_path).execute(&mut *transaction).await;
+                    .bind(&repository.id).bind(&plan.new_commit).bind(&skill.relative_path).execute(&mut *transaction).await;
                 map_skill_write(insert, &skill.slug, &skill.relative_path)?;
             }
         }
         let updated = sqlx::query("UPDATE repositories SET commit_hash = ?, sync_version = sync_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND commit_hash = ? AND sync_version = ?")
-            .bind(&prepared.plan.new_commit).bind(&prepared.repository.id).bind(&prepared.repository.commit_hash)
-            .bind(prepared.repository.sync_version).execute(&mut *transaction).await?;
+            .bind(&plan.new_commit).bind(&repository.id).bind(&repository.commit_hash)
+            .bind(repository.sync_version).execute(&mut *transaction).await?;
         if updated.rows_affected() != 1 {
             return Err(Error::ConcurrentSync {
-                repository_id: prepared.repository.id.clone(),
+                repository_id: repository.id.clone(),
             });
         }
         transaction.commit().await?;

@@ -1,7 +1,7 @@
 import { ChevronRight, Code2, Layers3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentIcon } from "../Branding";
-import { CustomSelect } from "../components";
+import { CustomSelect } from "../components/CustomSelect";
 import type {
   Agent,
   AgentLaunchConfig,

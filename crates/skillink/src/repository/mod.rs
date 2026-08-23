@@ -1,39 +1,24 @@
 mod address;
 mod discovery;
 mod git;
+mod links;
+mod plan;
 mod store;
 mod sync;
 
 #[cfg(test)]
 mod tests;
 
+pub use plan::{SyncItem, SyncPlan};
+pub type SyncResult = SyncPlan;
+
 use crate::{Error, Repository, Result, Skillink, filesystem::remove_managed_directory};
 use address::parse_repository_address;
 pub use address::repository_name;
-use discovery::{discover_repository, materialize_internal_file_links};
-use serde::Serialize;
+use discovery::discover_repository;
+use links::materialize_internal_file_links;
 use std::fs;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct SyncItem {
-    pub id: Option<String>,
-    pub slug: String,
-    pub relative_path: String,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct SyncPlan {
-    pub repository_id: String,
-    pub old_commit: Option<String>,
-    pub new_commit: String,
-    pub noop: bool,
-    pub add: Vec<SyncItem>,
-    pub update: Vec<SyncItem>,
-    pub remove: Vec<SyncItem>,
-}
-
-pub type SyncResult = SyncPlan;
 
 impl Skillink {
     pub async fn add_repository(&self, url: &str, git_ref: Option<&str>) -> Result<Repository> {

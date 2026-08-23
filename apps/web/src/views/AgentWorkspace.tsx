@@ -1,6 +1,7 @@
 import { Bot, X } from "lucide-react";
 import type { Agent, AgentSession, ConnectionPhase } from "../types";
-import { SessionTabs, Statusbar } from "../components";
+import { SessionTabs } from "../components/SessionTabs";
+import { Statusbar } from "../components/Statusbar";
 import { TerminalSurface } from "../TerminalSurface";
 
 export function AgentWorkspace({

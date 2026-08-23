@@ -1,7 +1,9 @@
 mod app;
+mod database;
 mod doctor;
 mod error;
 mod filesystem;
+mod manifest;
 mod model;
 mod profile;
 mod repository;
