@@ -47,6 +47,7 @@ export function useAgentWorkspace({
   const [paths, setPaths] = useState<AgentLaunchPath[]>([]);
   const [configs, setConfigs] = useState<AgentLaunchConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
+  const [selectedSkillProfileId, setSelectedSkillProfileId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryResponse>({ available: false, diagnostic: null, sessions: [] });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -192,8 +193,12 @@ export function useAgentWorkspace({
       try {
         if (pathId) await touchAgentLaunchPath(pathId);
         const launchOptions = upstreamSessionId
-          ? { upstreamSessionId, launchConfigId: selectedConfigId ?? undefined }
-          : { cwd, launchConfigId: selectedConfigId ?? undefined };
+          ? {
+              upstreamSessionId,
+              launchConfigId: selectedConfigId ?? undefined,
+              skillProfileId: selectedSkillProfileId ?? undefined,
+            }
+          : { cwd, launchConfigId: selectedConfigId ?? undefined, skillProfileId: selectedSkillProfileId ?? undefined };
         const { agentSession } = await createAgentSession(launchOptions);
         const normalized = {
           ...agentSession,
@@ -224,6 +229,7 @@ export function useAgentWorkspace({
       reportError,
       selectedAgentId,
       selectedConfigId,
+      selectedSkillProfileId,
     ],
   );
 
@@ -405,6 +411,7 @@ export function useAgentWorkspace({
     paths,
     configs,
     selectedConfigId,
+    selectedSkillProfileId,
     selectedConfig,
     history,
     activeId,
@@ -420,6 +427,7 @@ export function useAgentWorkspace({
     setSearch,
     setSelectedPathId,
     setSelectedConfigId,
+    setSelectedSkillProfileId,
     setIncludeSubdirectories,
     setSelectedAgentId: (id: string) => {
       setSelectedAgentId(id);

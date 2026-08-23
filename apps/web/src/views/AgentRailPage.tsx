@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Code2, Layers3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AgentIcon } from "../Branding";
 import { CustomSelect } from "../components";
@@ -9,6 +9,7 @@ import type {
   AgentLaunchPath,
   AgentSession,
   ConfirmAction,
+  SkillProfile,
 } from "../types";
 import { AgentConfigDialog } from "./AgentConfigDialog";
 import { LaunchPaths } from "./LaunchPaths";
@@ -24,6 +25,8 @@ export function AgentRailPage({
   selectedAgent,
   configs,
   selectedConfigId,
+  profiles,
+  selectedProfileId,
   paths,
   selectedPathId,
   includeSubdirectories,
@@ -35,6 +38,7 @@ export function AgentRailPage({
   homePaths,
   onSelectAgent,
   onSelectConfig,
+  onSelectProfile,
   onCreateConfig,
   onUpdateConfig,
   onDeleteConfig,
@@ -58,6 +62,8 @@ export function AgentRailPage({
   selectedAgent: Agent | null;
   configs: AgentLaunchConfig[];
   selectedConfigId: string | null;
+  profiles: SkillProfile[];
+  selectedProfileId: string | null;
   paths: AgentLaunchPath[];
   selectedPathId: string | null;
   includeSubdirectories: boolean;
@@ -69,6 +75,7 @@ export function AgentRailPage({
   homePaths: HomePaths;
   onSelectAgent: (id: string) => void;
   onSelectConfig: (id: string) => void;
+  onSelectProfile: (id: string | null) => void;
   onCreateConfig: (input: AgentLaunchConfigInput) => Promise<boolean>;
   onUpdateConfig: (id: string, input: AgentLaunchConfigInput) => Promise<boolean>;
   onDeleteConfig: (id: string) => Promise<boolean>;
@@ -171,21 +178,34 @@ export function AgentRailPage({
               renderTrigger={(agent) => <AgentOption agent={agent} fallback="Select agent" />}
               renderOption={(agent) => <AgentOption agent={agent} />}
             />
-            {selectedAgent?.id === "opencode" && !selectedAgent.available && (
-              <div className="agent-install-message">
-                <strong>OpenCode is not installed</strong>
-                <span>Install it to launch agent sessions:</span>
-                <code>curl -fsSL https://opencode.ai/install | bash</code>
-              </div>
-            )}
-            <button className="config-default" type="button" onClick={() => setConfigOpen(true)}>
-              <span>
-                <strong>Config</strong>
-                <small>OpenCode launch scripts</small>
-              </span>
-              <b>{selectedConfig?.name ?? "None"}</b>
-              <ChevronRight />
-            </button>
+            <div className="launch-setup">
+              <p className="launch-setup-label">Launch setup</p>
+              {selectedAgent?.id === "opencode" && !selectedAgent.available && (
+                <div className="agent-install-message">
+                  <strong>OpenCode is not installed</strong>
+                  <span>Install it to launch agent sessions:</span>
+                  <code>curl -fsSL https://opencode.ai/install | bash</code>
+                </div>
+              )}
+              <CustomSelect
+                label="Skills"
+                value={selectedProfileId ?? "none"}
+                options={[{ id: "none", slug: "None" }, ...profiles]}
+                onChange={(id) => onSelectProfile(id === "none" ? null : id)}
+                renderTrigger={(profile) => (
+                  <span className="launch-setting-copy">
+                    <Layers3 />
+                    <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
+                  </span>
+                )}
+                renderOption={(profile) => <span className="select-copy"><strong>{profile.slug}</strong><small>{profile.id === "none" ? "Launch without managed skills" : "Apply on new sessions"}</small></span>}
+              />
+              <button className="launch-setting-row" type="button" onClick={() => setConfigOpen(true)}>
+                <Code2 />
+                <span><small>Launch script</small><strong>{selectedConfig?.name ?? "None"}</strong></span>
+                <ChevronRight />
+              </button>
+            </div>
           </>
         ) : (
           <div className="quiet-message">No Agent CLI integrations found.</div>

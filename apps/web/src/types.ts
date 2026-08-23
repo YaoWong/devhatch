@@ -78,7 +78,7 @@ export type ConfirmAction = {
   action: () => Promise<void>;
 };
 export type ConnectionPhase = "connecting" | "connected" | "reconnecting" | "disconnected" | "exited";
-export type DetailMode = "terminal" | "agent" | "webapp" | "settings";
+export type DetailMode = "terminal" | "agent" | "skills" | "webapp" | "settings";
 export type RailPage = "modes" | DetailMode;
 export type WorkspaceMode = DetailMode;
 export type RailMotion = "forward" | "return" | null;
@@ -113,3 +113,34 @@ export type DirectoryListing = {
   directories: { name: string; path: string }[];
 };
 export type DeleteTarget = { id: string; name: string; cwd: string; kind: "terminal" | "agent session" };
+
+export type SkillRepository = {
+  id: string;
+  name: string;
+  url: string;
+  gitRef: string | null;
+  commitHash: string;
+  syncVersion: number;
+};
+export type Skill = {
+  id: string;
+  slug: string;
+  description: string;
+  sourceType: string;
+  repositoryId: string | null;
+  revision: string | null;
+  relativePath: string | null;
+};
+export type SkillProfile = { id: string; slug: string };
+export type SkillProfileDetail = { profile: SkillProfile; skills: Skill[] };
+export type SkillSyncItem = { id: string | null; slug: string; relativePath: string };
+export type SkillSyncPlan = {
+  repositoryId: string;
+  oldCommit: string | null;
+  newCommit: string;
+  noop: boolean;
+  add: SkillSyncItem[];
+  update: SkillSyncItem[];
+  remove: SkillSyncItem[];
+};
+export type SkillSyncResult = SkillSyncPlan;

@@ -44,6 +44,7 @@ pub(crate) struct AgentCreateRequest {
     rows: Option<serde_json::Value>,
     upstream_session_id: Option<String>,
     launch_config_id: Option<String>,
+    skill_profile_id: Option<String>,
 }
 
 impl AgentCreateRequest {
@@ -141,11 +142,20 @@ pub async fn create(
     if invalid_cwd(terminal_request.cwd.as_ref()) {
         return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
     }
+    let skill_generation = if let Some(profile_id) = request.skill_profile_id.as_deref() {
+        match state.skillink().apply_profile(profile_id).await {
+            Ok(generation) => Some(generation),
+            Err(error) => return crate::skillink::skillink_error(error),
+        }
+    } else {
+        None
+    };
     let session = match spawn(
         state.clone(),
         terminal_request,
         upstream_session_id,
         launch_config,
+        skill_generation.as_deref(),
     ) {
         Ok(value) => value,
         Err(error) => {
@@ -243,6 +253,7 @@ pub(crate) fn spawn(
     request: CreateRequest,
     upstream_session_id: Option<String>,
     launch_config: AgentLaunchConfig,
+    skill_generation: Option<&FilePath>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
     let fallback_cwd = default_cwd();
     let requested_cwd = request
@@ -263,6 +274,12 @@ pub(crate) fn spawn(
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
+    if let Some(generation) = skill_generation
+        && let Err(error) = copy_skills(&run_dir, generation)
+    {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
     let wrapper = run_dir.join("launch.sh");
     if let Err(error) = write_wrapper(&wrapper, &launch_config) {
         let _ = std::fs::remove_dir_all(&run_dir);
@@ -285,6 +302,14 @@ pub(crate) fn spawn(
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
     command.env("DEVHATCH_CWD", &cwd);
     command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    command.env_remove("OPENCODE_CONFIG");
+    command.env_remove("OPENCODE_CONFIG_CONTENT");
+    command.env_remove("OPENCODE_CONFIG_DIR");
+    command.env_remove("BYTE_API_PROVIDER_ID");
+    command.env_remove("BYTE_API_SERVER_URL");
+    if skill_generation.is_some() {
+        command.env("OPENCODE_CONFIG_DIR", &run_dir);
+    }
     let endpoint = event_endpoint.clone();
     let app_state = state.clone();
     let cleanup_path = run_dir.clone();
@@ -323,6 +348,37 @@ fn create_run_dir(data_dir: &FilePath) -> std::io::Result<PathBuf> {
     std::fs::create_dir(&run_dir)?;
     std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))?;
     Ok(run_dir)
+}
+
+fn copy_skills(run_dir: &FilePath, generation: &FilePath) -> std::io::Result<()> {
+    let skills = run_dir.join("skills");
+    std::fs::create_dir(&skills)?;
+    for entry in std::fs::read_dir(generation)? {
+        let entry = entry?;
+        let source = std::fs::canonicalize(entry.path())?;
+        copy_skill_directory(&source, &skills.join(entry.file_name()))?;
+    }
+    Ok(())
+}
+
+fn copy_skill_directory(source: &FilePath, destination: &FilePath) -> std::io::Result<()> {
+    std::fs::create_dir(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_skill_directory(&entry.path(), &target)?;
+        } else if file_type.is_file() {
+            std::fs::copy(entry.path(), target)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "skill contains an unsupported filesystem entry",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn write_wrapper(path: &FilePath, config: &AgentLaunchConfig) -> std::io::Result<()> {

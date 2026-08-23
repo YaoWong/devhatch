@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Globe2, Settings, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
 import type { RefObject } from "react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../types";
 import { Brand } from "../Branding";
@@ -20,6 +20,7 @@ export function NavigationRail({
   onNavigate,
   terminalContent,
   agentContent,
+  skillsContent,
   webAppContent,
 }: {
   railPage: RailPage;
@@ -34,6 +35,7 @@ export function NavigationRail({
   onNavigate: (page: RailPage, motion: Exclude<RailMotion, null>) => void;
   terminalContent: React.ReactNode;
   agentContent: React.ReactNode;
+  skillsContent: React.ReactNode;
   webAppContent: React.ReactNode;
 }) {
   const pageClass = (page: DetailMode) =>
@@ -68,6 +70,12 @@ export function NavigationRail({
               onNavigate={onNavigate}
             />
             <ModeButton
+              mode="skills"
+              modeRefs={modeRefs}
+              active={workspaceMode === "skills"}
+              onNavigate={onNavigate}
+            />
+            <ModeButton
               mode="webapp"
               modeRefs={modeRefs}
               active={workspaceMode === "webapp"}
@@ -80,7 +88,7 @@ export function NavigationRail({
               onNavigate={onNavigate}
             />
           </nav>
-          <div className="mode-footer">⌘ 1–4</div>
+          <div className="mode-footer">⌘ 1–5</div>
         </section>
         <DetailPage
           mode="terminal"
@@ -101,6 +109,16 @@ export function NavigationRail({
           onNavigate={onNavigate}
         >
           {agentContent}
+        </DetailPage>
+        <DetailPage
+          mode="skills"
+          className={pageClass("skills")}
+          railMotion={railMotion}
+          pageRefs={pageRefs}
+          titleRefs={titleRefs}
+          onNavigate={onNavigate}
+        >
+          {skillsContent}
         </DetailPage>
         <DetailPage
           mode="webapp"
@@ -153,6 +171,7 @@ function ModeButton({
   const meta = {
     terminal: { icon: SquareTerminal, label: "Terminal" },
     agent: { icon: Bot, label: "Agent CLI" },
+    skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
     settings: { icon: Settings, label: "Settings" },
   }[mode];
@@ -192,6 +211,7 @@ function DetailPage({
   const meta = {
     terminal: { icon: SquareTerminal, label: "Terminal" },
     agent: { icon: Bot, label: "Agent CLI" },
+    skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
     settings: { icon: Settings, label: "Settings" },
   }[mode];

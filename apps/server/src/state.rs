@@ -5,6 +5,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use skillink::Skillink;
 use sqlx::SqlitePool;
 
 use crate::{
@@ -20,6 +21,7 @@ pub struct AppState {
     pool: SqlitePool,
     history_pool: Option<SqlitePool>,
     web_apps: Arc<WebAppManager>,
+    skillink: Skillink,
     auth: AuthState,
 }
 
@@ -28,6 +30,7 @@ impl AppState {
         data_dir: PathBuf,
         pool: SqlitePool,
         history_pool: Option<SqlitePool>,
+        skillink: Skillink,
         setup_token: Option<&str>,
     ) -> Self {
         let web_apps = Arc::new(WebAppManager::new(&data_dir));
@@ -38,6 +41,7 @@ impl AppState {
             pool,
             history_pool,
             web_apps,
+            skillink,
             auth: AuthState::new(setup_token),
         }
     }
@@ -90,6 +94,10 @@ impl AppState {
 
     pub(crate) fn web_apps(&self) -> Arc<WebAppManager> {
         self.web_apps.clone()
+    }
+
+    pub(crate) fn skillink(&self) -> &Skillink {
+        &self.skillink
     }
 
     pub(crate) fn auth(&self) -> &AuthState {

@@ -6,6 +6,7 @@ import { WorkspacePicker } from "./WorkspacePicker";
 import { useAgentWorkspace } from "./controllers/useAgentWorkspace";
 import { useInitialWorkspaceData } from "./controllers/useInitialWorkspaceData";
 import { useNavigation } from "./controllers/useNavigation";
+import { useSkillsWorkspace } from "./controllers/useSkillsWorkspace";
 import { useTerminalWorkspace } from "./controllers/useTerminalWorkspace";
 import { useWebApps } from "./controllers/useWebApps";
 import type { ConfirmAction, ConnectionPhase, DeleteTarget, TerminalInfo } from "./types";
@@ -14,6 +15,8 @@ import { AgentRailPage } from "./views/AgentRailPage";
 import { AgentWorkspace } from "./views/AgentWorkspace";
 import { NavigationRail } from "./views/NavigationRail";
 import { SettingsView } from "./views/SettingsView";
+import { SkillsRailPage, type SkillsSection } from "./views/SkillsRailPage";
+import { SkillsWorkspace } from "./views/SkillsWorkspace";
 import { TerminalWorkspace } from "./views/TerminalWorkspace";
 import { WebAppsRailPage, WebAppsWorkspace } from "./views/WebApps";
 import { WorkspaceList } from "./views/WorkspaceList";
@@ -33,6 +36,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
@@ -47,6 +51,10 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
     onLaunched: closePicker,
   });
   const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
+  const skills = useSkillsWorkspace(
+    navigation.workspaceMode === "skills" || navigation.workspaceMode === "agent",
+    reportError,
+  );
 
   const {
     initializeAgents,
@@ -123,6 +131,8 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const modeSubtitle =
     navigation.workspaceMode === "settings"
       ? "Preferences for your DevHatch workspace"
+      : navigation.workspaceMode === "skills"
+        ? "Repositories, reusable skills, and launch profiles"
       : navigation.workspaceMode === "webapp"
         ? webApps.openDesign?.running
           ? `OpenDesign v${webApps.openDesign.version ?? ""} · Running locally`
@@ -208,6 +218,8 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
             selectedAgent={agent.selectedAgent}
             configs={agent.configs}
             selectedConfigId={agent.selectedConfigId}
+            profiles={skills.profiles}
+            selectedProfileId={agent.selectedSkillProfileId}
             paths={agent.selectedPaths}
             selectedPathId={agent.selectedPathId}
             includeSubdirectories={agent.includeSubdirectories}
@@ -219,6 +231,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
             homePaths={homePaths}
             onSelectAgent={agent.setSelectedAgentId}
             onSelectConfig={agent.setSelectedConfigId}
+            onSelectProfile={agent.setSelectedSkillProfileId}
             onCreateConfig={agent.createConfig}
             onUpdateConfig={agent.updateConfig}
             onDeleteConfig={agent.deleteConfig}
@@ -237,6 +250,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
             onDeleteHistory={agent.deleteHistorySession}
           />
         }
+        skillsContent={<SkillsRailPage section={skillsSection} onSelect={setSkillsSection} />}
         webAppContent={
           <WebAppsRailPage
             app={webApps.openDesign}
@@ -329,6 +343,14 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
             onUpdate={webApps.update}
             onCheckUpdate={webApps.checkUpdate}
             onConfirm={setConfirmAction}
+            onDismissError={() => setError(null)}
+          />
+        )}
+        {navigation.workspaceMode === "skills" && (
+          <SkillsWorkspace
+            section={skillsSection}
+            controller={skills}
+            error={error}
             onDismissError={() => setError(null)}
           />
         )}

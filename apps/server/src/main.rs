@@ -7,6 +7,7 @@ mod launch_config;
 mod launch_path;
 mod session;
 mod session_socket;
+mod skillink;
 mod state;
 mod terminal;
 mod web_app;
@@ -53,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect_with(options)
         .await?;
     sqlx::migrate!().run(&pool).await?;
+    let skillink = ::skillink::Skillink::open(Some(data_dir.join("skillink"))).await?;
 
     let history_pool = open_history_pool().await;
     let initialized =
@@ -73,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_dir,
         pool,
         history_pool,
+        skillink,
         setup_token.as_deref(),
     ));
     let protected = Router::new()
@@ -90,6 +93,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             patch(launch_config::update).delete(launch_config::remove),
         )
         .route("/api/agents/opencode/history", get(history::list))
+        .route(
+            "/api/skill-repositories",
+            get(skillink::list_repositories).post(skillink::create_repository),
+        )
+        .route(
+            "/api/skill-repositories/{id}",
+            axum::routing::delete(skillink::remove_repository),
+        )
+        .route(
+            "/api/skill-repositories/{id}/sync-preview",
+            axum::routing::post(skillink::preview_repository_sync),
+        )
+        .route(
+            "/api/skill-repositories/{id}/sync",
+            axum::routing::post(skillink::sync_repository),
+        )
+        .route(
+            "/api/skills",
+            get(skillink::list_skills).post(skillink::create_skill),
+        )
+        .route(
+            "/api/skills/import",
+            axum::routing::post(skillink::import_skill),
+        )
+        .route("/api/skills/{id}/manifest", get(skillink::skill_manifest))
+        .route(
+            "/api/skills/{id}",
+            axum::routing::delete(skillink::remove_skill),
+        )
+        .route(
+            "/api/skill-profiles",
+            get(skillink::list_profiles).post(skillink::create_profile),
+        )
+        .route("/api/skill-profiles/{id}", get(skillink::profile_detail))
+        .route(
+            "/api/skill-profiles/{id}/skills",
+            axum::routing::put(skillink::replace_profile_skills),
+        )
+        .route(
+            "/api/skill-profiles/{profileId}/skills/{skillId}",
+            axum::routing::post(skillink::enable_profile_skill)
+                .delete(skillink::disable_profile_skill),
+        )
         .route(
             "/api/agents/opencode/history/{id}",
             axum::routing::delete(history::remove),

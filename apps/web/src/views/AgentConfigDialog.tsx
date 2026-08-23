@@ -3,7 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentLaunchConfig, AgentLaunchConfigInput } from "../types";
 
-type Draft = AgentLaunchConfigInput & { id: string | null };
+type ScriptParts = Pick<AgentLaunchConfigInput, "preLaunchScript" | "providerScript" | "tuiScript">;
+type Draft = Pick<AgentLaunchConfigInput, "agentId" | "name" | "isDefault"> & ScriptParts & {
+  id: string | null;
+  launchScript: string;
+};
+
+const joinScripts = ({ preLaunchScript, providerScript, tuiScript }: ScriptParts) => {
+  let source = "";
+  for (const script of [preLaunchScript, providerScript, tuiScript]) {
+    source += script;
+    if (script && !script.endsWith("\n")) source += "\n";
+  }
+  return source;
+};
 
 const emptyDraft = (): Draft => ({
   id: null,
@@ -13,6 +26,7 @@ const emptyDraft = (): Draft => ({
   preLaunchScript: "",
   providerScript: "",
   tuiScript: "",
+  launchScript: "",
 });
 
 const configDraft = (config: AgentLaunchConfig): Draft => ({
@@ -23,6 +37,7 @@ const configDraft = (config: AgentLaunchConfig): Draft => ({
   preLaunchScript: config.preLaunchScript,
   providerScript: config.providerScript,
   tuiScript: config.tuiScript,
+  launchScript: joinScripts(config),
 });
 
 export function AgentConfigDialog({
@@ -45,6 +60,7 @@ export function AgentConfigDialog({
   const initial = configs.find((config) => config.id === selectedConfigId) ?? configs[0];
   const [draft, setDraft] = useState<Draft>(() => (initial ? configDraft(initial) : emptyDraft()));
   const [busy, setBusy] = useState(false);
+  const [scriptError, setScriptError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     nameRef.current?.focus();
@@ -55,6 +71,7 @@ export function AgentConfigDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [busy, onClose]);
   const select = (config: AgentLaunchConfig) => {
+    setScriptError(null);
     setDraft(configDraft(config));
     onSelect(config.id);
   };
@@ -65,14 +82,20 @@ export function AgentConfigDialog({
       nameRef.current?.focus();
       return;
     }
+    const scriptChanged = draft.launchScript !== joinScripts(draft);
+    if (scriptChanged && new TextEncoder().encode(draft.launchScript).length > 65_536) {
+      setScriptError("Launch script must not exceed 65,536 bytes.");
+      return;
+    }
+    setScriptError(null);
     setBusy(true);
     const input: AgentLaunchConfigInput = {
       agentId: draft.agentId,
       name: draft.name.trim(),
       isDefault: draft.isDefault,
-      preLaunchScript: draft.preLaunchScript,
-      providerScript: draft.providerScript,
-      tuiScript: draft.tuiScript,
+      preLaunchScript: scriptChanged ? draft.launchScript : draft.preLaunchScript,
+      providerScript: scriptChanged ? "" : draft.providerScript,
+      tuiScript: scriptChanged ? "" : draft.tuiScript,
     };
     const saved = draft.id ? await onUpdate(draft.id, input) : await onCreate(input);
     setBusy(false);
@@ -99,7 +122,7 @@ export function AgentConfigDialog({
         </header>
         <div className="config-body">
           <aside aria-label="Launch configs">
-            <button className="new-config" type="button" onClick={() => setDraft(emptyDraft())}>
+            <button className="new-config" type="button" onClick={() => { setScriptError(null); setDraft(emptyDraft()); }}>
               <Plus /> New config
             </button>
             {configs.map((config) => (
@@ -124,10 +147,16 @@ export function AgentConfigDialog({
               <input type="checkbox" checked={draft.isDefault} onChange={(event) => update("isDefault", event.target.checked)} />
               Make this the default config
             </label>
-            <p className="form-message">Exports flow through the scripts and into OpenCode.</p>
-            <ScriptField label="Pre-launch script" value={draft.preLaunchScript} onChange={(value) => update("preLaunchScript", value)} />
-            <ScriptField label="Provider script" value={draft.providerScript} onChange={(value) => update("providerScript", value)} />
-            <ScriptField label="TUI script" value={draft.tuiScript} onChange={(value) => update("tuiScript", value)} />
+            <p className="form-message">Runs in /bin/sh before OpenCode. Environment changes remain available to OpenCode.</p>
+            <ScriptField
+              label="Launch script"
+              value={draft.launchScript}
+              onChange={(value) => {
+                setScriptError(null);
+                update("launchScript", value);
+              }}
+            />
+            {scriptError && <p className="form-error">{scriptError}</p>}
             <footer>
               {draft.id && !draft.isDefault && (
                 <button className="delete-text" type="button" disabled={busy} onClick={() => void remove()}>
