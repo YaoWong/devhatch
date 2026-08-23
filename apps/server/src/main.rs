@@ -31,13 +31,16 @@ const PORT: u16 = 4173;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let apps_dir = manifest_dir
         .parent()
-        .expect("backend crate must be inside the project root")
-        .to_path_buf();
+        .expect("server crate must be inside the apps directory");
+    let workspace_root = apps_dir
+        .parent()
+        .expect("apps directory must be inside the workspace root");
     let data_dir = env::var_os("DEVHATCH_DATA_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| project_root.join("data"));
+        .unwrap_or_else(|| workspace_root.join("data"));
     std::fs::create_dir_all(&data_dir)?;
     let database_url = format!("sqlite://{}", data_dir.join("devhatch.sqlite3").display());
     let options = SqliteConnectOptions::from_str(&database_url)?
@@ -148,7 +151,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/{*path}", axum::routing::any(api_not_found))
         .layer(middleware::from_fn(require_trusted_request))
         .with_state(state.clone());
-    let dist = project_root.join("dist");
+    let dist = env::var_os("DEVHATCH_WEB_DIST")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| apps_dir.join("web/dist"));
     let app = if dist.exists() {
         api.fallback_service(
             ServeDir::new(&dist).not_found_service(ServeFile::new(dist.join("index.html"))),

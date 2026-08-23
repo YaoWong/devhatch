@@ -7,11 +7,11 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-target
-data
+/node_modules/
+/apps/web/dist/
+/apps/web/dist-ssr/
+/target/
+/data/
 *.local
 
 # Editor directories and files

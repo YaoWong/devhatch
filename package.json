@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n build,server \"vite build --watch\" \"cargo run --manifest-path backend/Cargo.toml\"",
-    "start": "cargo run --manifest-path backend/Cargo.toml --release",
-    "typecheck": "tsc -b",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint src vite.config.ts",
+    "dev": "concurrently -k -n build,server \"vite build --watch --config apps/web/vite.config.ts\" \"cargo run -p devhatch-server\"",
+    "start": "cargo run -p devhatch-server --release",
+    "typecheck": "tsc -b apps/web/tsconfig.json",
+    "build": "tsc -b apps/web/tsconfig.json && vite build --config apps/web/vite.config.ts",
+    "lint": "oxlint apps/web/src apps/web/vite.config.ts",
     "preview": "npm start"
   },
   "dependencies": {
