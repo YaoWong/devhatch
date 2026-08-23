@@ -1,5 +1,5 @@
 use super::{
-    discovery::{DiscoveredSkill, discover_repository},
+    discovery::{DiscoveredSkill, discover_repository, materialize_internal_file_links},
     store::ExistingSkill,
     sync::build_plan,
 };
@@ -61,11 +61,33 @@ async fn initialized_repository(temp: &TempDir, manifest: &str) -> (Skillink, Pa
     let discovered = discover_repository(&checkout).unwrap();
     app.publish_revision(&checkout, &app.repository_revision(&id, &revision))
         .unwrap();
-    app.insert_repository(&id, url, Some("main"), &revision, &discovered)
+    app.insert_repository(&id, url, url, Some("main"), &revision, &discovered)
         .await
         .unwrap();
     let repository = app.get_repository(&id).await.unwrap();
     (app, source, repository)
+}
+
+#[tokio::test]
+async fn renames_repository() {
+    let temp = TempDir::new().unwrap();
+    let (app, source, repository) =
+        initialized_repository(&temp, "---\nname: alpha\ndescription: Alpha\n---\n").await;
+    assert_eq!(repository.name, source.to_str().unwrap());
+
+    let renamed = app
+        .rename_repository(&repository.id, "Shared Skills")
+        .await
+        .unwrap();
+    assert_eq!(renamed.name, "Shared Skills");
+    assert_eq!(
+        app.list_repositories().await.unwrap()[0].name,
+        "Shared Skills"
+    );
+    assert!(matches!(
+        app.rename_repository(&repository.id, "  ").await,
+        Err(Error::InvalidRepositoryName)
+    ));
 }
 
 #[test]
@@ -94,6 +116,94 @@ fn discovers_nested_skill_directories() {
             ("alpha", "skills/alpha"),
             ("nested", "skills/engineering/nested"),
         ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ignores_links_outside_non_root_skills() {
+    use std::os::unix::fs::symlink;
+
+    let temp = TempDir::new().unwrap();
+    let repository = temp.path().join("repository");
+    write_skill(&repository, "skills/alpha", "---\nname: alpha\n---\n");
+    fs::create_dir_all(repository.join(".agents/skills/skill-creator")).unwrap();
+    fs::create_dir_all(repository.join(".claude/skills")).unwrap();
+    symlink(
+        "../../.agents/skills/skill-creator",
+        repository.join(".claude/skills/skill-creator"),
+    )
+    .unwrap();
+
+    materialize_internal_file_links(&repository).unwrap();
+    assert!(
+        repository
+            .join(".claude/skills/skill-creator")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(discover_repository(&repository).unwrap().len(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn materializes_only_internal_file_links() {
+    use std::os::unix::fs::symlink;
+
+    let temp = TempDir::new().unwrap();
+    let repository = temp.path().join("repository");
+    let outside = temp.path().join("outside.md");
+    fs::create_dir_all(repository.join("skills/source/references")).unwrap();
+    fs::create_dir_all(repository.join("skills/consumer/references")).unwrap();
+    fs::write(
+        repository.join("skills/source/references/invocation.md"),
+        "shared",
+    )
+    .unwrap();
+    symlink(
+        "../../source/references/invocation.md",
+        repository.join("skills/consumer/references/invocation.md"),
+    )
+    .unwrap();
+    materialize_internal_file_links(&repository).unwrap();
+    let materialized = repository.join("skills/consumer/references/invocation.md");
+    assert!(
+        materialized
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_file()
+    );
+    assert_eq!(fs::read_to_string(materialized).unwrap(), "shared");
+
+    fs::write(&outside, "private").unwrap();
+    symlink(
+        &outside,
+        repository.join("skills/consumer/references/unsafe.md"),
+    )
+    .unwrap();
+    assert!(matches!(
+        materialize_internal_file_links(&repository),
+        Err(Error::UnsafeEntry(path)) if path.ends_with("skills/consumer/references/unsafe.md")
+    ));
+}
+
+#[test]
+fn discovers_yaml_block_description() {
+    let temp = TempDir::new().unwrap();
+    write_skill(
+        temp.path(),
+        "skills/bytedance-merlin",
+        "---\nname: bytedance-merlin\ndescription: |\n  Merlin 平台用于训练、部署 LLM 模型。\n\n  触发词：Merlin、训练任务、GPU。\n---\n\n# Merlin\n",
+    );
+    let discovered = discover_repository(temp.path()).unwrap();
+    assert_eq!(discovered.len(), 1);
+    assert_eq!(discovered[0].slug, "bytedance-merlin");
+    assert_eq!(
+        discovered[0].description,
+        "Merlin 平台用于训练、部署 LLM 模型。\n\n触发词：Merlin、训练任务、GPU。"
     );
 }
 

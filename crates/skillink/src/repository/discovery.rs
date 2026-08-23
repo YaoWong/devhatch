@@ -2,6 +2,7 @@ use crate::{
     Error, Result,
     validation::{path_to_db, validate_slug},
 };
+use serde::Deserialize;
 use std::{collections::BTreeMap, fs, path::Path};
 use walkdir::WalkDir;
 
@@ -13,6 +14,57 @@ pub(super) struct DiscoveredSkill {
     pub(super) slug: String,
     pub(super) description: String,
     pub(super) relative_path: String,
+}
+
+pub(super) fn materialize_internal_file_links(root: &Path) -> Result<()> {
+    let scan_root = if root.join("SKILL.md").exists() {
+        root
+    } else {
+        let skills = root.join("skills");
+        if !skills.exists() {
+            return Ok(());
+        }
+        if !skills.symlink_metadata()?.file_type().is_dir() {
+            return Err(Error::UnsafeEntry(skills.display().to_string()));
+        }
+        return materialize_links_under(root, &skills);
+    };
+    materialize_links_under(root, scan_root)
+}
+
+fn materialize_links_under(root: &Path, scan_root: &Path) -> Result<()> {
+    let canonical_root = root.canonicalize()?;
+    let mut links = Vec::new();
+    for entry in WalkDir::new(scan_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| entry.depth() == 0 || entry.file_name() != ".git")
+    {
+        let entry = entry?;
+        if entry.file_type().is_symlink() {
+            links.push(entry.path().to_owned());
+        }
+    }
+    for link in links {
+        let target = fs::read_link(&link)?;
+        if target.is_absolute() {
+            return Err(Error::UnsafeEntry(link.display().to_string()));
+        }
+        let resolved = link
+            .parent()
+            .ok_or_else(|| Error::UnsafeEntry(link.display().to_string()))?
+            .join(target)
+            .canonicalize()
+            .map_err(|_| Error::UnsafeEntry(link.display().to_string()))?;
+        if !resolved.starts_with(&canonical_root) || !resolved.metadata()?.file_type().is_file() {
+            return Err(Error::UnsafeEntry(link.display().to_string()));
+        }
+        let permissions = resolved.metadata()?.permissions();
+        fs::remove_file(&link)?;
+        fs::copy(&resolved, &link)?;
+        fs::set_permissions(&link, permissions)?;
+    }
+    Ok(())
 }
 
 pub(super) fn discover_repository(root: &Path) -> Result<Vec<DiscoveredSkill>> {
@@ -113,6 +165,7 @@ fn validate_skill_directory(directory: &Path, root: bool) -> Result<()> {
     Ok(())
 }
 
+#[derive(Deserialize)]
 struct Manifest {
     name: Option<String>,
     description: Option<String>,
@@ -137,29 +190,14 @@ fn parse_manifest(path: &Path) -> Result<Manifest> {
             message: "frontmatter must start with ---".into(),
         });
     }
-    let mut name = None;
-    let mut description = None;
+    let mut frontmatter = Vec::new();
     let mut closed = false;
     for line in lines {
         if line == "---" {
             closed = true;
             break;
         }
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Some((key, value)) = line.split_once(':') else {
-            return Err(Error::Manifest {
-                path: path.display().to_string(),
-                message: format!("malformed frontmatter line: {line}"),
-            });
-        };
-        let value = value.trim().trim_matches(['\'', '"']).to_owned();
-        match key.trim() {
-            "name" => name = (!value.is_empty()).then_some(value),
-            "description" => description = Some(value),
-            _ => {}
-        }
+        frontmatter.push(line);
     }
     if !closed {
         return Err(Error::Manifest {
@@ -167,7 +205,10 @@ fn parse_manifest(path: &Path) -> Result<Manifest> {
             message: "frontmatter closing --- is required".into(),
         });
     }
-    Ok(Manifest { name, description })
+    serde_yaml::from_str(&frontmatter.join("\n")).map_err(|error| Error::Manifest {
+        path: path.display().to_string(),
+        message: format!("invalid frontmatter: {error}"),
+    })
 }
 
 fn validate_manifest_slug(slug: &str, path: &str) -> Result<()> {

@@ -1,6 +1,6 @@
 use super::{
     SyncItem, SyncPlan, SyncResult,
-    discovery::{DiscoveredSkill, discover_repository},
+    discovery::{DiscoveredSkill, discover_repository, materialize_internal_file_links},
     git::valid_commit,
     store::ExistingSkill,
 };
@@ -88,7 +88,9 @@ impl Skillink {
         let (new_commit, checkout) = self
             .clone_repository(&repository.url, repository.git_ref.as_deref(), local)
             .await?;
-        let discovered = match discover_repository(&checkout) {
+        let discovered = match materialize_internal_file_links(&checkout)
+            .and_then(|()| discover_repository(&checkout))
+        {
             Ok(discovered) => discovered,
             Err(error) => {
                 let _ = fs::remove_dir_all(checkout);

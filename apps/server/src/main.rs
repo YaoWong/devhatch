@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route(
             "/api/skill-repositories/{id}",
-            axum::routing::delete(skillink::remove_repository),
+            patch(skillink::update_repository).delete(skillink::remove_repository),
         )
         .route(
             "/api/skill-repositories/{id}/sync-preview",

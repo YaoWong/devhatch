@@ -55,7 +55,19 @@ pub(super) fn parse_repository_address(value: &str) -> Result<RepositoryAddress>
 pub fn repository_name(value: &str) -> String {
     parse_repository_address(value)
         .map(|address| address.name)
-        .unwrap_or_else(|_| value.to_owned())
+        .unwrap_or_else(|_| fallback_repository_name(value))
+}
+
+fn fallback_repository_name(value: &str) -> String {
+    let value = value.trim().trim_end_matches('/');
+    let path = value.rsplit_once(':').map_or(value, |(_, path)| path);
+    let name = path.rsplit('/').next().unwrap_or(value);
+    let name = strip_git_suffix(name);
+    if name.is_empty() {
+        value.to_owned()
+    } else {
+        name.to_owned()
+    }
 }
 
 fn normalize_url(mut url: Url) -> Result<RepositoryAddress> {

@@ -281,7 +281,7 @@ pub(crate) fn spawn(
         return Err(error.into());
     }
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, skill_generation.is_some()) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -381,12 +381,16 @@ fn copy_skill_directory(source: &FilePath, destination: &FilePath) -> std::io::R
     Ok(())
 }
 
-fn write_wrapper(path: &FilePath, config: &AgentLaunchConfig) -> std::io::Result<()> {
-    std::fs::write(path, wrapper_source(config))?;
+fn write_wrapper(
+    path: &FilePath,
+    config: &AgentLaunchConfig,
+    use_managed_skills: bool,
+) -> std::io::Result<()> {
+    std::fs::write(path, wrapper_source(config, use_managed_skills))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
 }
 
-fn wrapper_source(config: &AgentLaunchConfig) -> String {
+fn wrapper_source(config: &AgentLaunchConfig, use_managed_skills: bool) -> String {
     let mut source = String::from("#!/bin/sh\nset -e\n");
     for script in [
         &config.pre_launch_script,
@@ -397,6 +401,19 @@ fn wrapper_source(config: &AgentLaunchConfig) -> String {
         if !script.ends_with('\n') {
             source.push('\n');
         }
+    }
+    if use_managed_skills {
+        source.push_str(
+            "devhatch_base_config_dir=${OPENCODE_CONFIG_DIR:-}\n\
+             if [ -n \"$devhatch_base_config_dir\" ] && [ \"$devhatch_base_config_dir\" != \"$DEVHATCH_CONFIG_DIR\" ] && [ -d \"$devhatch_base_config_dir\" ]; then\n\
+             for devhatch_entry in agents agent commands command plugins tools themes tui.json tui.jsonc package.json package-lock.json bun.lock bun.lockb node_modules; do\n\
+             if [ -e \"$devhatch_base_config_dir/$devhatch_entry\" ] && [ ! -e \"$DEVHATCH_CONFIG_DIR/$devhatch_entry\" ]; then\n\
+             ln -s \"$devhatch_base_config_dir/$devhatch_entry\" \"$DEVHATCH_CONFIG_DIR/$devhatch_entry\"\n\
+             fi\n\
+             done\n\
+             fi\n\
+             export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\"\n",
+        );
     }
     source.push_str("exec \"$@\"\n");
     source
@@ -700,8 +717,37 @@ mod tests {
             updated_at: 0,
         };
         assert_eq!(
-            wrapper_source(&config),
+            wrapper_source(&config, false),
             "#!/bin/sh\nset -e\nexport A='one'\nprintf '%s\\n' \"$A\"\ncase x in x) :;; esac\nexec \"$@\"\n"
+        );
+    }
+
+    #[test]
+    fn restores_managed_config_directory_after_launch_scripts() {
+        let config = AgentLaunchConfig {
+            id: "id".into(),
+            agent_id: "opencode".into(),
+            name: "Name".into(),
+            is_default: true,
+            pre_launch_script: String::new(),
+            provider_script: "export OPENCODE_CONFIG_DIR=/base/config".into(),
+            tui_script: String::new(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        let source = wrapper_source(&config, true);
+        assert!(source.contains("devhatch_base_config_dir=${OPENCODE_CONFIG_DIR:-}"));
+        assert!(source.contains("ln -s \"$devhatch_base_config_dir/$devhatch_entry\""));
+        assert!(
+            source.contains("export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\"\nexec \"$@\"")
+        );
+        assert!(
+            source
+                .find("export OPENCODE_CONFIG_DIR=/base/config")
+                .unwrap()
+                < source
+                    .find("export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\"")
+                    .unwrap()
         );
     }
 

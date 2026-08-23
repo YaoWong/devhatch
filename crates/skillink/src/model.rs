@@ -4,6 +4,7 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Repository {
     pub id: String,
+    pub name: String,
     pub url: String,
     pub git_ref: Option<String>,
     pub commit_hash: String,

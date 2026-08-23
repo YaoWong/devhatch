@@ -12,6 +12,7 @@ import {
   previewSkillRepositorySync,
   replaceSkillProfileSkills,
   syncSkillRepository,
+  updateSkillRepository,
 } from "../api";
 import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan } from "../types";
 
@@ -22,6 +23,7 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [profileDetail, setProfileDetail] = useState<SkillProfileDetail | null>(null);
   const [syncPlan, setSyncPlan] = useState<SkillSyncPlan | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -57,28 +59,35 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
         if (current) setProfileDetail(skillProfileDetail);
       })
       .catch((reason) => {
-        if (current) reportError(reason instanceof Error ? reason.message : String(reason));
+        if (current) setProfileError(reason instanceof Error ? reason.message : String(reason));
       });
     return () => {
       current = false;
     };
   }, [reportError, selectedProfileId]);
 
-  const mutate = useCallback(async (action: () => Promise<unknown>, after?: () => Promise<void>) => {
+  const mutate = useCallback(async (
+    action: () => Promise<unknown>,
+    after?: () => Promise<void>,
+    onError: (message: string) => void = reportError,
+  ) => {
     setBusy(true);
     try {
       await action();
       await (after?.() ?? refresh());
       return true;
     } catch (reason) {
-      reportError(reason instanceof Error ? reason.message : String(reason));
+      onError(reason instanceof Error ? reason.message : String(reason));
       return false;
     } finally {
       setBusy(false);
     }
   }, [refresh, reportError]);
 
-  const selectProfile = useCallback(async (id: string) => setSelectedProfileId(id), []);
+  const selectProfile = useCallback(async (id: string) => {
+    setProfileError(null);
+    setSelectedProfileId(id);
+  }, []);
   const reloadProfile = useCallback(async () => {
     if (!selectedProfileId) return;
     const { skillProfileDetail } = await getSkillProfile(selectedProfileId);
@@ -92,9 +101,12 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     selectedProfileId,
     profileDetail,
     syncPlan,
+    profileError,
+    dismissProfileError: () => setProfileError(null),
     busy,
     selectProfile,
     addRepository: (url: string, gitRef: string) => mutate(() => createSkillRepository({ url, gitRef: gitRef || undefined })),
+    renameRepository: (id: string, name: string) => mutate(() => updateSkillRepository(id, { name })),
     deleteRepository: (id: string) => mutate(() => deleteSkillRepository(id)),
     previewSync: async (id: string) => {
       setBusy(true);
@@ -114,17 +126,23 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     createSkill: (slug: string, description: string) => mutate(() => createSkill({ slug, description })),
     deleteSkill: (id: string) => mutate(() => deleteSkill(id)),
     createProfile: async (slug: string) => {
+      setProfileError(null);
       let id: string | null = null;
       const saved = await mutate(async () => {
         const { skillProfile } = await createSkillProfile({ slug });
         id = skillProfile.id;
-      });
+      }, undefined, setProfileError);
       if (saved && id) setSelectedProfileId(id);
       return saved;
     },
     saveProfile: (skillIds: string[]) => {
       if (!selectedProfileId) return Promise.resolve(false);
-      return mutate(() => replaceSkillProfileSkills(selectedProfileId, skillIds), reloadProfile);
+      setProfileError(null);
+      return mutate(
+        () => replaceSkillProfileSkills(selectedProfileId, skillIds),
+        reloadProfile,
+        setProfileError,
+      );
     },
   };
 }

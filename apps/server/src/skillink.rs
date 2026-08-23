@@ -7,9 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use skillink::{
-    Error, Profile, ProfileDetail, Repository, Skill, SyncItem, SyncPlan, repository_name,
-};
+use skillink::{Error, Profile, ProfileDetail, Repository, Skill, SyncItem, SyncPlan};
 
 use crate::state::AppState;
 
@@ -79,6 +77,12 @@ pub(crate) struct CreateRepositoryRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct UpdateRepositoryRequest {
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CreateSkillRequest {
     slug: String,
     #[serde(default)]
@@ -132,6 +136,24 @@ pub(crate) async fn create_repository(
             Json(serde_json::json!({ "skillRepository": RepositoryView::from(repository) })),
         )
             .into_response(),
+        Err(error) => skillink_error(error),
+    }
+}
+
+pub(crate) async fn update_repository(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    request: Result<Json<UpdateRepositoryRequest>, JsonRejection>,
+) -> Response {
+    let Json(request) = match request {
+        Ok(request) => request,
+        Err(_) => return invalid_request(),
+    };
+    match state.skillink().rename_repository(&id, &request.name).await {
+        Ok(repository) => Json(serde_json::json!({
+            "skillRepository": RepositoryView::from(repository)
+        }))
+        .into_response(),
         Err(error) => skillink_error(error),
     }
 }
@@ -326,10 +348,9 @@ pub(crate) async fn disable_profile_skill(
 
 impl From<Repository> for RepositoryView {
     fn from(value: Repository) -> Self {
-        let name = repository_name(&value.url);
         Self {
             id: value.id,
-            name,
+            name: value.name,
             url: value.url,
             git_ref: value.git_ref,
             commit_hash: value.commit_hash,
@@ -397,6 +418,7 @@ impl From<SyncPlan> for SyncPlanView {
 pub(crate) fn skillink_error(error: Error) -> Response {
     let (status, code) = match &error {
         Error::InvalidSlug(_)
+        | Error::InvalidRepositoryName
         | Error::InvalidRepositoryUrl
         | Error::Manifest { .. }
         | Error::UnsafeEntry(_)

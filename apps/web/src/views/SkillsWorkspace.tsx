@@ -1,4 +1,6 @@
 import {
+  ArrowDownToLine,
+  ArrowUpToLine,
   Check,
   ChevronDown,
   ChevronRight,
@@ -6,6 +8,7 @@ import {
   Folder,
   FolderGit2,
   LoaderCircle,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -14,7 +17,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Fuse from "fuse.js";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import { getSkillManifest } from "../api";
 import type { useSkillsWorkspace } from "../controllers/useSkillsWorkspace";
@@ -31,13 +35,42 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
   error: string | null;
   onDismissError: () => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ top: true, bottom: false });
+  const updateScrollEdges = (element: HTMLDivElement) => setScrollEdges({
+    top: element.scrollTop <= 1,
+    bottom: element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+  });
+  const scrollTo = (edge: "top" | "bottom") => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    element.scrollTo({ top: edge === "top" ? 0 : element.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+  };
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const update = () => updateScrollEdges(element);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(element, { childList: true, subtree: true });
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [section]);
   return (
-    <div className="skills-workspace">
+    <div className="skills-workspace" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
       {controller.busy && <LoaderCircle className="skills-spinner spin" />}
       {section === "repositories" && <Repositories controller={controller} />}
       {section === "skills" && <SkillLibrary controller={controller} />}
       {section === "profiles" && <Profiles controller={controller} />}
-      {error && <div className="error-banner">{error}<button aria-label="Dismiss" onClick={onDismissError}>×</button></div>}
+      {error && <div className={`error-banner ${section === "profiles" ? "skills-error-top" : ""}`}>{error}<button aria-label="Dismiss" onClick={onDismissError}>×</button></div>}
+      <div className="skills-scroll-controls" aria-label="Page navigation">
+        <button type="button" aria-label="Scroll to top" title="Scroll to top" disabled={scrollEdges.top} onClick={() => scrollTo("top")}><ArrowUpToLine /></button>
+        <button type="button" aria-label="Scroll to bottom" title="Scroll to bottom" disabled={scrollEdges.bottom} onClick={() => scrollTo("bottom")}><ArrowDownToLine /></button>
+      </div>
     </div>
   );
 }
@@ -46,6 +79,8 @@ function Repositories({ controller }: { controller: SkillsController }) {
   const [url, setUrl] = useState("");
   const [gitRef, setGitRef] = useState("");
   const [viewer, setViewer] = useState<Skill | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [name, setName] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -55,6 +90,9 @@ function Repositories({ controller }: { controller: SkillsController }) {
       setUrl("");
       setGitRef("");
     }
+  };
+  const saveName = async (id: string) => {
+    if (await controller.renameRepository(id, name.trim())) setRenaming(null);
   };
   return (
     <WorkspaceSection title="Repositories" description="Connect Git sources, inspect discovered skills, and keep them synchronized.">
@@ -82,11 +120,19 @@ function Repositories({ controller }: { controller: SkillsController }) {
                   </span>
                 </button>
                 <div className="repository-actions">
+                  <button className="skills-icon-button" type="button" aria-label={`Rename ${repository.name}`} onClick={() => { setRenaming(repository.id); setName(repository.name); }}><Pencil /></button>
                   <button className="skills-button quiet" disabled={controller.busy} onClick={() => void controller.previewSync(repository.id)}>Check updates</button>
                   <button className="skills-button" disabled={controller.busy} onClick={() => void controller.syncRepository(repository.id)}><RefreshCw />Sync</button>
                   <button disabled={controller.busy} className="skills-icon-button danger" aria-label="Delete repository" onClick={() => void controller.deleteRepository(repository.id)}><Trash2 /></button>
                 </div>
               </div>
+              {renaming === repository.id && (
+                <form className="repository-rename" onSubmit={(event) => { event.preventDefault(); void saveName(repository.id); }}>
+                  <input autoFocus required maxLength={2048} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }} />
+                  <button className="skills-button quiet" type="button" onClick={() => setRenaming(null)}>Cancel</button>
+                  <button className="skills-primary" disabled={controller.busy || !name.trim() || name.trim() === repository.name}>Save name</button>
+                </form>
+              )}
               {plan && (
                 <div className={`repository-sync-result ${plan.noop ? "current" : "changed"}`}>
                   <strong>{plan.noop ? "Up to date" : "Updates available"}</strong>
@@ -95,7 +141,13 @@ function Repositories({ controller }: { controller: SkillsController }) {
               )}
               {isExpanded && (
                 <div className="repository-browser">
-                  <SearchField value={query} placeholder={`Search ${repositorySkills.length} skills`} onChange={(value) => setQueries((current) => ({ ...current, [repository.id]: value }))} />
+                  <div className="skill-tree-toolbar">
+                    <SearchField value={query} placeholder={`Search ${repositorySkills.length} skills`} onChange={(value) => setQueries((current) => ({ ...current, [repository.id]: value }))} />
+                    <TreeControls
+                      onExpand={() => setCollapsed((current) => setKeysCollapsed(current, treeKeys(buildSkillTree(filtered), repository.id), false))}
+                      onCollapse={() => setCollapsed((current) => setKeysCollapsed(current, treeKeys(buildSkillTree(filtered), repository.id), true))}
+                    />
+                  </div>
                   <div className="skill-tree-shell">
                     <SkillTree nodes={buildSkillTree(filtered)} collapsed={collapsed} namespace={repository.id} onToggle={(key) => setCollapsed((current) => toggleSet(current, key))} onViewSkill={setViewer} />
                     {!filtered.length && <div className="repository-no-skills">{repositorySkills.length ? "No skills match your search." : "No skills discovered in this repository."}</div>}
@@ -182,8 +234,25 @@ function Profiles({ controller }: { controller: SkillsController }) {
   };
   const filtered = filterSkills(controller.skills, query, "all");
   const customSkills = filtered.filter((skill) => skill.sourceType === "custom");
+  const visibleSources = [
+    ...(customSkills.length ? [{ namespace: "custom", skills: customSkills }] : []),
+    ...controller.repositories
+      .map((repository) => ({ namespace: repository.id, skills: filtered.filter((skill) => skill.repositoryId === repository.id) }))
+      .filter((source) => source.skills.length || !query.trim()),
+  ];
+  const visibleTreeKeys = visibleSources.flatMap((source) => [
+    `profile:${source.namespace}`,
+    ...treeKeys(buildSkillTree(source.skills), `profile:${source.namespace}`),
+  ]);
+  const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
   return (
     <WorkspaceSection title="Profiles" description="Build a reusable skill set, then save all changes in one update.">
+      {controller.profileError && (
+        <div className="profile-error" role="alert">
+          <span>{controller.profileError}</span>
+          <button type="button" aria-label="Dismiss profile error" onClick={controller.dismissProfileError}><X /></button>
+        </div>
+      )}
       <form className="skills-form compact-form" onSubmit={(event) => void submit(event)}>
         <input required placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
         <button className="skills-primary" disabled={controller.busy}><Plus />Create profile</button>
@@ -201,8 +270,21 @@ function Profiles({ controller }: { controller: SkillsController }) {
         </nav>
         <div className="profile-skills">
           <div className="profile-skills-header">
-            <span><h3>{controller.profileDetail?.profile.slug ?? "Select a profile"}</h3><small>{draft.size} selected{dirty ? " · Unsaved changes" : ""}</small></span>
+            <span>
+              <h3>{controller.profileDetail?.profile.slug ?? "Select a profile"}</h3>
+              <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
+            </span>
             <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
+            <div className="profile-header-actions">
+              <button className="skills-button quiet" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</button>
+              <button className="skills-primary save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</button>
+            </div>
+          </div>
+          <div className="profile-tree-toolbar">
+            <TreeControls
+              onExpand={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, false))}
+              onCollapse={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, true))}
+            />
           </div>
           <div className="profile-tree">
             {customSkills.length > 0 && (
@@ -212,7 +294,7 @@ function Profiles({ controller }: { controller: SkillsController }) {
                 skills={customSkills}
                 namespace="custom"
                 draft={draft}
-                collapsed={collapsed}
+                collapsed={effectiveCollapsed}
                 onToggleSkill={(id) => setDraft((current) => toggleSet(current, id))}
                 onToggleGroup={(key) => setCollapsed((current) => toggleSet(current, key))}
               />
@@ -229,18 +311,13 @@ function Profiles({ controller }: { controller: SkillsController }) {
                   skills={skills}
                   namespace={repository.id}
                   draft={draft}
-                  collapsed={collapsed}
+                collapsed={effectiveCollapsed}
                   onToggleSkill={(id) => setDraft((current) => toggleSet(current, id))}
                   onToggleGroup={(key) => setCollapsed((current) => toggleSet(current, key))}
                 />
               );
             })}
             {!filtered.length && <Empty text="No skills match your search." />}
-          </div>
-          <div className="profile-save-bar">
-            <span>{dirty ? `${symmetricDifferenceSize(draft, saved)} pending changes` : "All changes saved"}</span>
-            <button className="skills-button quiet" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</button>
-            <button className="skills-primary save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</button>
           </div>
         </div>
       </div>
@@ -377,6 +454,15 @@ function SourceFilterControl({ value, onChange }: { value: SourceFilter; onChang
   );
 }
 
+function TreeControls({ onExpand, onCollapse }: { onExpand: () => void; onCollapse: () => void }) {
+  return (
+    <div className="tree-controls">
+      <button type="button" onClick={onExpand}><ChevronDown />Expand all</button>
+      <button type="button" onClick={onCollapse}><ChevronRight />Collapse all</button>
+    </div>
+  );
+}
+
 function SearchField({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
   return <label className="skills-search"><Search /><input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
@@ -390,11 +476,86 @@ function Empty({ text }: { text: string }) {
 }
 
 function filterSkills(skills: Skill[], query: string, source: SourceFilter) {
-  const normalized = query.trim().toLocaleLowerCase();
-  return skills.filter((skill) => {
-    if (source !== "all" && skill.sourceType !== source) return false;
-    return !normalized || `${skill.slug} ${skill.description} ${skill.relativePath ?? ""}`.toLocaleLowerCase().includes(normalized);
+  const candidates = skills.filter((skill) => source === "all" || skill.sourceType === source);
+  const phrase = normalizeSearch(query);
+  if (!phrase) return candidates;
+  const foldedPhrase = foldSearchSeparators(phrase);
+  const terms = foldedPhrase.split(/\s+/).filter(Boolean);
+  const documents = candidates.map((skill) => {
+    const slug = normalizeSearch(skill.slug);
+    const path = normalizeSearch(skill.relativePath ?? "");
+    const description = normalizeSearch(skill.description);
+    return {
+      skill,
+      slug,
+      path,
+      description,
+      foldedSlug: foldSearchSeparators(slug),
+      foldedPath: foldSearchSeparators(path),
+    };
   });
+  const fuse = new Fuse(documents, {
+    includeScore: true,
+    keys: [
+      { name: "slug", weight: 0.48 },
+      { name: "foldedSlug", weight: 0.3 },
+      { name: "path", weight: 0.12 },
+      { name: "foldedPath", weight: 0.07 },
+      { name: "description", weight: 0.03 },
+    ],
+    threshold: 0.3,
+    ignoreLocation: true,
+  });
+  const scores = new Map<string, number[]>();
+  for (const term of terms) {
+    for (const result of fuse.search(term)) {
+      const current = scores.get(result.item.skill.id) ?? [];
+      current.push(result.score ?? 1);
+      scores.set(result.item.skill.id, current);
+    }
+  }
+  return documents
+    .filter(({ skill }) => scores.get(skill.id)?.length === terms.length)
+    .sort((left, right) => {
+      const leftRank = searchRank(left, phrase, foldedPhrase, terms, scores.get(left.skill.id) ?? []);
+      const rightRank = searchRank(right, phrase, foldedPhrase, terms, scores.get(right.skill.id) ?? []);
+      return leftRank[0] - rightRank[0]
+        || leftRank[1] - rightRank[1]
+        || leftRank[2] - rightRank[2]
+        || left.skill.slug.localeCompare(right.skill.slug);
+    })
+    .map(({ skill }) => skill);
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase().trim();
+}
+
+function foldSearchSeparators(value: string) {
+  return value.replace(/[-_/\\]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function searchRank(
+  document: { slug: string; path: string; description: string; foldedSlug: string; foldedPath: string },
+  phrase: string,
+  foldedPhrase: string,
+  terms: string[],
+  scores: number[],
+): [number, number, number] {
+  const slugPath = `${document.foldedSlug} ${document.foldedPath}`;
+  const allText = `${slugPath} ${document.description}`;
+  const tier = document.slug === phrase
+    ? 0
+    : document.path === phrase
+      ? 1
+      : document.slug.includes(phrase) || document.path.includes(phrase) || document.foldedSlug.includes(foldedPhrase) || document.foldedPath.includes(foldedPhrase)
+        ? 2
+        : terms.every((term) => slugPath.includes(term))
+          ? 3
+          : terms.every((term) => allText.includes(term))
+            ? 4
+            : 5;
+  return [tier, Math.max(...scores), scores.reduce((total, score) => total + score, 0) / scores.length];
 }
 
 function buildSkillTree(skills: Skill[]) {
@@ -421,6 +582,22 @@ function buildSkillTree(skills: Skill[]) {
   };
   sort(root);
   return [root];
+}
+
+function treeKeys(nodes: SkillTreeNode[], namespace: string): string[] {
+  return nodes.flatMap((node) => [
+    ...(node.path ? [`${namespace}:${node.path}`] : []),
+    ...treeKeys(node.directories, namespace),
+  ]);
+}
+
+function setKeysCollapsed(current: Set<string>, keys: string[], collapsed: boolean) {
+  const next = new Set(current);
+  for (const key of keys) {
+    if (collapsed) next.add(key);
+    else next.delete(key);
+  }
+  return next;
 }
 
 function countNodeSkills(node: SkillTreeNode): number {

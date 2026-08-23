@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("invalid slug: {0}")]
     InvalidSlug(String),
+    #[error("invalid repository name")]
+    InvalidRepositoryName,
     #[error("invalid repository URL: GitHub, HTTP(S), and SSH Git URLs are supported")]
     InvalidRepositoryUrl,
     #[error("manifest error at {path}: {message}")]

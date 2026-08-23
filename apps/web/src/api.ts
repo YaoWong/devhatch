@@ -248,6 +248,14 @@ export function createSkillRepository(input: { url: string; gitRef?: string }) {
   );
 }
 
+export function updateSkillRepository(id: string, input: { name: string }) {
+  return requestJson<{ skillRepository: SkillRepository }>(
+    `/api/skill-repositories/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
+    "Unable to rename repository",
+  );
+}
+
 export function deleteSkillRepository(id: string) {
   return requestEmpty(`/api/skill-repositories/${encodeURIComponent(id)}`, { method: "DELETE" }, "Unable to delete repository");
 }

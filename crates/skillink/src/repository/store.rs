@@ -13,7 +13,7 @@ pub(super) struct ExistingSkill {
 impl Skillink {
     pub(crate) async fn get_repository(&self, id: &str) -> Result<Repository> {
         sqlx::query_as::<_, Repository>(
-            "SELECT id, url, git_ref, commit_hash, sync_version FROM repositories WHERE id = ?",
+            "SELECT id, COALESCE(name, '') AS name, url, git_ref, commit_hash, sync_version FROM repositories WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool())
@@ -24,6 +24,7 @@ impl Skillink {
     pub(super) async fn insert_repository(
         &self,
         id: &str,
+        name: &str,
         url: &str,
         git_ref: Option<&str>,
         commit: &str,
@@ -31,9 +32,10 @@ impl Skillink {
     ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
         let insert = sqlx::query(
-            "INSERT INTO repositories (id, url, git_ref, commit_hash) VALUES (?, ?, ?, ?)",
+            "INSERT INTO repositories (id, name, url, git_ref, commit_hash) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(id)
+        .bind(name)
         .bind(url)
         .bind(git_ref)
         .bind(commit)
