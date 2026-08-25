@@ -7,6 +7,7 @@ import type { useWebApps } from "../controllers/useWebApps";
 import type { ConfirmAction, TerminalInfo } from "../types";
 import { AgentRailPage } from "../views/AgentRailPage";
 import { NavigationRail } from "../views/NavigationRail";
+import { SettingsRailPage, type SettingsSection } from "../views/SettingsView";
 import { SkillsRailPage, type SkillsSection } from "../views/SkillsRailPage";
 import { WebAppsRailPage } from "../views/WebApps";
 import { WorkspaceList } from "../views/WorkspaceList";
@@ -21,6 +22,8 @@ type AppNavigationRailProps = {
   busy: boolean;
   skillsSection: SkillsSection;
   onSelectSkillsSection: Dispatch<SetStateAction<SkillsSection>>;
+  settingsSection: SettingsSection;
+  onSelectSettingsSection: Dispatch<SetStateAction<SettingsSection>>;
   onPickWorkspace: () => void;
   onPickAgentPath: () => void;
   onCloseAgentSession: (session: TerminalInfo) => void;
@@ -37,6 +40,8 @@ export function AppNavigationRail({
   busy,
   skillsSection,
   onSelectSkillsSection,
+  settingsSection,
+  onSelectSettingsSection,
   onPickWorkspace,
   onPickAgentPath,
   onCloseAgentSession,
@@ -69,6 +74,7 @@ export function AppNavigationRail({
           agents={agent.agents}
           selectedAgentId={agent.selectedAgentId}
           selectedAgent={agent.selectedAgent}
+          agentName={agent.selectedAgent?.name ?? "Agent CLI"}
           configs={agent.configs}
           selectedConfigId={agent.selectedConfigId}
           profiles={skills.profiles}
@@ -77,8 +83,8 @@ export function AppNavigationRail({
           selectedPathId={agent.selectedPathId}
           includeSubdirectories={agent.includeSubdirectories}
           activeSession={agent.activeSession}
-          sessions={agent.sessions}
-          historyCount={agent.history.sessions.length}
+          sessions={agent.selectedSessions}
+          historyCount={agent.selectedAgent?.supportsHistory ? agent.history.sessions.length : 0}
           rows={agent.mergedSessions}
           search={agent.search}
           homePaths={homePaths}
@@ -104,6 +110,7 @@ export function AppNavigationRail({
         />
       }
       skillsContent={<SkillsRailPage section={skillsSection} onSelect={onSelectSkillsSection} />}
+      settingsContent={<SettingsRailPage section={settingsSection} onSelect={onSelectSettingsSection} />}
       webAppContent={
         <WebAppsRailPage
           app={webApps.openDesign}

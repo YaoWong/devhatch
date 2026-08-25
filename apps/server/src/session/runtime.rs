@@ -43,11 +43,14 @@ impl Session {
             id: Uuid::new_v4().to_string(),
             shell: spawn.shell,
             kind: spawn.kind,
-            upstream_session_id: std::sync::RwLock::new(spawn.upstream_session_id),
+            identity: std::sync::Mutex::new(super::model::SessionIdentity {
+                upstream_session_id: spawn.upstream_session_id,
+                upstream_session_file: None,
+                cwd: path_string(spawn.cwd),
+            }),
             process_id,
             state: std::sync::Mutex::new(SessionState {
                 name: spawn.name,
-                cwd: path_string(spawn.cwd),
                 status: SessionStatus::Running,
                 cols: spawn.cols,
                 rows: spawn.rows,

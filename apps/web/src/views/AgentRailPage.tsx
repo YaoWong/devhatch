@@ -23,6 +23,7 @@ export function AgentRailPage({
   agents,
   selectedAgentId,
   selectedAgent,
+  agentName,
   configs,
   selectedConfigId,
   profiles,
@@ -60,6 +61,7 @@ export function AgentRailPage({
   agents: Agent[];
   selectedAgentId: string | null;
   selectedAgent: Agent | null;
+  agentName: string;
   configs: AgentLaunchConfig[];
   selectedConfigId: string | null;
   profiles: SkillProfile[];
@@ -121,7 +123,10 @@ export function AgentRailPage({
     <>
       {configOpen && (
         <AgentConfigDialog
+          key={selectedAgent?.id}
           configs={configs}
+          agentId={selectedAgent?.id ?? ""}
+          agentName={selectedAgent?.name ?? "Agent CLI"}
           selectedConfigId={selectedConfigId}
           onSelect={onSelectConfig}
           onCreate={onCreateConfig}
@@ -180,26 +185,43 @@ export function AgentRailPage({
             />
             <div className="launch-setup">
               <p className="launch-setup-label">Launch setup</p>
-              {selectedAgent?.id === "opencode" && !selectedAgent.available && (
+              {selectedAgent && !selectedAgent.available && (
                 <div className="agent-install-message">
-                  <strong>OpenCode is not installed</strong>
-                  <span>Install it to launch agent sessions:</span>
-                  <code>curl -fsSL https://opencode.ai/install | bash</code>
+                  <strong>{selectedAgent.name} is not installed</strong>
+                  {selectedAgent.id === "opencode" ? (
+                    <>
+                      <span>Install it to launch agent sessions:</span>
+                      <code>curl -fsSL https://opencode.ai/install | bash</code>
+                    </>
+                  ) : selectedAgent.id === "pi" ? (
+                    <>
+                      <span>Install it to launch agent sessions:</span>
+                      <code>npm install -g --ignore-scripts @earendil-works/pi-coding-agent</code>
+                    </>
+                  ) : (
+                    <span>
+                      {selectedAgent.id === "traecli"
+                        ? "The traecli executable was not found on PATH. Install Trae CLI using its official distribution."
+                        : (selectedAgent.diagnostic ?? `Install ${selectedAgent.name} and make sure it is available on PATH.`)}
+                    </span>
+                  )}
                 </div>
               )}
-              <CustomSelect
-                label="Skills"
-                value={selectedProfileId ?? "none"}
-                options={[{ id: "none", slug: "None" }, ...profiles]}
-                onChange={(id) => onSelectProfile(id === "none" ? null : id)}
-                renderTrigger={(profile) => (
-                  <span className="launch-setting-copy">
-                    <Layers3 />
-                    <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
-                  </span>
-                )}
-                renderOption={(profile) => <span className="select-copy"><strong>{profile.slug}</strong><small>{profile.id === "none" ? "Launch without managed skills" : "Apply on new sessions"}</small></span>}
-              />
+              {selectedAgent?.supportsSkills && (
+                <CustomSelect
+                  label="Skills"
+                  value={selectedProfileId ?? "none"}
+                  options={[{ id: "none", slug: "None" }, ...profiles]}
+                  onChange={(id) => onSelectProfile(id === "none" ? null : id)}
+                  renderTrigger={(profile) => (
+                    <span className="launch-setting-copy">
+                      <Layers3 />
+                      <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
+                    </span>
+                  )}
+                  renderOption={(profile) => <span className="select-copy"><strong>{profile.slug}</strong><small>{profile.id === "none" ? "Launch without managed skills" : "Apply on new sessions"}</small></span>}
+                />
+              )}
               <button className="launch-setting-row" type="button" onClick={() => setConfigOpen(true)}>
                 <Code2 />
                 <span><small>Launch script</small><strong>{selectedConfig?.name ?? "None"}</strong></span>
@@ -231,6 +253,7 @@ export function AgentRailPage({
         onDelete={deletePath}
       />
       <AgentSessionList
+        agentName={agentName}
         rows={rows}
         sessionCount={sessions.length}
         historyCount={historyCount}
@@ -252,6 +275,12 @@ export function AgentRailPage({
 }
 
 function AgentOption({ agent, fallback }: { agent?: Agent; fallback?: string }) {
+  const descriptions: Record<string, string> = {
+    codex: "OpenAI coding agent",
+    opencode: "Agentic coding CLI",
+    pi: "Minimal coding agent CLI",
+    traecli: "Trae coding agent CLI",
+  };
   const detail =
     agent?.availability === "coming-soon"
       ? "Coming soon"
@@ -268,7 +297,7 @@ function AgentOption({ agent, fallback }: { agent?: Agent; fallback?: string }) 
       <span className="select-copy">
         <strong>{agent?.name ?? fallback}</strong>
         <small>
-          {agent?.id === "opencode" ? "Agentic coding CLI" : "OpenAI coding agent"} · {detail}
+          {agent ? (descriptions[agent.id] ?? "Agent CLI integration") : fallback} · {detail}
         </small>
       </span>
     </>

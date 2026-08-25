@@ -9,6 +9,7 @@ mod router;
 mod server;
 mod session;
 mod session_socket;
+mod settings;
 mod skillink;
 mod state;
 mod terminal;

@@ -9,7 +9,7 @@
   .app.sidebar-hidden .rail { width: min(320px, calc(100vw - 24px)); padding: 12px; border-inline-width: 1px; opacity: 1; pointer-events: auto; }
   .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 30; width: min(320px, calc(100vw - 24px)); transform: translateX(calc(-100% - 24px)); transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
   .drawer-open .rail { transform: translateX(0); }
-  .drawer-backdrop { position: fixed; inset: 0; z-index: 20; border: 0; background: rgb(29 29 31 / 35%); }
+  .drawer-backdrop { position: fixed; inset: 0; z-index: 20; border: 0; background: rgb(var(--overlay-color) / 35%); }
   .drawer-open .drawer-backdrop { display: block; }
   .drawer-open .menu-button .menu-icon-open { opacity: 0; transform: scale(.72) rotate(-8deg); }
   .drawer-open .menu-button .menu-icon-hide { opacity: 1; transform: scale(1) rotate(0); }
@@ -24,7 +24,7 @@
   .config-dialog, .skill-manifest-dialog { width: 100%; max-height: calc(100vh - 28px); border-radius: 18px 18px 0 0; }
   .skill-manifest-dialog { height: calc(100vh - 28px); }
   .config-body { min-height: 0; max-height: calc(100vh - 108px); grid-template-columns: 1fr; overflow-y: auto; }
-  .config-body aside { max-height: 150px; border-right: 0; border-bottom: 1px solid #e8e8ed; }
+  .config-body aside { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .config-editor { overflow: visible; padding: 16px; }
   .config-editor textarea { min-height: 220px; }
   .delete-dialog { grid-template-columns: 42px minmax(0, 1fr); padding: 18px; border-radius: 20px; }
@@ -62,7 +62,7 @@
   .repository-skill-row code { display: none; }
   .skills-grid.two-column { grid-template-columns: 1fr; }
   .profile-layout { grid-template-columns: 1fr; }
-  .profile-list { min-height: 0; border-right: 0; border-bottom: 1px solid #e8e8ed; }
+  .profile-list { min-height: 0; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .profile-skills-header { grid-template-columns: 1fr; align-items: stretch; }
   .profile-skills-header .skills-search { width: 100%; }
   .profile-header-actions { justify-content: flex-end; }
@@ -80,6 +80,6 @@
   .tab { min-width: 136px; }
   .statusbar { padding: 0 12px; gap: 10px; }
   .status-path, .statusbar span:last-child { display: none; }
-  .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid #e8e8ed; background: #fbfbfd; }
-  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; font: 10px/1 "SF Mono", monospace; }
+  .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); }
+  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font: 10px/1 "SF Mono", monospace; }
 }

@@ -94,8 +94,8 @@ async fn handle_socket(mut socket: WebSocket, session: Arc<Session>, app_state: 
                     Ok(SessionEvent::Output(data)) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data })).await.is_err() { break; }
                     }
-                    Ok(SessionEvent::UpstreamSessionChanged(id)) => {
-                        if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id })).await.is_err() { break; }
+                    Ok(SessionEvent::UpstreamSessionChanged { id, cwd }) => {
+                        if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id, "cwd": cwd })).await.is_err() { break; }
                     }
                     Ok(SessionEvent::Exit(code)) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "exit", "code": code })).await.is_err() { break; }

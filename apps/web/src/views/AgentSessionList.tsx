@@ -7,6 +7,7 @@ type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRow = { live?: AgentSession; history?: HistorySession };
 
 export function AgentSessionList({
+  agentName,
   rows,
   sessionCount,
   historyCount,
@@ -23,6 +24,7 @@ export function AgentSessionList({
   onConfirm,
   onDeleteHistory,
 }: {
+  agentName: string;
   rows: SessionRow[];
   sessionCount: number;
   historyCount: number;
@@ -123,7 +125,7 @@ export function AgentSessionList({
                           onConfirm({
                             title: "Resume possibly active session?",
                             description:
-                              "OpenCode may be using this session elsewhere. " +
+                              `${agentName} may be using this session elsewhere. ` +
                               "Resuming concurrently could cause conflicting changes.",
                             confirmLabel: "Resume anyway",
                             action: resume,
@@ -145,8 +147,8 @@ export function AgentSessionList({
                         onDeleteLive(live);
                       } else if (history) {
                         onConfirm({
-                          title: "Delete OpenCode session?",
-                          description: `“${history.title}” and its OpenCode history will be permanently deleted.`,
+                          title: `Delete ${agentName} session?`,
+                          description: `“${history.title}” and its ${agentName} history will be permanently deleted.`,
                           confirmLabel: "Delete session",
                           danger: true,
                           action: () => onDeleteHistory(history.id),

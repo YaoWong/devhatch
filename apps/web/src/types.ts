@@ -1,3 +1,6 @@
+export type ThemeId = "default" | "latte" | "frappe" | "macchiato" | "mocha";
+export type AppSettings = { theme: ThemeId; createdAt: number; updatedAt: number };
+
 export type TerminalInfo = {
   id: string;
   name: string;
@@ -29,6 +32,9 @@ export type Agent = {
   diagnostic?: string | null;
   launchConfigCount: number;
   defaultLaunchConfigId: string | null;
+  supportsHistory: boolean;
+  supportsResume: boolean;
+  supportsSkills: boolean;
 };
 
 export type AgentLaunchPath = {
@@ -62,7 +68,7 @@ export type HistorySession = {
   id: string;
   title: string;
   directory: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string | null;
   projectWorktree: string | null;
   timeCreated: number;

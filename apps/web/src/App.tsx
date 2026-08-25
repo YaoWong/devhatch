@@ -12,6 +12,7 @@ import { useSkillsWorkspace } from "./controllers/useSkillsWorkspace";
 import { useTerminalWorkspace } from "./controllers/useTerminalWorkspace";
 import { useWebApps } from "./controllers/useWebApps";
 import type { ConfirmAction, ConnectionPhase, DeleteTarget, TerminalInfo } from "./types";
+import type { SettingsSection } from "./views/SettingsView";
 import type { SkillsSection } from "./views/SkillsRailPage";
 import "./App.css";
 
@@ -30,6 +31,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
@@ -52,7 +54,6 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const {
     initializeAgents,
     initializePaths,
-    initializeConfigs,
     initializeSessions,
     deleteSession: deleteAgentSession,
   } = agent;
@@ -64,7 +65,6 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
     initializeAgents,
     initializeSessions,
     initializePaths,
-    initializeConfigs,
     onError: reportError,
     onReady: markReady,
   });
@@ -146,7 +146,9 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
         onClosePicker={closePicker}
         onSelectPath={(path) => {
           if (pickerPurpose === "agent") {
-            void agent.choosePath(path);
+            void agent.choosePath(path).then((added) => {
+              if (added) closePicker();
+            });
           } else {
             terminal.chooseWorkspace(path);
             setPickerPurpose(null);
@@ -174,6 +176,8 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
         busy={busy}
         skillsSection={skillsSection}
         onSelectSkillsSection={setSkillsSection}
+        settingsSection={settingsSection}
+        onSelectSettingsSection={setSettingsSection}
         onPickWorkspace={() => setPickerPurpose("workspace")}
         onPickAgentPath={() => setPickerPurpose("agent")}
         onCloseAgentSession={(session) => requestClose(session, true)}
@@ -203,6 +207,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
           focusVersion={focusVersion}
           error={error}
           skillsSection={skillsSection}
+          settingsSection={settingsSection}
           confirmDelete={confirmDelete}
           onCloseSession={requestClose}
           onPickAgentPath={() => setPickerPurpose("agent")}

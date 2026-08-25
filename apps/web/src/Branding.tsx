@@ -1,8 +1,18 @@
 import codexIcon from "./assets/codex.svg";
 import opencodeIcon from "./assets/opencode.svg";
+import piIcon from "./assets/pi.svg";
+import traeIcon from "./assets/trae-cli.png";
+
+const agentIcons: Record<string, string> = {
+  codex: codexIcon,
+  opencode: opencodeIcon,
+  pi: piIcon,
+  traecli: traeIcon,
+};
 
 export function AgentIcon({ id, className }: { id?: string; className?: string }) {
-  return <img className={className} src={id === "codex" ? codexIcon : opencodeIcon} alt="" aria-hidden="true" />;
+  const icon = id ? agentIcons[id] : undefined;
+  return icon ? <img className={className} src={icon} alt="" aria-hidden="true" /> : null;
 }
 
 export function DevHatchLogo() {

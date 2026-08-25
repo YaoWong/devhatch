@@ -57,6 +57,7 @@ impl AppState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn active_upstream_session_ids(&self) -> HashSet<String> {
         self.sessions
             .read()
@@ -64,6 +65,42 @@ impl AppState {
             .values()
             .filter(|session| session.kind() == SessionKind::Agent)
             .filter_map(|session| session.upstream_session_id())
+            .collect()
+    }
+
+    pub fn active_upstream_session_ids_for(&self, agent_id: &str) -> HashSet<String> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| {
+                session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
+            })
+            .filter_map(|session| session.upstream_session_id())
+            .collect()
+    }
+
+    pub fn active_upstream_session_files_for(&self, agent_id: &str) -> HashSet<PathBuf> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| {
+                session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
+            })
+            .filter_map(|session| session.upstream_session_file())
+            .collect()
+    }
+
+    pub fn active_agent_cwds_for(&self, agent_id: &str) -> HashSet<PathBuf> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| {
+                session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
+            })
+            .map(|session| PathBuf::from(session.correlation_details().0))
             .collect()
     }
 

@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import App from "./App";
+import { ThemeProvider } from "./ThemeProvider";
 import { authStatus, configureAuth, login, logout, setupAdmin, type AuthStatus } from "./api";
 
 export function AuthGate() {
@@ -19,7 +20,7 @@ export function AuthGate() {
     return <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1><p>{error ?? "Loading…"}</p></section></main>;
   }
   if (status.authenticated) {
-    return <App onLogout={async () => { await logout(); setStatus({ initialized: true, authenticated: false, csrfToken: null }); }} />;
+    return <ThemeProvider><App onLogout={async () => { await logout(); setStatus({ initialized: true, authenticated: false, csrfToken: null }); }} /></ThemeProvider>;
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {

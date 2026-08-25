@@ -84,6 +84,9 @@ export function useNavigation(bumpFocus: () => void) {
         if (page === "terminal" || page === "agent") bumpFocus();
       }
       requestAnimationFrame(() => {
+        const themeStyle = getComputedStyle(document.documentElement);
+        const solidColor = themeStyle.getPropertyValue("--color-text").trim();
+        const onSolidColor = themeStyle.getPropertyValue("--color-on-solid").trim();
         const flight = document.createElement("span");
         flight.className = "shared-title-flight";
         const icon = source.querySelector("svg")?.cloneNode(true);
@@ -99,13 +102,15 @@ export function useNavigation(bumpFocus: () => void) {
           paddingLeft: `${from.paddingLeft}px`,
           paddingRight: `${from.paddingRight}px`,
           borderRadius: `${from.borderRadius}px`,
-          color: motion === "forward" ? "#fff" : "#1d1d1f",
+          color: motion === "forward" ? onSolidColor : solidColor,
         });
         source.classList.add("shared-title-hidden");
         detail.classList.add("shared-title-hidden");
         document.body.appendChild(flight);
         const finished =
-          motion === "forward" ? animateForward(flight, sourceState, from, to) : animateReturn(flight, from, to);
+          motion === "forward"
+            ? animateForward(flight, sourceState, from, to, solidColor, onSolidColor)
+            : animateReturn(flight, from, to, solidColor, onSolidColor);
         finished.finally(() => {
           flight.remove();
           source.classList.remove("shared-title-hidden");
@@ -176,7 +181,14 @@ function frame(state: FlightState) {
   };
 }
 
-function animateForward(flight: HTMLSpanElement, source: FlightState, from: FlightState, to: FlightState) {
+function animateForward(
+  flight: HTMLSpanElement,
+  source: FlightState,
+  from: FlightState,
+  to: FlightState,
+  solidColor: string,
+  onSolidColor: string,
+) {
   const backdrop = document.createElement("span");
   backdrop.className = "shared-title-backdrop";
   Object.assign(backdrop.style, {
@@ -194,8 +206,8 @@ function animateForward(flight: HTMLSpanElement, source: FlightState, from: Flig
   };
   const titlePhase = flight.animate(
     [
-      { left: `${from.left}px`, top: `${from.top}px`, color: "#fff" },
-      { left: `${phase.left}px`, top: `${phase.top}px`, color: "#1d1d1f" },
+      { left: `${from.left}px`, top: `${from.top}px`, color: onSolidColor },
+      { left: `${phase.left}px`, top: `${phase.top}px`, color: solidColor },
     ],
     { duration: 240, easing: "cubic-bezier(.32, 0, .67, 0)", fill: "forwards" },
   );
@@ -219,11 +231,17 @@ function animateForward(flight: HTMLSpanElement, source: FlightState, from: Flig
   });
 }
 
-function animateReturn(flight: HTMLSpanElement, from: FlightState, to: FlightState) {
+function animateReturn(
+  flight: HTMLSpanElement,
+  from: FlightState,
+  to: FlightState,
+  solidColor: string,
+  onSolidColor: string,
+) {
   return flight.animate(
     [
       { ...frame(from), background: "transparent" },
-      { ...frame(to), background: "#1d1d1f", color: "#fff" },
+      { ...frame(to), background: solidColor, color: onSolidColor },
     ],
     { duration: 520, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "forwards" },
   ).finished;

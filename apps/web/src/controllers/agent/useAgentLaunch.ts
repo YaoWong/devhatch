@@ -39,14 +39,25 @@ export function useAgentLaunch({
         return;
       }
       try {
+        if (upstreamSessionId && !selectedAgent.supportsResume) {
+          reportError(`${selectedAgent.name} does not support resuming sessions`);
+          return;
+        }
         if (pathId) await touchAgentLaunchPath(pathId);
+        const skillProfileId = selectedAgent.supportsSkills ? (selectedSkillProfileId ?? undefined) : undefined;
         const launchOptions = upstreamSessionId
           ? {
+              agentId: selectedAgent.id,
               upstreamSessionId,
               launchConfigId: selectedConfigId ?? undefined,
-              skillProfileId: selectedSkillProfileId ?? undefined,
+              ...(skillProfileId ? { skillProfileId } : {}),
             }
-          : { cwd, launchConfigId: selectedConfigId ?? undefined, skillProfileId: selectedSkillProfileId ?? undefined };
+          : {
+              agentId: selectedAgent.id,
+              cwd,
+              launchConfigId: selectedConfigId ?? undefined,
+              ...(skillProfileId ? { skillProfileId } : {}),
+            };
         const { agentSession } = await createAgentSession(launchOptions);
         addSession({
           ...agentSession,

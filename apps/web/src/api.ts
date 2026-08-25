@@ -1,13 +1,14 @@
 export { authStatus, login, logout, setupAdmin, type AuthStatus } from "./api/auth";
 export { configureAuth, requestEmpty, requestJson } from "./api/client";
+export { getSettings, updateSettings } from "./api/settings";
 export { endpoints } from "./api/endpoints";
 export {
   createAgentLaunchConfig,
   createAgentLaunchPath,
   createAgentSession,
+  deleteAgentHistorySession,
   deleteAgentLaunchConfig,
   deleteAgentLaunchPath,
-  deleteOpenCodeHistorySession,
   touchAgentLaunchPath,
   updateAgentLaunchConfig,
   updateAgentLaunchPath,

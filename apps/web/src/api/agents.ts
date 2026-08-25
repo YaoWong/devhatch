@@ -2,6 +2,7 @@ import type { AgentLaunchConfig, AgentLaunchConfigInput, AgentLaunchPath, AgentS
 import { requestEmpty, requestJson } from "./client";
 
 export function createAgentSession(options: {
+  agentId: string;
   cwd?: string;
   upstreamSessionId?: string;
   launchConfigId?: string;
@@ -58,10 +59,10 @@ export function deleteAgentLaunchPath(id: string) {
   return requestEmpty(`/api/agent-launch-paths/${id}`, { method: "DELETE" }, "Unable to delete path");
 }
 
-export function deleteOpenCodeHistorySession(id: string) {
+export function deleteAgentHistorySession(agentId: string, id: string) {
   return requestEmpty(
-    `/api/agents/opencode/history/${encodeURIComponent(id)}`,
+    `/api/agents/${encodeURIComponent(agentId)}/history/${encodeURIComponent(id)}`,
     { method: "DELETE" },
-    "Unable to delete OpenCode session",
+    "Unable to delete agent session",
   );
 }

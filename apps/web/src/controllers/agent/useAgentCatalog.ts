@@ -40,8 +40,10 @@ export function useAgentCatalog({
         setSelectedPathId(item.id);
         setPaths((current) => (current.some((entry) => entry.id === item.id) ? current : [...current, item]));
         closeSidebar();
+        return true;
       } catch (reason) {
         reportError(errorMessage(reason));
+        return false;
       }
     },
     [closeSidebar, paths, reportError, selectedAgentId],

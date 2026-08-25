@@ -6,7 +6,7 @@ import type { useWebApps } from "../controllers/useWebApps";
 import type { ConfirmAction, ConnectionPhase, TerminalInfo, WorkspaceMode } from "../types";
 import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
 import { AgentWorkspace } from "../views/AgentWorkspace";
-import { SettingsView } from "../views/SettingsView";
+import { SettingsView, type SettingsSection } from "../views/SettingsView";
 import type { SkillsSection } from "../views/SkillsRailPage";
 import { TerminalWorkspace } from "../views/TerminalWorkspace";
 import { WebAppsWorkspace } from "../views/WebApps";
@@ -22,6 +22,7 @@ type AppWorkspaceContentProps = {
   focusVersion: number;
   error: string | null;
   skillsSection: SkillsSection;
+  settingsSection: SettingsSection;
   confirmDelete: boolean;
   onCloseSession: (session: TerminalInfo, isAgent: boolean) => void;
   onPickAgentPath: () => void;
@@ -44,6 +45,7 @@ export function AppWorkspaceContent({
   focusVersion,
   error,
   skillsSection,
+  settingsSection,
   confirmDelete,
   onCloseSession,
   onPickAgentPath,
@@ -119,6 +121,7 @@ export function AppWorkspaceContent({
       )}
       {mode === "settings" && (
         <SettingsView
+          section={settingsSection}
           confirmDelete={confirmDelete}
           onConfirmDeleteChange={onConfirmDeleteChange}
           onLogout={onLogout}

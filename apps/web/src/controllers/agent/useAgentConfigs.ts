@@ -1,13 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createAgentLaunchConfig, deleteAgentLaunchConfig, endpoints, updateAgentLaunchConfig } from "../../api";
 import type { AgentLaunchConfig, AgentLaunchConfigInput } from "../../types";
 import { errorMessage } from "./shared";
 
-export function useAgentConfigs(reportError: (message: string) => void) {
+export function useAgentConfigs(selectedAgentId: string | null, reportError: (message: string) => void) {
   const [configs, setConfigs] = useState<AgentLaunchConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
+  const selectedAgentIdRef = useRef(selectedAgentId);
+  useEffect(() => {
+    selectedAgentIdRef.current = selectedAgentId;
+  }, [selectedAgentId]);
 
-  const applyConfigs = useCallback((next: AgentLaunchConfig[]) => {
+  const applyConfigs = useCallback((agentId: string, next: AgentLaunchConfig[]) => {
+    if (agentId !== selectedAgentIdRef.current) return;
     setConfigs(next);
     setSelectedConfigId((current) => {
       if (current && next.some((config) => config.id === current)) return current;
@@ -16,14 +21,16 @@ export function useAgentConfigs(reportError: (message: string) => void) {
   }, []);
 
   const refreshConfigs = useCallback(async () => {
-    const data = await endpoints.agentLaunchConfigs("opencode");
-    applyConfigs(data.agentLaunchConfigs);
-  }, [applyConfigs]);
+    if (!selectedAgentId) return;
+    const agentId = selectedAgentId;
+    const data = await endpoints.agentLaunchConfigs(agentId);
+    applyConfigs(agentId, data.agentLaunchConfigs);
+  }, [applyConfigs, selectedAgentId]);
 
-  const initializeConfigs = useCallback(
-    (data: Awaited<ReturnType<typeof endpoints.agentLaunchConfigs>>) => applyConfigs(data.agentLaunchConfigs),
-    [applyConfigs],
-  );
+  const clearConfigs = useCallback(() => {
+    setConfigs([]);
+    setSelectedConfigId(null);
+  }, []);
 
   const createConfig = useCallback(
     async (input: AgentLaunchConfigInput) => {
@@ -73,8 +80,8 @@ export function useAgentConfigs(reportError: (message: string) => void) {
     configs,
     selectedConfigId,
     setSelectedConfigId,
+    clearConfigs,
     refreshConfigs,
-    initializeConfigs,
     createConfig,
     updateConfig,
     deleteConfig,

@@ -10,9 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{clock::now, filesystem::validated_directory, state::AppState};
-
-const OPENCODE_AGENT_ID: &str = "opencode";
+use crate::{agent, clock::now, filesystem::validated_directory, state::AppState};
 
 #[derive(FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +63,7 @@ pub async fn create(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateRequest>,
 ) -> Response {
-    if request.agent_id != OPENCODE_AGENT_ID {
+    if !agent::supported(&request.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
     let alias = match validate_alias(request.alias) {
@@ -169,6 +167,17 @@ async fn get(state: &AppState, id: &str) -> Response {
 async fn find(state: &AppState, id: &str) -> Result<Option<LaunchPath>, sqlx::Error> {
     sqlx::query_as::<_, LaunchPath>("SELECT id, agent_id, path, alias, pinned, last_used_at, created_at, updated_at FROM agent_launch_paths WHERE id = ?")
         .bind(id).fetch_optional(state.pool()).await
+}
+
+pub(crate) async fn paths_for_agent(
+    state: &AppState,
+    agent_id: &str,
+) -> Result<Vec<std::path::PathBuf>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>("SELECT path FROM agent_launch_paths WHERE agent_id = ?")
+        .bind(agent_id)
+        .fetch_all(state.pool())
+        .await
+        .map(|paths| paths.into_iter().map(Into::into).collect())
 }
 
 fn validate_alias(value: Option<String>) -> Result<Option<String>, &'static str> {

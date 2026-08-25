@@ -1,7 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
-export function CustomSelect<T extends { id: string }>({
+export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   label,
   value,
   options,
@@ -13,14 +13,14 @@ export function CustomSelect<T extends { id: string }>({
   onChange,
 }: {
   label: string;
-  value: string | null;
-  options: T[];
+  value: Id | null;
+  options: readonly T[];
   disabled?: boolean;
   compact?: boolean;
   renderTrigger: (option: T | undefined) => ReactNode;
   renderOption: (option: T) => ReactNode;
   isOptionDisabled?: (option: T) => boolean;
-  onChange: (id: string) => void;
+  onChange: (id: Id) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);

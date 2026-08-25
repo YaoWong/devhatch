@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  deleteOpenCodeHistorySession,
+  deleteAgentHistorySession,
   deleteRemoteSession,
   endpoints,
   renameRemoteSession,
@@ -9,47 +9,73 @@ import type { AgentSession, DeleteTarget, HistoryResponse } from "../../types";
 import { logicalPath } from "../../utils";
 import { errorMessage, type HomePaths } from "./shared";
 
+const emptyHistory: HistoryResponse = { available: false, diagnostic: null, sessions: [] };
+
+type HistoryState = { agentId: string | null; selection: number; response: HistoryResponse };
+
 export function useAgentSessions({
   homePaths,
   active,
   reportError,
   closeSidebar,
   bumpFocus,
+  historyAgentId,
 }: {
   homePaths: HomePaths;
   active: boolean;
   reportError: (message: string) => void;
   closeSidebar: () => void;
   bumpFocus: () => void;
+  historyAgentId: string | null;
 }) {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [history, setHistory] = useState<HistoryResponse>({ available: false, diagnostic: null, sessions: [] });
+  const [historyState, setHistoryState] = useState<HistoryState>({
+    agentId: null,
+    selection: 0,
+    response: emptyHistory,
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<AgentSession[]>([]);
   const mutationVersion = useRef(0);
-  const historyVersion = useRef(0);
-  const historyRefresh = useRef<Promise<void> | null>(null);
+  const historyAgentIdRef = useRef(historyAgentId);
+  const historySelection = useRef(0);
+  const historyVersions = useRef(new Map<string, number>());
+  const historyRefreshes = useRef(new Map<string, { selection: number; request: Promise<void> }>());
   const sessionRefresh = useRef<Promise<void> | null>(null);
+  historyAgentIdRef.current = historyAgentId;
+  const history =
+    historyState.agentId === historyAgentId && historyState.selection === historySelection.current
+      ? historyState.response
+      : emptyHistory;
 
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
   const refreshHistory = useCallback(() => {
-    if (historyRefresh.current) return historyRefresh.current;
-    const version = historyVersion.current;
+    const agentId = historyAgentId;
+    if (!agentId) return Promise.resolve();
+    const inFlight = historyRefreshes.current.get(agentId);
+    if (inFlight?.selection === historySelection.current) return inFlight.request;
+    const selection = historySelection.current;
+    const version = historyVersions.current.get(agentId) ?? 0;
     const request = endpoints
-      .history()
+      .history(agentId)
       .then((data) => {
-        if (version === historyVersion.current) setHistory(data);
+        if (
+          selection === historySelection.current &&
+          version === (historyVersions.current.get(agentId) ?? 0)
+        ) {
+          setHistoryState({ agentId, selection, response: data });
+        }
       })
       .catch((reason) => reportError(errorMessage(reason)))
       .finally(() => {
-        if (historyRefresh.current === request) historyRefresh.current = null;
+        if (historyRefreshes.current.get(agentId)?.request === request) historyRefreshes.current.delete(agentId);
       });
-    historyRefresh.current = request;
+    historyRefreshes.current.set(agentId, { selection, request });
     return request;
-  }, [reportError]);
+  }, [historyAgentId, reportError]);
 
   const refreshSessions = useCallback(() => {
     if (sessionRefresh.current) return sessionRefresh.current;
@@ -77,13 +103,25 @@ export function useAgentSessions({
   }, [homePaths, reportError]);
 
   useEffect(() => {
-    void refreshHistory();
-    const delay = sessions.some((session) => !session.upstreamSessionId) ? 1000 : 10000;
+    historySelection.current += 1;
+    setHistoryState({ agentId: historyAgentId, selection: historySelection.current, response: emptyHistory });
+  }, [historyAgentId]);
+
+  useEffect(() => {
+    if (historyAgentId) void refreshHistory();
+    const delay =
+      historyAgentId &&
+      sessions.some((session) => session.agentId === historyAgentId && !session.upstreamSessionId)
+        ? 1000
+        : 10000;
     const timer = window.setInterval(() => {
-      if (active) void Promise.all([refreshHistory(), refreshSessions()]);
+      if (active) {
+        if (historyAgentId) void Promise.all([refreshHistory(), refreshSessions()]);
+        else void refreshSessions();
+      }
     }, delay);
     return () => window.clearInterval(timer);
-  }, [active, refreshHistory, refreshSessions, sessions]);
+  }, [active, historyAgentId, refreshHistory, refreshSessions, sessions]);
 
   const initializeSessions = useCallback(
     (data: Awaited<ReturnType<typeof endpoints.agentSessions>>, initialHomePaths: HomePaths) => {
@@ -111,17 +149,27 @@ export function useAgentSessions({
   );
 
   const updateUpstreamSession = useCallback(
-    (id: string, upstreamSessionId: string) => {
+    (id: string, upstreamSessionId: string, cwd?: string) => {
       const current = sessionsRef.current.find((session) => session.id === id);
-      if (!current || current.upstreamSessionId === upstreamSessionId) return;
+      const normalizedCwd = cwd
+        ? logicalPath(cwd, homePaths?.home, homePaths?.resolvedHome)
+        : undefined;
+      if (
+        !current ||
+        (current.upstreamSessionId === upstreamSessionId &&
+          (!normalizedCwd || current.cwd === normalizedCwd))
+      )
+        return;
       const next = sessionsRef.current.map((session) =>
-        session.id === id ? { ...session, upstreamSessionId } : session,
+        session.id === id
+          ? { ...session, upstreamSessionId, cwd: normalizedCwd ?? session.cwd }
+          : session,
       );
       sessionsRef.current = next;
       setSessions(next);
       void refreshHistory();
     },
-    [refreshHistory],
+    [homePaths, refreshHistory],
   );
 
   const addSession = useCallback((session: AgentSession) => {
@@ -135,13 +183,14 @@ export function useAgentSessions({
 
   const deleteHistorySession = useCallback(
     async (id: string) => {
-      await deleteOpenCodeHistorySession(id);
-      historyVersion.current += 1;
-      // Let an older in-flight response settle before starting the authoritative refresh.
-      await historyRefresh.current;
-      await refreshHistory();
+      const agentId = historyAgentId;
+      if (!agentId) return;
+      await deleteAgentHistorySession(agentId, id);
+      historyVersions.current.set(agentId, (historyVersions.current.get(agentId) ?? 0) + 1);
+      await historyRefreshes.current.get(agentId)?.request;
+      if (historyAgentIdRef.current === agentId) await refreshHistory();
     },
-    [refreshHistory],
+    [historyAgentId, refreshHistory],
   );
 
   const renameSession = useCallback(

@@ -11,8 +11,8 @@ use axum::{
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    agent, auth, filesystem, history, launch_config, launch_path, skillink, state::AppState,
-    terminal, web_app,
+    agent, auth, filesystem, history, launch_config, launch_path, settings, skillink,
+    state::AppState, terminal, web_app,
 };
 
 pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
@@ -21,6 +21,7 @@ pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
         .route("/api/auth/verify", get(auth::verify))
         .route("/api/auth/logout", axum::routing::post(auth::logout))
         .route("/api/filesystem/directories", get(filesystem::directories))
+        .route("/api/settings", get(settings::get).patch(settings::update))
         .route("/api/agents", get(agent::agents))
         .route(
             "/api/agent-launch-configs",
@@ -30,7 +31,7 @@ pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
             "/api/agent-launch-configs/{id}",
             patch(launch_config::update).delete(launch_config::remove),
         )
-        .route("/api/agents/opencode/history", get(history::list))
+        .route("/api/agents/{agentId}/history", get(history::list))
         .route(
             "/api/skill-repositories",
             get(skillink::list_repositories).post(skillink::create_repository),
@@ -75,7 +76,7 @@ pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
                 .delete(skillink::disable_profile_skill),
         )
         .route(
-            "/api/agents/opencode/history/{id}",
+            "/api/agents/{agentId}/history/{id}",
             axum::routing::delete(history::remove),
         )
         .route(

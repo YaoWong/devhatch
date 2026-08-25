@@ -151,7 +151,7 @@ async fn session_stopped(events: &mut broadcast::Receiver<SessionEvent>) {
             Ok(SessionEvent::Exit(_) | SessionEvent::Removed(_) | SessionEvent::Terminate) => {
                 return;
             }
-            Ok(SessionEvent::Output(_) | SessionEvent::UpstreamSessionChanged(_))
+            Ok(SessionEvent::Output(_) | SessionEvent::UpstreamSessionChanged { .. })
             | Err(broadcast::error::RecvError::Lagged(_)) => {}
             Err(broadcast::error::RecvError::Closed) => return,
         }

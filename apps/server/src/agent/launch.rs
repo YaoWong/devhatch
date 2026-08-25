@@ -1,5 +1,6 @@
 use std::{
     env,
+    ffi::OsString,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
     path::{Path, PathBuf},
     sync::Arc,
@@ -10,9 +11,11 @@ use portable_pty::CommandBuilder;
 use uuid::Uuid;
 
 use super::{
-    ID, NAME,
+    OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID, TRAECLI_NAME,
     events::start_event_watcher,
-    launch_workspace::{copy_skills, create_run_dir, write_wrapper},
+    launch_workspace::{
+        copy_skills, create_run_dir, prepare_trae_home, write_pi_identity_extension, write_wrapper,
+    },
 };
 use crate::{
     filesystem::{default_cwd, resolve_path},
@@ -25,12 +28,12 @@ use crate::{
 const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
 
-pub(super) fn available() -> bool {
-    executable_path().is_some()
+pub(super) fn available(executable: &str) -> bool {
+    executable_path(executable).is_some()
 }
 
-pub(super) async fn installed_version() -> Option<String> {
-    let executable = executable_path()?;
+pub(super) async fn installed_version(executable_name: &str) -> Option<String> {
+    let executable = executable_path(executable_name)?;
     let output = tokio::time::timeout(
         Duration::from_secs(2),
         tokio::process::Command::new(executable)
@@ -44,13 +47,19 @@ pub(super) async fn installed_version() -> Option<String> {
         return None;
     }
     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let version = version
+        .strip_prefix(executable_name)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&version)
+        .to_string();
     (!version.is_empty()).then_some(version)
 }
 
-fn executable_path() -> Option<PathBuf> {
+pub(super) fn executable_path(executable: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
-            .map(|path| path.join("opencode"))
+            .map(|path| path.join(executable))
             .find_map(|path| {
                 path.is_file()
                     .then(|| std::fs::canonicalize(path).ok())
@@ -59,7 +68,7 @@ fn executable_path() -> Option<PathBuf> {
     })
 }
 
-pub(super) fn spawn(
+pub(super) fn spawn_opencode(
     state: Arc<AppState>,
     request: CreateRequest,
     upstream_session_id: Option<String>,
@@ -76,7 +85,7 @@ pub(super) fn spawn(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
-    let executable = executable_path().ok_or_else(|| {
+    let executable = executable_path("opencode").ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "opencode executable not found",
@@ -108,7 +117,7 @@ pub(super) fn spawn(
         }
     };
     configure_environment(&mut command, &cwd);
-    command.env("DEVHATCH_AGENT_ID", ID);
+    command.env("DEVHATCH_AGENT_ID", OPENCODE_ID);
     command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
     command.env("DEVHATCH_CWD", &cwd);
@@ -132,11 +141,11 @@ pub(super) fn spawn(
             kind: SessionKind::Agent,
             upstream_session_id,
             cwd,
-            name: NAME.to_string(),
+            name: OPENCODE_NAME.to_string(),
             cols,
             rows,
-            agent_id: Some(ID),
-            agent_name: Some(NAME),
+            agent_id: Some(OPENCODE_ID),
+            agent_name: Some(OPENCODE_NAME),
             cleanup_path: Some(cleanup_path),
         },
         move |session| {
@@ -149,6 +158,279 @@ pub(super) fn spawn(
         let _ = std::fs::remove_dir_all(run_dir);
     }
     result
+}
+
+pub(super) fn spawn_traecli(
+    state: Arc<AppState>,
+    request: CreateRequest,
+    launch_config: AgentLaunchConfig,
+    skill_generation: Option<&Path>,
+) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
+    let fallback_cwd = default_cwd();
+    let requested_cwd = request
+        .cwd
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&fallback_cwd);
+    let cwd = resolve_path(requested_cwd)?;
+    if !cwd.is_dir() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
+    }
+    let executable = executable_path("traecli").ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "traecli executable not found")
+    })?;
+    let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
+    let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
+    let run_dir = create_run_dir(state.data_dir())?;
+    let wrapper = run_dir.join("launch.sh");
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let shell = executable.to_string_lossy().into_owned();
+    let mut command = CommandBuilder::new("/bin/sh");
+    command.arg(&wrapper);
+    command.arg(&executable);
+    configure_environment(&mut command, &cwd);
+    command.env("DEVHATCH_AGENT_ID", TRAECLI_ID);
+    command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
+    command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
+    command.env("DEVHATCH_CWD", &cwd);
+    command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    if let Some(generation) = skill_generation {
+        let (trae_home, cli_home) = match prepare_trae_home(&run_dir, generation) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&run_dir);
+                return Err(error.into());
+            }
+        };
+        command.env("TRAE_HOME", trae_home);
+        command.env("TRAECLI_HOME", cli_home);
+    }
+    let cleanup_path = run_dir.clone();
+    let result = Session::spawn(
+        state,
+        SessionSpawn {
+            command,
+            shell,
+            kind: SessionKind::Agent,
+            upstream_session_id: None,
+            cwd,
+            name: TRAECLI_NAME.to_string(),
+            cols,
+            rows,
+            agent_id: Some(TRAECLI_ID),
+            agent_name: Some(TRAECLI_NAME),
+            cleanup_path: Some(cleanup_path),
+        },
+        |_| {},
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+pub(super) fn spawn_pi(
+    state: Arc<AppState>,
+    request: CreateRequest,
+    session_id: String,
+    history_path: Option<&Path>,
+    launch_config: AgentLaunchConfig,
+    skill_generation: Option<&Path>,
+) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
+    let fallback_cwd = default_cwd();
+    let requested_cwd = request
+        .cwd
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&fallback_cwd);
+    let cwd = resolve_path(requested_cwd)?;
+    if !cwd.is_dir() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
+    }
+    let executable = executable_path(PI_ID).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "pi executable not found")
+    })?;
+    let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
+    let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
+    let run_dir = create_run_dir(state.data_dir())?;
+    if let Some(generation) = skill_generation
+        && let Err(error) = copy_skills(&run_dir, generation)
+    {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let pi_skills = if skill_generation.is_some() {
+        match std::fs::canonicalize(run_dir.join("skills")) {
+            Ok(skills) => Some(skills),
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&run_dir);
+                return Err(error.into());
+            }
+        }
+    } else {
+        None
+    };
+    let (identity_extension, identity_state) = match write_pi_identity_extension(&run_dir) {
+        Ok(paths) => paths,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&run_dir);
+            return Err(error.into());
+        }
+    };
+    let wrapper = run_dir.join("launch.sh");
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let shell = executable.to_string_lossy().into_owned();
+    let mut command = CommandBuilder::new("/bin/sh");
+    command.arg(&wrapper);
+    command.arg(&executable);
+    for argument in pi_args(
+        &session_id,
+        history_path,
+        pi_skills.as_deref(),
+        &identity_extension,
+    ) {
+        command.arg(argument);
+    }
+    configure_environment(&mut command, &cwd);
+    command.env("DEVHATCH_AGENT_ID", PI_ID);
+    command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
+    command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
+    command.env("DEVHATCH_CWD", &cwd);
+    command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    command.env("DEVHATCH_PI_STATE_FILE", &identity_state);
+    let cleanup_path = run_dir.clone();
+    let result = Session::spawn(
+        state.clone(),
+        SessionSpawn {
+            command,
+            shell,
+            kind: SessionKind::Agent,
+            upstream_session_id: Some(session_id),
+            cwd,
+            name: PI_NAME.to_string(),
+            cols,
+            rows,
+            agent_id: Some(PI_ID),
+            agent_name: Some(PI_NAME),
+            cleanup_path: Some(cleanup_path),
+        },
+        move |session| start_pi_identity_watcher(session, state, identity_state),
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+fn pi_args(
+    session_id: &str,
+    history_path: Option<&Path>,
+    skills: Option<&Path>,
+    identity_extension: &Path,
+) -> Vec<OsString> {
+    let mut arguments = match history_path {
+        Some(path) => vec![OsString::from("--session"), path.as_os_str().to_owned()],
+        None => vec![OsString::from("--session-id"), OsString::from(session_id)],
+    };
+    arguments.extend([
+        OsString::from("--extension"),
+        identity_extension.as_os_str().to_owned(),
+    ]);
+    if let Some(skills) = skills {
+        arguments.extend([
+            OsString::from("--no-skills"),
+            OsString::from("--skill"),
+            skills.as_os_str().to_owned(),
+        ]);
+    }
+    arguments
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq)]
+struct PiIdentityState {
+    id: String,
+    file: Option<PathBuf>,
+    cwd: PathBuf,
+}
+
+fn parse_pi_identity_state(bytes: &[u8]) -> Option<PiIdentityState> {
+    if bytes.len() > 16 * 1024 {
+        return None;
+    }
+    let state: PiIdentityState = serde_json::from_slice(bytes).ok()?;
+    if !crate::history::pi::valid_session_id(&state.id) || !state.cwd.is_absolute() {
+        return None;
+    }
+    if state.file.as_ref().is_some_and(|path| !path.is_absolute()) {
+        return None;
+    }
+    Some(state)
+}
+
+fn safe_runtime_cwd(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return None;
+    }
+    std::fs::canonicalize(path).ok()
+}
+
+fn safe_runtime_file(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() || path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+        return None;
+    }
+    if path.exists() {
+        let metadata = std::fs::symlink_metadata(path).ok()?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return None;
+        }
+        return std::fs::canonicalize(path).ok();
+    }
+    let parent = std::fs::canonicalize(path.parent()?).ok()?;
+    Some(parent.join(path.file_name()?))
+}
+
+fn apply_pi_identity_state(session: &Session, state: PiIdentityState) {
+    let file = state.file.as_deref().and_then(safe_runtime_file);
+    session.update_runtime_identity(state.id, file, safe_runtime_cwd(&state.cwd));
+}
+
+fn start_pi_identity_watcher(session: &Arc<Session>, state: Arc<AppState>, path: PathBuf) {
+    let session = Arc::downgrade(session);
+    tokio::spawn(async move {
+        let mut last = Vec::new();
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            let Some(session) = session.upgrade() else {
+                break;
+            };
+            if !state.contains_session(&session) {
+                break;
+            }
+            let Ok(bytes) = tokio::fs::read(&path).await else {
+                continue;
+            };
+            if bytes == last {
+                continue;
+            }
+            last = bytes.clone();
+            if let Some(identity) = parse_pi_identity_state(&bytes) {
+                let _history_guard = state.history_reconciliation().lock().await;
+                if state.contains_session(&session) {
+                    apply_pi_identity_state(&session, identity);
+                }
+            }
+        }
+    });
 }
 
 fn configure_command(
@@ -174,4 +456,59 @@ fn available_loopback_port() -> std::io::Result<u16> {
     TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))?
         .local_addr()
         .map(|address| address.port())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, path::Path};
+
+    use super::{parse_pi_identity_state, pi_args, safe_runtime_cwd};
+
+    #[test]
+    fn builds_pi_args_for_new_resume_and_optional_profile_skills() {
+        let extension = Path::new("/run/identity.mjs");
+        assert_eq!(
+            pi_args("new-id", None, None, extension),
+            vec![
+                OsString::from("--session-id"),
+                OsString::from("new-id"),
+                OsString::from("--extension"),
+                OsString::from("/run/identity.mjs")
+            ]
+        );
+        assert_eq!(
+            pi_args(
+                "ignored",
+                Some(Path::new("/sessions/resume.jsonl")),
+                Some(Path::new("/run/skills")),
+                extension,
+            ),
+            vec![
+                OsString::from("--session"),
+                OsString::from("/sessions/resume.jsonl"),
+                OsString::from("--extension"),
+                OsString::from("/run/identity.mjs"),
+                OsString::from("--no-skills"),
+                OsString::from("--skill"),
+                OsString::from("/run/skills")
+            ]
+        );
+    }
+
+    #[test]
+    fn runtime_identity_accepts_only_safe_existing_cwd() {
+        assert_eq!(safe_runtime_cwd(Path::new("relative")), None);
+        assert!(safe_runtime_cwd(Path::new("/tmp")).is_some());
+    }
+
+    #[test]
+    fn validates_pi_identity_state() {
+        let state = parse_pi_identity_state(
+            br#"{"id":"session-1","file":"/sessions/a.jsonl","cwd":"/tmp"}"#,
+        )
+        .unwrap();
+        assert_eq!(state.id, "session-1");
+        assert!(parse_pi_identity_state(br#"{"id":"../bad","cwd":"/tmp"}"#).is_none());
+        assert!(parse_pi_identity_state(br#"{"id":"ok","cwd":"relative"}"#).is_none());
+    }
 }

@@ -22,6 +22,7 @@ export function NavigationRail({
   agentContent,
   skillsContent,
   webAppContent,
+  settingsContent,
 }: {
   railPage: RailPage;
   railMotion: RailMotion;
@@ -37,6 +38,7 @@ export function NavigationRail({
   agentContent: React.ReactNode;
   skillsContent: React.ReactNode;
   webAppContent: React.ReactNode;
+  settingsContent: React.ReactNode;
 }) {
   const pageClass = (page: DetailMode) =>
     `rail-page ${railPage === page ? "active" : ""} ` +
@@ -138,17 +140,7 @@ export function NavigationRail({
           titleRefs={titleRefs}
           onNavigate={onNavigate}
         >
-          <div className="menu-section">
-            <p className="menu-label">Sections</p>
-            <div className="settings-nav-item active">
-              <SquareTerminal />
-              <span>Sessions</span>
-            </div>
-            <div className="settings-nav-item">
-              <Bot />
-              <span>Agent CLI</span>
-            </div>
-          </div>
+          {settingsContent}
         </DetailPage>
       </div>
     </aside>

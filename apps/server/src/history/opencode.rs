@@ -1,16 +1,10 @@
-use std::{collections::HashSet, fs, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, fs, path::PathBuf};
 
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    response::Response,
-};
-use serde::Serialize;
+use axum::http::StatusCode;
 use sqlx::{FromRow, Row, SqlitePool};
 
-use crate::{clock::now, filesystem::path_string, state::AppState};
+use super::{DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence};
+use crate::{agent::OPENCODE_ID, clock::now, filesystem::path_string, state::AppState};
 
 const RECENT_MILLIS: i64 = 5 * 60 * 1000;
 const REQUIRED_SESSION_COLUMNS: &[&str] = &[
@@ -25,57 +19,27 @@ const REQUIRED_SESSION_COLUMNS: &[&str] = &[
 ];
 
 #[derive(FromRow)]
-pub struct HistoryRow {
+pub(crate) struct HistoryRow {
     id: String,
     title: String,
     directory: String,
-    project_id: String,
+    project_id: Option<String>,
     project_name: Option<String>,
     project_worktree: Option<String>,
     time_created: i64,
     time_updated: i64,
 }
 
-#[derive(Serialize, PartialEq, Debug)]
-#[serde(rename_all = "kebab-case")]
-enum Presence {
-    ActiveHere,
-    PossiblyActiveElsewhere,
-    Inactive,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HistoryItem {
-    id: String,
-    title: String,
-    directory: String,
-    project_id: String,
-    project_name: Option<String>,
-    project_worktree: Option<String>,
-    time_created: i64,
-    time_updated: i64,
-    presence: Presence,
-}
-
-pub async fn list(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static str> {
     let Some(pool) = state.history_pool() else {
-        return Json(serde_json::json!({ "available": false, "diagnostic": "OPENCODE_HISTORY_DATABASE_NOT_FOUND", "sessions": [] })).into_response();
+        return Err("OPENCODE_HISTORY_DATABASE_NOT_FOUND");
     };
-    if let Err(diagnostic) = validate_schema(pool).await {
-        return Json(
-            serde_json::json!({ "available": false, "diagnostic": diagnostic, "sessions": [] }),
-        )
-        .into_response();
-    }
+    validate_schema(pool).await?;
     let rows = sqlx::query_as::<_, HistoryRow>("SELECT s.id, s.title, s.directory, s.project_id, p.name AS project_name, p.worktree AS project_worktree, s.time_created, s.time_updated FROM session s LEFT JOIN project p ON p.id = s.project_id WHERE s.parent_id IS NULL AND s.time_archived IS NULL ORDER BY s.time_updated DESC")
-        .fetch_all(pool).await;
-    let Ok(rows) = rows else {
-        return Json(serde_json::json!({ "available": false, "diagnostic": "OPENCODE_HISTORY_QUERY_FAILED", "sessions": [] })).into_response();
-    };
-    let active_here = state.active_upstream_session_ids();
+        .fetch_all(pool).await.map_err(|_| "OPENCODE_HISTORY_QUERY_FAILED")?;
+    let active_here = state.active_upstream_session_ids_for(OPENCODE_ID);
     let external_directories = external_opencode_directories(&state.owned_process_ids());
-    let sessions = rows
+    Ok(rows
         .into_iter()
         .map(|row| {
             let presence = presence_for(&row, &active_here, &external_directories, now() as i64);
@@ -91,12 +55,67 @@ pub async fn list(State(state): State<Arc<AppState>>) -> Response {
                 presence,
             }
         })
-        .collect::<Vec<_>>();
-    Json(serde_json::json!({ "available": true, "diagnostic": null, "sessions": sessions }))
-        .into_response()
+        .collect())
 }
 
-pub async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSet<String>, ()> {
+pub(crate) async fn prepare(
+    pool: Option<&SqlitePool>,
+    requested_id: Option<&str>,
+) -> Result<PreparedLaunch, HistoryError> {
+    let Some(id) = requested_id else {
+        return Ok(PreparedLaunch::OpenCodeNew {
+            baseline: root_session_ids(pool).await.unwrap_or_default(),
+        });
+    };
+    if !valid_session_id(id) {
+        return Err(HistoryError::InvalidId);
+    }
+    match resumable_session(pool, id).await {
+        Ok(Some(cwd)) => Ok(PreparedLaunch::OpenCodeResume {
+            id: id.to_string(),
+            cwd,
+        }),
+        Ok(None) => Err(HistoryError::NotFound),
+        Err(()) => Err(HistoryError::Unavailable),
+    }
+}
+
+pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteError> {
+    if !valid_session_id(&id) {
+        return Err(DeleteError::History(HistoryError::InvalidId));
+    }
+    if state
+        .active_upstream_session_ids_for(OPENCODE_ID)
+        .contains(&id)
+    {
+        return Err(DeleteError::History(HistoryError::Active));
+    }
+    match resumable_session(state.history_pool(), &id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return Err(DeleteError::History(HistoryError::NotFound)),
+        Err(()) => return Err(DeleteError::History(HistoryError::Unavailable)),
+    }
+    let result = tokio::process::Command::new("opencode")
+        .args(["--pure", "session", "delete", &id])
+        .kill_on_drop(true)
+        .output()
+        .await;
+    match result {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(DeleteError::Failed {
+            status: StatusCode::BAD_GATEWAY,
+            code: "OPENCODE_SESSION_DELETE_FAILED",
+            message: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
+        }),
+        Err(_) => Err(DeleteError::Failed {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "OPENCODE_UNAVAILABLE",
+            message: None,
+        }),
+    }
+}
+
+pub(crate) async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSet<String>, ()> {
     let Some(pool) = pool else {
         return Ok(HashSet::new());
     };
@@ -110,7 +129,7 @@ pub async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSet<Strin
     .map_err(|_| ())
 }
 
-pub async fn unique_new_session(
+pub(crate) async fn unique_new_session(
     pool: Option<&SqlitePool>,
     directory: &str,
     launched_at: i64,
@@ -132,7 +151,7 @@ pub async fn unique_new_session(
     Ok(candidate.filter(|_| candidates.next().is_none()))
 }
 
-pub async fn fork_successor_id(
+pub(crate) async fn fork_successor_id(
     pool: Option<&SqlitePool>,
     current_id: &str,
     directory: &str,
@@ -163,7 +182,7 @@ pub async fn fork_successor_id(
     .map_err(|_| ())
 }
 
-pub async fn fork_successor(
+pub(crate) async fn fork_successor(
     pool: Option<&SqlitePool>,
     current_id: &str,
     candidate_id: &str,
@@ -201,56 +220,16 @@ fn next_fork_title(title: &str) -> String {
     )
 }
 
-pub async fn resumable_session(pool: Option<&SqlitePool>, id: &str) -> Result<Option<String>, ()> {
+async fn resumable_session(pool: Option<&SqlitePool>, id: &str) -> Result<Option<String>, ()> {
     let Some(pool) = pool else { return Ok(None) };
     validate_schema(pool).await.map_err(|_| ())?;
     sqlx::query_scalar::<_, String>("SELECT directory FROM session WHERE id = ? AND parent_id IS NULL AND time_archived IS NULL")
         .bind(id).fetch_optional(pool).await.map_err(|_| ())
 }
 
-pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    if !valid_session_id(&id) {
-        return error(StatusCode::BAD_REQUEST, "INVALID_UPSTREAM_SESSION_ID");
-    }
-    if state.active_upstream_session_ids().contains(&id) {
-        return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
-    }
-    match resumable_session(state.history_pool(), &id).await {
-        Ok(Some(_)) => {}
-        Ok(None) => return error(StatusCode::NOT_FOUND, "UPSTREAM_SESSION_NOT_FOUND"),
-        Err(_) => {
-            return error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "OPENCODE_HISTORY_UNAVAILABLE",
-            );
-        }
-    }
-    let result = tokio::process::Command::new("opencode")
-        .args(["--pure", "session", "delete", &id])
-        .kill_on_drop(true)
-        .output()
-        .await;
-    match result {
-        Ok(output) if output.status.success() => StatusCode::NO_CONTENT.into_response(),
-        Ok(output) => (
-            StatusCode::BAD_GATEWAY,
-            Json(serde_json::json!({
-                "error": "OPENCODE_SESSION_DELETE_FAILED",
-                "message": String::from_utf8_lossy(&output.stderr).trim()
-            })),
-        )
-            .into_response(),
-        Err(_) => error(StatusCode::SERVICE_UNAVAILABLE, "OPENCODE_UNAVAILABLE"),
-    }
-}
-
 fn valid_session_id(value: &str) -> bool {
     let suffix = value.strip_prefix("ses_");
     matches!(suffix, Some(value) if !value.is_empty() && value.len() <= 124 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'))
-}
-
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
 }
 
 async fn validate_schema(pool: &SqlitePool) -> Result<(), &'static str> {
@@ -352,7 +331,7 @@ mod tests {
             id: "ses_test".into(),
             title: "Test".into(),
             directory: "/tmp".into(),
-            project_id: "p".into(),
+            project_id: None,
             project_name: None,
             project_worktree: None,
             time_created: 1,

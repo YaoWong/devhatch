@@ -18,9 +18,9 @@ const joinScripts = ({ preLaunchScript, providerScript, tuiScript }: ScriptParts
   return source;
 };
 
-const emptyDraft = (): Draft => ({
+const emptyDraft = (agentId: string): Draft => ({
   id: null,
-  agentId: "opencode",
+  agentId,
   name: "",
   isDefault: false,
   preLaunchScript: "",
@@ -42,6 +42,8 @@ const configDraft = (config: AgentLaunchConfig): Draft => ({
 
 export function AgentConfigDialog({
   configs,
+  agentId,
+  agentName,
   selectedConfigId,
   onSelect,
   onCreate,
@@ -50,6 +52,8 @@ export function AgentConfigDialog({
   onClose,
 }: {
   configs: AgentLaunchConfig[];
+  agentId: string;
+  agentName: string;
   selectedConfigId: string | null;
   onSelect: (id: string) => void;
   onCreate: (input: AgentLaunchConfigInput) => Promise<boolean>;
@@ -58,7 +62,7 @@ export function AgentConfigDialog({
   onClose: () => void;
 }) {
   const initial = configs.find((config) => config.id === selectedConfigId) ?? configs[0];
-  const [draft, setDraft] = useState<Draft>(() => (initial ? configDraft(initial) : emptyDraft()));
+  const [draft, setDraft] = useState<Draft>(() => (initial ? configDraft(initial) : emptyDraft(agentId)));
   const [busy, setBusy] = useState(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
@@ -113,7 +117,7 @@ export function AgentConfigDialog({
       <section className="config-dialog" role="dialog" aria-modal="true" aria-labelledby="config-dialog-title">
         <header>
           <div>
-            <h2 id="config-dialog-title">OpenCode launch configs</h2>
+            <h2 id="config-dialog-title">{agentName} launch configs</h2>
             <p>Scripts run in order in one shell with your user permissions.</p>
           </div>
           <button type="button" aria-label="Close launch configs" disabled={busy} onClick={onClose}>
@@ -122,7 +126,7 @@ export function AgentConfigDialog({
         </header>
         <div className="config-body">
           <aside aria-label="Launch configs">
-            <button className="new-config" type="button" onClick={() => { setScriptError(null); setDraft(emptyDraft()); }}>
+            <button className="new-config" type="button" onClick={() => { setScriptError(null); setDraft(emptyDraft(agentId)); }}>
               <Plus /> New config
             </button>
             {configs.map((config) => (
@@ -147,7 +151,7 @@ export function AgentConfigDialog({
               <input type="checkbox" checked={draft.isDefault} onChange={(event) => update("isDefault", event.target.checked)} />
               Make this the default config
             </label>
-            <p className="form-message">Runs in /bin/sh before OpenCode. Environment changes remain available to OpenCode.</p>
+            <p className="form-message">Runs in /bin/sh before {agentName}. Environment changes remain available to {agentName}.</p>
             <ScriptField
               label="Launch script"
               value={draft.launchScript}

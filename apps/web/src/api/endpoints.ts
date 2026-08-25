@@ -10,7 +10,8 @@ export const endpoints = {
       `/api/agent-launch-configs?agentId=${encodeURIComponent(agentId)}`,
     ),
   agentSessions: () => requestJson<{ agentSessions: AgentSession[] }>("/api/agent-sessions"),
-  history: () => requestJson<HistoryResponse>("/api/agents/opencode/history"),
+  history: (agentId: string) =>
+    requestJson<HistoryResponse>(`/api/agents/${encodeURIComponent(agentId)}/history`),
   terminals: () =>
     requestJson<{ terminals: TerminalInfo[]; home: string; resolvedHome: string }>(
       "/api/terminals",

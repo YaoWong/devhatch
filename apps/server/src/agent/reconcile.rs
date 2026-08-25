@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
-use crate::{session::Session, state::AppState};
+use crate::{agent::OPENCODE_ID, session::Session, state::AppState};
 
 pub(super) fn start_history_reconciler(
     session: &Arc<Session>,
@@ -18,7 +18,7 @@ pub(super) fn start_history_reconciler(
             }
             let (directory, launched_at) = session.correlation_details();
             let _reconciliation = app_state.history_reconciliation().lock().await;
-            let claimed = app_state.active_upstream_session_ids();
+            let claimed = app_state.active_upstream_session_ids_for(OPENCODE_ID);
             drop(session);
             if let Ok(Some(id)) = crate::history::unique_new_session(
                 app_state.history_pool(),

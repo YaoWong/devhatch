@@ -13,7 +13,6 @@ use uuid::Uuid;
 
 use crate::{clock::now, state::AppState};
 
-const AGENT_ID: &str = "opencode";
 const SCRIPT_LIMIT: usize = 65_536;
 
 #[derive(Clone, FromRow, Serialize)]
@@ -70,11 +69,11 @@ pub(crate) async fn list(
         Ok(query) => query,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
     };
-    if query.agent_id != AGENT_ID {
+    if !crate::agent::supported(&query.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
     match sqlx::query_as::<_, AgentLaunchConfig>("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE agent_id = ? ORDER BY is_default DESC, name COLLATE NOCASE, id")
-        .bind(AGENT_ID)
+        .bind(&query.agent_id)
         .fetch_all(state.pool())
         .await
     {
@@ -91,7 +90,7 @@ pub(crate) async fn create(
         Ok(request) => request,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
     };
-    if request.agent_id != AGENT_ID {
+    if !crate::agent::supported(&request.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
     let name = match validate_name(&request.name) {
@@ -121,7 +120,11 @@ pub(crate) async fn create(
         Ok(transaction) => transaction,
         Err(_) => return database_error(),
     };
-    if config.is_default && clear_default(&mut transaction, timestamp).await.is_err() {
+    if config.is_default
+        && clear_default(&mut transaction, &config.agent_id, timestamp)
+            .await
+            .is_err()
+    {
         return database_error();
     }
     let result = sqlx::query_as::<_, AgentLaunchConfig>("INSERT INTO agent_launch_configs (id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at")
@@ -165,7 +168,7 @@ pub(crate) async fn update(
     if request
         .agent_id
         .as_deref()
-        .is_some_and(|agent_id| agent_id != AGENT_ID)
+        .is_some_and(|agent_id| !crate::agent::supported(agent_id))
     {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
@@ -192,6 +195,13 @@ pub(crate) async fn update(
         Ok(None) => return not_found(),
         Err(_) => return database_error(),
     };
+    if request
+        .agent_id
+        .as_deref()
+        .is_some_and(|agent_id| agent_id != current.agent_id)
+    {
+        return not_found();
+    }
     if current.is_default && request.is_default == Some(false) {
         return error(StatusCode::CONFLICT, "AGENT_LAUNCH_CONFIG_DEFAULT_REQUIRED");
     }
@@ -218,7 +228,10 @@ pub(crate) async fn update(
         Err(_) => return database_error(),
     };
     let timestamp = now() as i64;
-    if request.is_default == Some(true) && clear_default(&mut transaction, timestamp).await.is_err()
+    if request.is_default == Some(true)
+        && clear_default(&mut transaction, &current.agent_id, timestamp)
+            .await
+            .is_err()
     {
         return database_error();
     }
@@ -230,7 +243,7 @@ pub(crate) async fn update(
         .bind(request.tui_script)
         .bind(timestamp)
         .bind(&id)
-        .bind(AGENT_ID)
+        .bind(&current.agent_id)
         .fetch_one(&mut *transaction)
         .await;
     let config = match result {
@@ -266,7 +279,7 @@ pub(crate) async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<St
     let count = match sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM agent_launch_configs WHERE agent_id = ?",
     )
-    .bind(AGENT_ID)
+    .bind(&config.agent_id)
     .fetch_one(&mut *transaction)
     .await
     {
@@ -281,7 +294,7 @@ pub(crate) async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<St
     }
     let result = sqlx::query("DELETE FROM agent_launch_configs WHERE id = ? AND agent_id = ?")
         .bind(id)
-        .bind(AGENT_ID)
+        .bind(&config.agent_id)
         .execute(&mut *transaction)
         .await;
     match result {
@@ -299,6 +312,7 @@ pub(crate) async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<St
 
 pub(crate) async fn resolve(
     state: &AppState,
+    agent_id: &str,
     id: Option<&str>,
 ) -> Result<Option<AgentLaunchConfig>, sqlx::Error> {
     let query = if id.is_some() {
@@ -307,32 +321,34 @@ pub(crate) async fn resolve(
         "SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE agent_id = ? AND is_default = 1 AND ? IS NULL"
     };
     sqlx::query_as(query)
-        .bind(AGENT_ID)
+        .bind(agent_id)
         .bind(id)
         .fetch_optional(state.pool())
         .await
 }
 
-pub(crate) async fn summary(state: &AppState) -> Result<(i64, Option<String>), sqlx::Error> {
+pub(crate) async fn summary(
+    state: &AppState,
+    agent_id: &str,
+) -> Result<(i64, Option<String>), sqlx::Error> {
     let count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM agent_launch_configs WHERE agent_id = ?",
     )
-    .bind(AGENT_ID)
+    .bind(agent_id)
     .fetch_one(state.pool())
     .await?;
     let default = sqlx::query_scalar::<_, String>(
         "SELECT id FROM agent_launch_configs WHERE agent_id = ? AND is_default = 1",
     )
-    .bind(AGENT_ID)
+    .bind(agent_id)
     .fetch_optional(state.pool())
     .await?;
     Ok((count, default))
 }
 
 async fn find(pool: &sqlx::SqlitePool, id: &str) -> Result<Option<AgentLaunchConfig>, sqlx::Error> {
-    sqlx::query_as("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE id = ? AND agent_id = ?")
+    sqlx::query_as("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE id = ?")
         .bind(id)
-        .bind(AGENT_ID)
         .fetch_optional(pool)
         .await
 }
@@ -341,22 +357,22 @@ async fn find_in_transaction(
     transaction: &mut Transaction<'_, Sqlite>,
     id: &str,
 ) -> Result<Option<AgentLaunchConfig>, sqlx::Error> {
-    sqlx::query_as("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE id = ? AND agent_id = ?")
+    sqlx::query_as("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE id = ?")
         .bind(id)
-        .bind(AGENT_ID)
         .fetch_optional(&mut **transaction)
         .await
 }
 
 async fn clear_default(
     transaction: &mut Transaction<'_, Sqlite>,
+    agent_id: &str,
     timestamp: i64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE agent_launch_configs SET is_default = 0, updated_at = ? WHERE agent_id = ? AND is_default = 1",
     )
     .bind(timestamp)
-    .bind(AGENT_ID)
+    .bind(agent_id)
     .execute(&mut **transaction)
     .await?;
     Ok(())

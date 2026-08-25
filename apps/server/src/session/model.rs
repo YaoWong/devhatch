@@ -1,7 +1,7 @@
 use std::{
     io::Write,
     path::PathBuf,
-    sync::{Mutex, RwLock, atomic::AtomicBool},
+    sync::{Mutex, atomic::AtomicBool},
 };
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
@@ -12,7 +12,7 @@ pub(crate) struct Session {
     pub(super) id: String,
     pub(super) shell: String,
     pub(super) kind: SessionKind,
-    pub(super) upstream_session_id: RwLock<Option<String>>,
+    pub(super) identity: Mutex<SessionIdentity>,
     pub(super) process_id: u32,
     pub(super) state: Mutex<SessionState>,
     pub(super) master: Mutex<Box<dyn MasterPty + Send>>,
@@ -38,9 +38,14 @@ pub(crate) struct SessionSpawn {
     pub cleanup_path: Option<PathBuf>,
 }
 
+pub(super) struct SessionIdentity {
+    pub upstream_session_id: Option<String>,
+    pub upstream_session_file: Option<PathBuf>,
+    pub cwd: String,
+}
+
 pub(super) struct SessionState {
     pub name: String,
-    pub cwd: String,
     pub status: SessionStatus,
     pub cols: u16,
     pub rows: u16,
@@ -95,7 +100,7 @@ pub(crate) struct SessionSnapshot {
 #[derive(Clone)]
 pub(crate) enum SessionEvent {
     Output(String),
-    UpstreamSessionChanged(String),
+    UpstreamSessionChanged { id: String, cwd: String },
     Exit(Option<u32>),
     Removed(Option<u32>),
     Terminate,
@@ -110,34 +115,90 @@ impl Session {
         self.kind
     }
 
+    pub(crate) fn agent_id(&self) -> Option<&'static str> {
+        self.agent_id
+    }
+
     pub(crate) fn process_id(&self) -> u32 {
         self.process_id
     }
 
     pub(crate) fn upstream_session_id(&self) -> Option<String> {
-        self.upstream_session_id
-            .read()
-            .expect("upstream session lock poisoned")
+        self.identity
+            .lock()
+            .expect("session identity lock poisoned")
+            .upstream_session_id
+            .clone()
+    }
+
+    pub(crate) fn upstream_session_file(&self) -> Option<PathBuf> {
+        self.identity
+            .lock()
+            .expect("session identity lock poisoned")
+            .upstream_session_file
             .clone()
     }
 
     pub(crate) fn correlation_details(&self) -> (String, i64) {
-        let state = self.state.lock().expect("session lock poisoned");
-        (state.cwd.clone(), state.created_at as i64)
+        let cwd = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned")
+            .cwd
+            .clone();
+        let created_at = self.state.lock().expect("session lock poisoned").created_at as i64;
+        (cwd, created_at)
     }
 
     pub(crate) fn update_upstream_session_id(&self, id: String) {
-        let mut upstream = self
-            .upstream_session_id
-            .write()
-            .expect("upstream session lock poisoned");
-        if upstream.as_deref() == Some(&id) {
+        let mut identity = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned");
+        if identity.upstream_session_id.as_deref() == Some(&id) {
             return;
         }
-        *upstream = Some(id.clone());
-        drop(upstream);
+        identity.upstream_session_id = Some(id.clone());
+        let cwd = identity.cwd.clone();
+        drop(identity);
         self.state.lock().expect("session lock poisoned").updated_at = crate::clock::now();
-        let _ = self.events.send(SessionEvent::UpstreamSessionChanged(id));
+        let _ = self
+            .events
+            .send(SessionEvent::UpstreamSessionChanged { id, cwd });
+    }
+
+    pub(crate) fn update_runtime_identity(
+        &self,
+        id: String,
+        file: Option<PathBuf>,
+        cwd: Option<PathBuf>,
+    ) {
+        let cwd = cwd.map(crate::filesystem::path_string);
+        let mut identity = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned");
+        let mut upstream = identity.upstream_session_id.clone();
+        let mut current_cwd = identity.cwd.clone();
+        let identity_changed =
+            merge_runtime_identity(&mut upstream, &mut current_cwd, &id, cwd.as_deref());
+        let file_changed = file
+            .as_ref()
+            .is_some_and(|file| identity.upstream_session_file.as_ref() != Some(file));
+        if !identity_changed && !file_changed {
+            return;
+        }
+        identity.upstream_session_id = upstream;
+        if let Some(file) = file {
+            identity.upstream_session_file = Some(file);
+        }
+        identity.cwd = current_cwd;
+        let cwd = identity.cwd.clone();
+        drop(identity);
+        self.state.lock().expect("session lock poisoned").updated_at = crate::clock::now();
+        let _ = self
+            .events
+            .send(SessionEvent::UpstreamSessionChanged { id, cwd });
     }
 
     pub(crate) fn rename(&self, name: String) {
@@ -147,17 +208,25 @@ impl Session {
     }
 
     pub(crate) fn view(&self) -> SessionView {
+        let identity = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned");
         let state = self.state.lock().expect("session lock poisoned");
-        self.view_from_state(&state)
+        self.view_from_state(&state, &identity)
     }
 
     pub(crate) fn snapshot_and_subscribe(
         &self,
     ) -> (SessionSnapshot, broadcast::Receiver<SessionEvent>) {
+        let identity = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned");
         let state = self.state.lock().expect("session lock poisoned");
         let events = self.events.subscribe();
         let snapshot = SessionSnapshot {
-            view: self.view_from_state(&state),
+            view: self.view_from_state(&state, &identity),
             output: state.output.clone(),
             status: state.status,
             exit_code: state.exit_code,
@@ -169,11 +238,11 @@ impl Session {
         self.events.subscribe()
     }
 
-    fn view_from_state(&self, state: &SessionState) -> SessionView {
+    fn view_from_state(&self, state: &SessionState, identity: &SessionIdentity) -> SessionView {
         SessionView {
             id: self.id.clone(),
             name: state.name.clone(),
-            cwd: state.cwd.clone(),
+            cwd: identity.cwd.clone(),
             shell: self.shell.clone(),
             status: state.status,
             cols: state.cols,
@@ -183,12 +252,52 @@ impl Session {
             exit_code: state.exit_code,
             agent_id: self.agent_id,
             agent_name: self.agent_name,
-            upstream_session_id: self.upstream_session_id(),
+            upstream_session_id: identity.upstream_session_id.clone(),
             kind: if self.kind == SessionKind::Agent {
                 "agent"
             } else {
                 "terminal"
             },
         }
+    }
+}
+
+fn merge_runtime_identity(
+    upstream: &mut Option<String>,
+    current_cwd: &mut String,
+    id: &str,
+    cwd: Option<&str>,
+) -> bool {
+    let mut changed = false;
+    if upstream.as_deref() != Some(id) {
+        *upstream = Some(id.to_string());
+        changed = true;
+    }
+    if let Some(cwd) = cwd
+        && current_cwd != cwd
+    {
+        cwd.clone_into(current_cwd);
+        changed = true;
+    }
+    changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_runtime_identity;
+
+    #[test]
+    fn runtime_identity_updates_id_and_cwd() {
+        let mut id = Some("old".to_string());
+        let mut cwd = "/old".to_string();
+        assert!(merge_runtime_identity(
+            &mut id,
+            &mut cwd,
+            "new",
+            Some("/new")
+        ));
+        assert_eq!(id.as_deref(), Some("new"));
+        assert_eq!(cwd, "/new");
+        assert!(!merge_runtime_identity(&mut id, &mut cwd, "new", None));
     }
 }

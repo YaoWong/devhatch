@@ -41,7 +41,7 @@ export function AgentWorkspace({
   onChoosePath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved: (id: string) => void;
-  onUpstreamSessionChange: (id: string, upstreamSessionId: string) => void;
+  onUpstreamSessionChange: (id: string, upstreamSessionId: string, cwd?: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
