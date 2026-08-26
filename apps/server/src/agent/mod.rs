@@ -55,8 +55,8 @@ const AGENTS: [AgentDefinition; 3] = [
         id: TRAECLI_ID,
         name: TRAECLI_NAME,
         diagnostic: "TRAECLI_NOT_FOUND",
-        history: None,
-        supports_resume: false,
+        history: Some(HistoryKind::Trae),
+        supports_resume: true,
         supports_skills: true,
     },
     AgentDefinition {
@@ -96,16 +96,6 @@ pub(crate) struct AgentCreateRequest {
 
 fn default_agent_id() -> String {
     OPENCODE_ID.to_string()
-}
-
-fn unsupported_request(agent_id: &str, has_resume: bool) -> Option<&'static str> {
-    if !has_resume {
-        None
-    } else if agent_id == TRAECLI_ID {
-        Some("TRAECLI_RESUME_UNSUPPORTED")
-    } else {
-        None
-    }
 }
 
 impl AgentCreateRequest {
@@ -174,11 +164,6 @@ pub async fn create(
     if !supported(&request.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
-    if let Some(code) =
-        unsupported_request(&request.agent_id, request.upstream_session_id.is_some())
-    {
-        return error(StatusCode::BAD_REQUEST, code);
-    }
     if !available(&request.agent_id) {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     }
@@ -223,13 +208,29 @@ pub async fn create(
         None => PreparedLaunch::None,
     };
     match prepared {
-        PreparedLaunch::None => {
+        PreparedLaunch::None => error(StatusCode::BAD_REQUEST, "AGENT_HISTORY_UNSUPPORTED"),
+        PreparedLaunch::TraeNew { id } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
             created_session(spawn_traecli(
                 state,
                 terminal_request,
+                id,
+                None,
+                launch_config,
+                skill_generation.as_deref(),
+            ))
+        }
+        PreparedLaunch::TraeResume { id, path, cwd } => {
+            terminal_request.cwd = Some(serde_json::Value::String(
+                cwd.to_string_lossy().into_owned(),
+            ));
+            created_session(spawn_traecli(
+                state,
+                terminal_request,
+                id,
+                Some(&path),
                 launch_config,
                 skill_generation.as_deref(),
             ))
@@ -366,7 +367,7 @@ pub async fn socket(
 
 #[cfg(test)]
 mod tests {
-    use super::{OPENCODE_ID, PI_ID, TRAECLI_ID, supported, unsupported_request};
+    use super::{OPENCODE_ID, PI_ID, TRAECLI_ID, definition, supported};
 
     #[test]
     fn registry_supports_built_in_agents() {
@@ -377,14 +378,9 @@ mod tests {
     }
 
     #[test]
-    fn agents_without_resume_support_reject_it() {
-        assert_eq!(
-            unsupported_request(TRAECLI_ID, true),
-            Some("TRAECLI_RESUME_UNSUPPORTED")
-        );
-        assert_eq!(unsupported_request(PI_ID, true), None);
-        assert_eq!(unsupported_request(TRAECLI_ID, false), None);
-        assert_eq!(unsupported_request(PI_ID, false), None);
-        assert_eq!(unsupported_request(OPENCODE_ID, true), None);
+    fn registry_advertises_trae_history_and_resume() {
+        let trae = definition(TRAECLI_ID).unwrap();
+        assert!(matches!(trae.history, Some(super::HistoryKind::Trae)));
+        assert!(trae.supports_resume);
     }
 }

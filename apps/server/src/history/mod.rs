@@ -12,6 +12,7 @@ use crate::{agent, state::AppState};
 
 pub(crate) mod opencode;
 pub(crate) mod pi;
+pub(crate) mod trae;
 
 pub(crate) use opencode::{fork_successor, fork_successor_id, unique_new_session};
 
@@ -19,12 +20,14 @@ pub(crate) use opencode::{fork_successor, fork_successor_id, unique_new_session}
 pub(crate) enum HistoryKind {
     OpenCode,
     Pi,
+    Trae,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) enum HistoryBackend {
     OpenCode,
     Pi,
+    Trae,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +48,14 @@ pub(crate) enum PreparedLaunch {
         path: PathBuf,
         cwd: PathBuf,
     },
+    TraeNew {
+        id: String,
+    },
+    TraeResume {
+        id: String,
+        path: PathBuf,
+        cwd: PathBuf,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +66,7 @@ pub(crate) enum HistoryError {
     Ambiguous,
     InvalidCwd,
     Active,
+    ExternalActive,
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -84,6 +96,7 @@ impl HistoryKind {
         match self {
             Self::OpenCode => HistoryBackend::OpenCode,
             Self::Pi => HistoryBackend::Pi,
+            Self::Trae => HistoryBackend::Trae,
         }
     }
 }
@@ -105,6 +118,7 @@ impl HistoryBackend {
                 )
                 .await
             }
+            Self::Trae => trae::list(state).await,
         }
     }
 
@@ -116,11 +130,10 @@ impl HistoryBackend {
         let agent_id = match self {
             Self::OpenCode => agent::OPENCODE_ID,
             Self::Pi => agent::PI_ID,
+            Self::Trae => agent::TRAECLI_ID,
         };
         let active = state.active_upstream_session_ids_for(agent_id);
-        if requested_id.is_some_and(|id| {
-            active_resume(&active, id) || matches!(self, Self::Pi) && !active.is_empty()
-        }) {
+        if requested_id.is_some_and(|id| active_resume(&active, id)) {
             return Err(HistoryError::Active);
         }
         match self {
@@ -132,6 +145,7 @@ impl HistoryBackend {
                 workspaces.extend(state.active_agent_cwds_for(agent::PI_ID));
                 pi::prepare(workspaces, requested_id).await
             }
+            Self::Trae => trae::prepare(requested_id).await,
         }
     }
 
@@ -145,6 +159,7 @@ impl HistoryBackend {
                 workspaces.extend(state.active_agent_cwds_for(agent::PI_ID));
                 pi::delete(state, workspaces, id).await
             }
+            Self::Trae => trae::delete(state, id).await,
         }
     }
 }
@@ -221,6 +236,10 @@ fn history_error_response(kind: HistoryKind, value: HistoryError) -> Response {
         HistoryError::NotFound => error(StatusCode::NOT_FOUND, "UPSTREAM_SESSION_NOT_FOUND"),
         HistoryError::InvalidCwd => error(StatusCode::BAD_REQUEST, "INVALID_CWD"),
         HistoryError::Active => error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE"),
+        HistoryError::ExternalActive => error(
+            StatusCode::CONFLICT,
+            "UPSTREAM_SESSION_POSSIBLY_ACTIVE_ELSEWHERE",
+        ),
         HistoryError::Ambiguous => error(
             StatusCode::SERVICE_UNAVAILABLE,
             "PI_HISTORY_SESSION_AMBIGUOUS",
@@ -230,6 +249,7 @@ fn history_error_response(kind: HistoryKind, value: HistoryError) -> Response {
             match kind {
                 HistoryKind::OpenCode => "OPENCODE_HISTORY_UNAVAILABLE",
                 HistoryKind::Pi => "PI_HISTORY_UNAVAILABLE",
+                HistoryKind::Trae => "TRAE_HISTORY_UNAVAILABLE",
             },
         ),
     }
@@ -261,6 +281,7 @@ mod tests {
         let pi = HashSet::from(["same-id".to_string()]);
         let opencode = HashSet::new();
         assert!(active_resume(&pi, "same-id"));
+        assert!(!active_resume(&pi, "different-id"));
         assert!(!active_resume(&opencode, "same-id"));
     }
 
@@ -271,5 +292,6 @@ mod tests {
             HistoryBackend::OpenCode
         ));
         assert!(matches!(HistoryKind::Pi.backend(), HistoryBackend::Pi));
+        assert!(matches!(HistoryKind::Trae.backend(), HistoryBackend::Trae));
     }
 }

@@ -11,6 +11,12 @@ export function AgentSessionList({
   rows,
   sessionCount,
   historyCount,
+  supportsHistory,
+  historyAvailable,
+  historyDiagnostic,
+  historyLoading,
+  historySettled,
+  historyLoadError,
   activeId,
   search,
   selectedPath,
@@ -23,11 +29,18 @@ export function AgentSessionList({
   onDeleteLive,
   onConfirm,
   onDeleteHistory,
+  onRetryHistory,
 }: {
   agentName: string;
   rows: SessionRow[];
   sessionCount: number;
   historyCount: number;
+  supportsHistory: boolean;
+  historyAvailable: boolean;
+  historyDiagnostic: string | null;
+  historyLoading: boolean;
+  historySettled: boolean;
+  historyLoadError: string | null;
   activeId: string | null;
   search: string;
   selectedPath: AgentLaunchPath | null;
@@ -36,13 +49,27 @@ export function AgentSessionList({
   onSearch: (value: string) => void;
   onIncludeSubdirectoriesChange: (enabled: boolean) => void;
   onActivate: (id: string) => void;
-  onResume: (id: string) => Promise<void>;
+  onResume: (id: string) => Promise<boolean>;
   onDeleteLive: (session: AgentSession) => void;
   onConfirm: (action: ConfirmAction) => void;
   onDeleteHistory: (id: string) => Promise<void>;
+  onRetryHistory: () => Promise<void>;
 }) {
   const [scrolling, setScrolling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const timer = useRef<number | null>(null);
+  const historyUnavailable =
+    supportsHistory && historySettled && (!historyAvailable || Boolean(historyLoadError));
+  const historyMessage = historyLoadError ?? historyDiagnostic;
+  const retryHistory = async () => {
+    if (retrying || historyLoading) return;
+    setRetrying(true);
+    try {
+      await onRetryHistory();
+    } finally {
+      setRetrying(false);
+    }
+  };
   useEffect(
     () => () => {
       if (timer.current) window.clearTimeout(timer.current);
@@ -92,14 +119,26 @@ export function AgentSessionList({
         }}
       >
         {rows.length ? (
-          rows.map(({ live, history }) => {
-            const presence = live ? "active-here" : (history?.presence ?? "active-here");
-            const label = live
-              ? "Current app"
-              : presence === "possibly-active-elsewhere"
-                ? "Possibly active elsewhere"
-                : "Inactive";
-            return (
+          <>
+            {(historyUnavailable || historyMessage) && (
+              <div className={`quiet-message history-status ${historyUnavailable ? "unavailable" : ""}`}>
+                {historyUnavailable && <strong>History unavailable</strong>}
+                <span>{historyMessage}</span>
+                {historyUnavailable && (
+                  <button type="button" disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
+                    {retrying ? "Retrying…" : "Retry"}
+                  </button>
+                )}
+              </div>
+            )}
+            {rows.map(({ live, history }) => {
+              const presence = live ? "active-here" : (history?.presence ?? "active-here");
+              const label = live
+                ? "Current app"
+                : presence === "possibly-active-elsewhere"
+                  ? "Possibly active elsewhere"
+                  : "Inactive";
+              return (
               <div
                 key={live?.id ?? history!.id}
                 className={`agent-session-row ${live?.id === activeId ? "active" : ""}`}
@@ -160,11 +199,22 @@ export function AgentSessionList({
                   </button>
                 </span>
               </div>
-            );
-          })
-        ) : (
+              );
+            })}
+          </>
+        ) : historyLoading && !historySettled ? (
+          <div className="quiet-message">Loading sessions…</div>
+        ) : historyUnavailable ? (
+          <div className="quiet-message history-status unavailable">
+            <strong>History unavailable</strong>
+            {historyMessage && <span>{historyMessage}</span>}
+            <button type="button" disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
+              {retrying ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        ) : historyAvailable || !supportsHistory ? (
           <div className="quiet-message">No sessions found.</div>
-        )}
+        ) : null}
       </div>
     </div>
   );

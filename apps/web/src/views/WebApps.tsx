@@ -157,7 +157,8 @@ export function WebAppsWorkspace({
 }
 
 function Detail({ label, value, mono, ok }: { label: string; value: string; mono?: boolean; ok?: boolean }) {
-  return <div className="webapp-detail"><span>{label}</span><strong className={mono ? "mono" : ""}>{ok !== undefined && (ok ? <CircleCheck /> : <CircleAlert />)}{value}</strong></div>;
+  const valueClassName = [mono && "mono", ok === true && "success", ok === false && "missing"].filter(Boolean).join(" ");
+  return <div className="webapp-detail"><span>{label}</span><strong className={valueClassName}>{ok !== undefined && (ok ? <CircleCheck /> : <CircleAlert />)}{value}</strong></div>;
 }
 
 function formatBytes(bytes: number) {

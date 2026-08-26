@@ -135,17 +135,15 @@ pub(crate) async fn delete(
     if !valid_session_id(&id) {
         return Err(DeleteError::History(HistoryError::InvalidId));
     }
-    if !state.active_upstream_session_ids_for(PI_ID).is_empty() {
-        return Err(DeleteError::History(HistoryError::Active));
-    }
     let record = lookup(workspaces.clone(), id.clone(), false)
         .await
         .map_err(DeleteError::History)?;
-    if !state.active_upstream_session_ids_for(PI_ID).is_empty()
-        || state
-            .active_upstream_session_files_for(PI_ID)
-            .contains(&record.path)
-    {
+    if pi_delete_active(
+        &state.active_upstream_session_ids_for(PI_ID),
+        &state.active_upstream_session_files_for(PI_ID),
+        &id,
+        &record.path,
+    ) {
         return Err(DeleteError::History(HistoryError::Active));
     }
     tokio::task::spawn_blocking(move || {
@@ -158,6 +156,26 @@ pub(crate) async fn delete(
     })
     .await
     .map_err(|_| delete_failed())?
+}
+
+fn pi_delete_active(
+    active_ids: &HashSet<String>,
+    active_files: &HashSet<PathBuf>,
+    requested_id: &str,
+    requested_path: &Path,
+) -> bool {
+    active_ids.contains(requested_id) || active_file_matches(active_files, requested_path)
+}
+
+fn active_file_matches(active_files: &HashSet<PathBuf>, requested: &Path) -> bool {
+    let requested_canonical = fs::canonicalize(requested).ok();
+    active_files.iter().any(|active| {
+        active == requested
+            || matches!(
+                (&requested_canonical, fs::canonicalize(active)),
+                (Some(requested), Ok(active)) if requested == &active
+            )
+    })
 }
 
 fn delete_record(root: &SessionRoot, record: &SessionRecord, id: &str) -> Result<(), DeleteError> {
@@ -634,6 +652,34 @@ mod tests {
             .map(|cwd| format!(",\"cwd\":\"{cwd}\""))
             .unwrap_or_default();
         fs::write(path, format!("{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"2025-01-01T00:00:00Z\"{cwd}}}\n{entries}")).unwrap();
+    }
+
+    #[test]
+    fn pi_activity_is_scoped_to_requested_id_or_canonical_file() {
+        let root = temporary_root();
+        let path = root.join("session.jsonl");
+        fs::write(&path, "{}\n").unwrap();
+        let alias = root.join("alias.jsonl");
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        assert!(!pi_delete_active(
+            &HashSet::from(["different".into()]),
+            &HashSet::new(),
+            "requested",
+            &path,
+        ));
+        assert!(pi_delete_active(
+            &HashSet::from(["requested".into()]),
+            &HashSet::new(),
+            "requested",
+            &path,
+        ));
+        assert!(pi_delete_active(
+            &HashSet::new(),
+            &HashSet::from([alias]),
+            "requested",
+            &path,
+        ));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

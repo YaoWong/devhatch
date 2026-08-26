@@ -1,18 +1,38 @@
 import codexIcon from "./assets/codex.svg";
-import opencodeIcon from "./assets/opencode.svg";
 import piIcon from "./assets/pi.svg";
 import traeIcon from "./assets/trae-cli.png";
 
-const agentIcons: Record<string, string> = {
+const monochromeAgentIcons: Record<string, string> = {
   codex: codexIcon,
-  opencode: opencodeIcon,
+};
+
+const colorAgentIcons: Record<string, string> = {
   pi: piIcon,
   traecli: traeIcon,
 };
 
 export function AgentIcon({ id, className }: { id?: string; className?: string }) {
-  const icon = id ? agentIcons[id] : undefined;
-  return icon ? <img className={className} src={icon} alt="" aria-hidden="true" /> : null;
+  if (id === "opencode") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden="true">
+        <path d="M16 6H8v12h8zm4 16H4V2h16z" />
+      </svg>
+    );
+  }
+
+  const monochromeIcon = id ? monochromeAgentIcons[id] : undefined;
+  if (monochromeIcon) {
+    return (
+      <span
+        className={["agent-icon-monochrome", className].filter(Boolean).join(" ")}
+        style={{ maskImage: `url(${monochromeIcon})`, WebkitMaskImage: `url(${monochromeIcon})` }}
+        aria-hidden="true"
+      />
+    );
+  }
+
+  const colorIcon = id ? colorAgentIcons[id] : undefined;
+  return colorIcon ? <img className={className} src={colorIcon} alt="" aria-hidden="true" /> : null;
 }
 
 export function DevHatchLogo() {
@@ -20,13 +40,13 @@ export function DevHatchLogo() {
     <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
       <defs>
         <radialGradient id="devhatch-ring" cx="20" cy="20" r="10.2" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#0e0e0e" />
-          <stop offset=".65" stopColor="#1a1a1a" />
-          <stop offset="1" stopColor="#323232" />
+          <stop stopColor="currentColor" />
+          <stop offset=".65" stopColor="currentColor" stopOpacity=".88" />
+          <stop offset="1" stopColor="currentColor" stopOpacity=".68" />
         </radialGradient>
         <radialGradient id="devhatch-yao" cx="20" cy="20" r="13.4" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#202020" />
-          <stop offset="1" stopColor="#343431" />
+          <stop stopColor="currentColor" />
+          <stop offset="1" stopColor="currentColor" stopOpacity=".74" />
         </radialGradient>
         <radialGradient id="devhatch-center" cx="20" cy="20" r="1.4" gradientUnits="userSpaceOnUse">
           <stop stopColor="white" stopOpacity=".2" />

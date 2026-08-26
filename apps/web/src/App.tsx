@@ -112,8 +112,8 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
     if (!confirmAction) return;
     setActionBusy(true);
     try {
-      await confirmAction.action();
-      setConfirmAction(null);
+      const succeeded = await confirmAction.action();
+      if (succeeded !== false) setConfirmAction(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

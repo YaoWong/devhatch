@@ -163,6 +163,8 @@ pub(super) fn spawn_opencode(
 pub(super) fn spawn_traecli(
     state: Arc<AppState>,
     request: CreateRequest,
+    session_id: String,
+    history_path: Option<&Path>,
     launch_config: AgentLaunchConfig,
     skill_generation: Option<&Path>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
@@ -191,12 +193,19 @@ pub(super) fn spawn_traecli(
     let mut command = CommandBuilder::new("/bin/sh");
     command.arg(&wrapper);
     command.arg(&executable);
+    for argument in trae_args(&session_id, history_path) {
+        command.arg(argument);
+    }
     configure_environment(&mut command, &cwd);
     command.env("DEVHATCH_AGENT_ID", TRAECLI_ID);
     command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
     command.env("DEVHATCH_CWD", &cwd);
     command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    let homes = crate::history::trae::resolve_homes();
+    let mut runtime_homes = homes.clone();
+    command.env("TRAE_HOME", &homes.trae_home);
+    command.env("TRAECLI_HOME", &homes.cli_home);
     if let Some(generation) = skill_generation {
         let (trae_home, cli_home) = match prepare_trae_home(&run_dir, generation) {
             Ok(value) => value,
@@ -205,17 +214,25 @@ pub(super) fn spawn_traecli(
                 return Err(error.into());
             }
         };
-        command.env("TRAE_HOME", trae_home);
-        command.env("TRAECLI_HOME", cli_home);
+        command.env("TRAE_HOME", &trae_home);
+        command.env("TRAECLI_HOME", &cli_home);
+        runtime_homes = crate::history::trae::TraeHomes {
+            trae_home,
+            cli_home,
+        };
     }
     let cleanup_path = run_dir.clone();
+    let resume_path = history_path.map(Path::to_path_buf);
+    let runtime_id = session_id.clone();
+    let runtime_cwd = cwd.clone();
+    let watcher_state = state.clone();
     let result = Session::spawn(
         state,
         SessionSpawn {
             command,
             shell,
             kind: SessionKind::Agent,
-            upstream_session_id: None,
+            upstream_session_id: Some(session_id),
             cwd,
             name: TRAECLI_NAME.to_string(),
             cols,
@@ -224,12 +241,57 @@ pub(super) fn spawn_traecli(
             agent_name: Some(TRAECLI_NAME),
             cleanup_path: Some(cleanup_path),
         },
-        |_| {},
+        move |session| {
+            if let Some(path) = resume_path {
+                session.update_runtime_identity(
+                    runtime_id.clone(),
+                    Some(path),
+                    Some(runtime_cwd.clone()),
+                );
+            }
+            start_trae_identity_watcher(session, watcher_state, runtime_homes, runtime_id);
+        },
     );
     if result.is_err() {
         let _ = std::fs::remove_dir_all(run_dir);
     }
     result
+}
+
+fn trae_args(session_id: &str, history_path: Option<&Path>) -> Vec<OsString> {
+    match history_path {
+        Some(_) => vec![OsString::from("resume"), OsString::from(session_id)],
+        None => vec![OsString::from("--session-id"), OsString::from(session_id)],
+    }
+}
+
+fn start_trae_identity_watcher(
+    session: &Arc<Session>,
+    state: Arc<AppState>,
+    homes: crate::history::trae::TraeHomes,
+    id: String,
+) {
+    let session = Arc::downgrade(session);
+    tokio::spawn(async move {
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let Some(session) = session.upgrade() else {
+                break;
+            };
+            if !state.contains_session(&session) {
+                break;
+            }
+            let record = crate::history::trae::lookup(homes.clone(), id.clone()).await;
+            let Ok(record) = record else {
+                continue;
+            };
+            if !state.contains_session(&session) {
+                break;
+            }
+            session.update_runtime_identity(record.id, Some(record.path), Some(record.cwd));
+            break;
+        }
+    });
 }
 
 pub(super) fn spawn_pi(
@@ -462,7 +524,19 @@ fn available_loopback_port() -> std::io::Result<u16> {
 mod tests {
     use std::{ffi::OsString, path::Path};
 
-    use super::{parse_pi_identity_state, pi_args, safe_runtime_cwd};
+    use super::{parse_pi_identity_state, pi_args, safe_runtime_cwd, trae_args};
+
+    #[test]
+    fn builds_trae_args_for_new_and_resume() {
+        assert_eq!(
+            trae_args("new-id", None),
+            vec![OsString::from("--session-id"), OsString::from("new-id")]
+        );
+        assert_eq!(
+            trae_args("resume-id", Some(Path::new("/sessions/resume.jsonl"))),
+            vec![OsString::from("resume"), OsString::from("resume-id")]
+        );
+    }
 
     #[test]
     fn builds_pi_args_for_new_resume_and_optional_profile_skills() {

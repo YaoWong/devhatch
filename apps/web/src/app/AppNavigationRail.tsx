@@ -85,6 +85,12 @@ export function AppNavigationRail({
           activeSession={agent.activeSession}
           sessions={agent.selectedSessions}
           historyCount={agent.selectedAgent?.supportsHistory ? agent.history.sessions.length : 0}
+          supportsHistory={Boolean(agent.selectedAgent?.supportsHistory)}
+          historyAvailable={agent.history.available}
+          historyDiagnostic={agent.history.diagnostic}
+          historyLoading={agent.historyLoading}
+          historySettled={agent.historySettled}
+          historyLoadError={agent.historyLoadError}
           rows={agent.mergedSessions}
           search={agent.search}
           homePaths={homePaths}
@@ -107,6 +113,7 @@ export function AppNavigationRail({
           onDeleteLive={onCloseAgentSession}
           onConfirm={onConfirm}
           onDeleteHistory={agent.deleteHistorySession}
+          onRetryHistory={agent.retryHistory}
         />
       }
       skillsContent={<SkillsRailPage section={skillsSection} onSelect={onSelectSkillsSection} />}

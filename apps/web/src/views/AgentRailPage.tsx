@@ -34,6 +34,12 @@ export function AgentRailPage({
   activeSession,
   sessions,
   historyCount,
+  supportsHistory,
+  historyAvailable,
+  historyDiagnostic,
+  historyLoading,
+  historySettled,
+  historyLoadError,
   rows,
   search,
   homePaths,
@@ -56,6 +62,7 @@ export function AgentRailPage({
   onDeleteLive,
   onConfirm,
   onDeleteHistory,
+  onRetryHistory,
 }: {
   busy: boolean;
   agents: Agent[];
@@ -72,6 +79,12 @@ export function AgentRailPage({
   activeSession: AgentSession | null;
   sessions: AgentSession[];
   historyCount: number;
+  supportsHistory: boolean;
+  historyAvailable: boolean;
+  historyDiagnostic: string | null;
+  historyLoading: boolean;
+  historySettled: boolean;
+  historyLoadError: string | null;
   rows: SessionRows;
   search: string;
   homePaths: HomePaths;
@@ -90,10 +103,11 @@ export function AgentRailPage({
   onDeletePath: (path: AgentLaunchPath) => Promise<void>;
   onSearch: (value: string) => void;
   onActivateSession: (id: string) => void;
-  onResume: (id: string) => Promise<void>;
+  onResume: (id: string) => Promise<boolean>;
   onDeleteLive: (session: AgentSession) => void;
   onConfirm: (action: ConfirmAction) => void;
   onDeleteHistory: (id: string) => Promise<void>;
+  onRetryHistory: () => Promise<void>;
 }) {
   const [pathDisplay, setPathDisplay] = useState<"folder" | "full">(() =>
     localStorage.getItem("devhatch-agent-path-display") === "full" ? "full" : "folder",
@@ -257,6 +271,12 @@ export function AgentRailPage({
         rows={rows}
         sessionCount={sessions.length}
         historyCount={historyCount}
+        supportsHistory={supportsHistory}
+        historyAvailable={historyAvailable}
+        historyDiagnostic={historyDiagnostic}
+        historyLoading={historyLoading}
+        historySettled={historySettled}
+        historyLoadError={historyLoadError}
         activeId={activeSession?.id ?? null}
         search={search}
         selectedPath={paths.find((path) => path.id === selectedPathId) ?? null}
@@ -269,6 +289,7 @@ export function AgentRailPage({
         onDeleteLive={onDeleteLive}
         onConfirm={onConfirm}
         onDeleteHistory={onDeleteHistory}
+        onRetryHistory={onRetryHistory}
       />
     </>
   );

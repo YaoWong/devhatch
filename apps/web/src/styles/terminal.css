@@ -24,8 +24,8 @@
 .error-banner.skills-error-top { position: fixed; top: 76px; bottom: auto; }
 .error-banner button { width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--color-on-solid); }
 .error-banner svg { width: 12px; height: 12px; }
-.side-dot, .tab-dot, .status-light { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success); }
-.tab-dot.connecting, .tab-dot.reconnecting, .status-light.connecting, .status-light.reconnecting { background: var(--color-warning); }
+.side-dot, .tab-dot, .status-light { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
+.tab-dot.connecting, .tab-dot.reconnecting, .status-light.connecting, .status-light.reconnecting { background: var(--color-warning-fg); }
 .tab-dot.disconnected, .tab-dot.exited, .status-light.disconnected, .status-light.exited { background: var(--color-text-faint); }
 .statusbar { display: flex; align-items: center; gap: 14px; padding: 0 20px; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); font: 10px/1 "SF Mono", monospace; }
 .status-path { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

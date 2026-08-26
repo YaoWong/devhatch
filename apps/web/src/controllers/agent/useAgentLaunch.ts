@@ -36,12 +36,12 @@ export function useAgentLaunch({
       const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
       if (!selectedAgent?.available) {
         reportError(`${selectedAgent?.name ?? "Agent"} is unavailable`);
-        return;
+        return false;
       }
       try {
         if (upstreamSessionId && !selectedAgent.supportsResume) {
           reportError(`${selectedAgent.name} does not support resuming sessions`);
-          return;
+          return false;
         }
         if (pathId) await touchAgentLaunchPath(pathId);
         const skillProfileId = selectedAgent.supportsSkills ? (selectedSkillProfileId ?? undefined) : undefined;
@@ -66,9 +66,15 @@ export function useAgentLaunch({
         onLaunched();
         closeSidebar();
         bumpFocus();
-        await Promise.all([refreshHistory(), refreshData()]);
+        try {
+          await Promise.all([refreshHistory(), refreshData()]);
+        } catch (reason) {
+          reportError(errorMessage(reason));
+        }
+        return true;
       } catch (reason) {
         reportError(errorMessage(reason));
+        return false;
       }
     },
     [

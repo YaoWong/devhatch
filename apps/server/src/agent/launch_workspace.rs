@@ -1,5 +1,4 @@
 use std::{
-    env,
     os::unix::fs::{PermissionsExt, symlink},
     path::{Path, PathBuf},
 };
@@ -64,13 +63,8 @@ pub(super) fn prepare_trae_home(
     run_dir: &Path,
     generation: &Path,
 ) -> std::io::Result<(PathBuf, PathBuf)> {
-    let base_home = env::var_os("TRAE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| crate::filesystem::home_dir().join(".trae"));
-    let cli_home = env::var_os("TRAECLI_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| base_home.join("cli"));
-    prepare_trae_home_from(run_dir, generation, &base_home, &cli_home)
+    let homes = crate::history::trae::resolve_homes();
+    prepare_trae_home_from(run_dir, generation, &homes.trae_home, &homes.cli_home)
 }
 
 fn prepare_trae_home_from(

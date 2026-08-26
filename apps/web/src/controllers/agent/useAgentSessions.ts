@@ -11,7 +11,14 @@ import { errorMessage, type HomePaths } from "./shared";
 
 const emptyHistory: HistoryResponse = { available: false, diagnostic: null, sessions: [] };
 
-type HistoryState = { agentId: string | null; selection: number; response: HistoryResponse };
+type HistoryState = {
+  agentId: string | null;
+  selection: number;
+  response: HistoryResponse;
+  loading: boolean;
+  settled: boolean;
+  loadError: string | null;
+};
 
 export function useAgentSessions({
   homePaths,
@@ -33,6 +40,9 @@ export function useAgentSessions({
     agentId: null,
     selection: 0,
     response: emptyHistory,
+    loading: false,
+    settled: false,
+    loadError: null,
   });
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<AgentSession[]>([]);
@@ -43,39 +53,65 @@ export function useAgentSessions({
   const historyRefreshes = useRef(new Map<string, { selection: number; request: Promise<void> }>());
   const sessionRefresh = useRef<Promise<void> | null>(null);
   historyAgentIdRef.current = historyAgentId;
-  const history =
-    historyState.agentId === historyAgentId && historyState.selection === historySelection.current
-      ? historyState.response
-      : emptyHistory;
+  const historyMatches =
+    historyState.agentId === historyAgentId && historyState.selection === historySelection.current;
+  const history = historyMatches ? historyState.response : emptyHistory;
+  const historyLoading = historyMatches ? historyState.loading : Boolean(historyAgentId);
+  const historySettled = historyMatches ? historyState.settled : false;
+  const historyLoadError = historyMatches ? historyState.loadError : null;
 
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
-  const refreshHistory = useCallback(() => {
-    const agentId = historyAgentId;
-    if (!agentId) return Promise.resolve();
-    const inFlight = historyRefreshes.current.get(agentId);
-    if (inFlight?.selection === historySelection.current) return inFlight.request;
-    const selection = historySelection.current;
-    const version = historyVersions.current.get(agentId) ?? 0;
-    const request = endpoints
-      .history(agentId)
-      .then((data) => {
-        if (
-          selection === historySelection.current &&
-          version === (historyVersions.current.get(agentId) ?? 0)
-        ) {
-          setHistoryState({ agentId, selection, response: data });
-        }
-      })
-      .catch((reason) => reportError(errorMessage(reason)))
-      .finally(() => {
-        if (historyRefreshes.current.get(agentId)?.request === request) historyRefreshes.current.delete(agentId);
-      });
-    historyRefreshes.current.set(agentId, { selection, request });
-    return request;
-  }, [historyAgentId, reportError]);
+  const refreshHistory = useCallback(
+    (foreground = false) => {
+      const agentId = historyAgentId;
+      if (!agentId) return Promise.resolve();
+      const inFlight = historyRefreshes.current.get(agentId);
+      if (inFlight?.selection === historySelection.current) return inFlight.request;
+      const selection = historySelection.current;
+      const version = historyVersions.current.get(agentId) ?? 0;
+      if (foreground) {
+        setHistoryState((current) =>
+          current.agentId === agentId && current.selection === selection
+            ? { ...current, loading: true }
+            : current,
+        );
+      }
+      const request = endpoints
+        .history(agentId)
+        .then((data) => {
+          if (
+            selection === historySelection.current &&
+            version === (historyVersions.current.get(agentId) ?? 0)
+          ) {
+            setHistoryState({ agentId, selection, response: data, loading: false, settled: true, loadError: null });
+          }
+        })
+        .catch((reason) => {
+          const message = errorMessage(reason);
+          if (
+            selection === historySelection.current &&
+            version === (historyVersions.current.get(agentId) ?? 0)
+          ) {
+            setHistoryState((current) =>
+              current.agentId === agentId && current.selection === selection
+                ? { ...current, loading: false, settled: true, loadError: message }
+                : current,
+            );
+          }
+          reportError(message);
+        })
+        .finally(() => {
+          if (historyRefreshes.current.get(agentId)?.request === request) historyRefreshes.current.delete(agentId);
+        });
+      historyRefreshes.current.set(agentId, { selection, request });
+      return request;
+    },
+    [historyAgentId, reportError],
+  );
+  const retryHistory = useCallback(() => refreshHistory(true), [refreshHistory]);
 
   const refreshSessions = useCallback(() => {
     if (sessionRefresh.current) return sessionRefresh.current;
@@ -104,7 +140,14 @@ export function useAgentSessions({
 
   useEffect(() => {
     historySelection.current += 1;
-    setHistoryState({ agentId: historyAgentId, selection: historySelection.current, response: emptyHistory });
+    setHistoryState({
+      agentId: historyAgentId,
+      selection: historySelection.current,
+      response: emptyHistory,
+      loading: Boolean(historyAgentId),
+      settled: false,
+      loadError: null,
+    });
   }, [historyAgentId]);
 
   useEffect(() => {
@@ -187,7 +230,7 @@ export function useAgentSessions({
       if (!agentId) return;
       await deleteAgentHistorySession(agentId, id);
       historyVersions.current.set(agentId, (historyVersions.current.get(agentId) ?? 0) + 1);
-      await historyRefreshes.current.get(agentId)?.request;
+      historyRefreshes.current.delete(agentId);
       if (historyAgentIdRef.current === agentId) await refreshHistory();
     },
     [historyAgentId, refreshHistory],
@@ -232,9 +275,13 @@ export function useAgentSessions({
   return {
     sessions,
     history,
+    historyLoading,
+    historySettled,
+    historyLoadError,
     activeId,
     initializeSessions,
     refreshHistory,
+    retryHistory,
     removeSession,
     updateUpstreamSession,
     addSession,

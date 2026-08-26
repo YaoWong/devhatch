@@ -81,7 +81,7 @@ export type ConfirmAction = {
   description: string;
   confirmLabel: string;
   danger?: boolean;
-  action: () => Promise<void>;
+  action: () => boolean | void | Promise<boolean | void>;
 };
 export type ConnectionPhase = "connecting" | "connected" | "reconnecting" | "disconnected" | "exited";
 export type DetailMode = "terminal" | "agent" | "skills" | "webapp" | "settings";
