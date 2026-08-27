@@ -1,8 +1,9 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env,
     ffi::OsString,
-    fs,
+    fs::{self, File},
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -40,6 +41,15 @@ const REQUIRED_COLUMNS: &[&str] = &[
     "title",
     "archived",
 ];
+
+const MAX_SESSION_INDEX_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SESSION_INDEX_LINE_BYTES: u64 = 64 * 1024;
+
+#[derive(serde::Deserialize)]
+struct SessionIndexEntry {
+    id: String,
+    thread_name: Option<String>,
+}
 
 #[derive(Clone, Copy)]
 struct Schema {
@@ -120,6 +130,7 @@ pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static 
     let active_files = state.active_upstream_session_files_for(CODEX_ID);
     let home_for_locks = home.clone();
     tokio::task::spawn_blocking(move || {
+        let index_names = session_index_names(&home);
         rows.into_iter()
             .map(|row| {
                 let id: String = row
@@ -146,11 +157,20 @@ pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static 
                         WriterLock::Inactive => Presence::Inactive,
                     }
                 };
+                let db_name = row
+                    .try_get::<Option<String>, _>("db_name")
+                    .map_err(|_| "CODEX_HISTORY_QUERY_FAILED")?;
+                let db_title = row
+                    .try_get::<Option<String>, _>("db_title")
+                    .map_err(|_| "CODEX_HISTORY_QUERY_FAILED")?;
+                let title = select_title(
+                    db_name.as_deref(),
+                    index_names.get(&id).map(String::as_str),
+                    db_title.as_deref(),
+                );
                 Ok(HistoryItem {
                     id,
-                    title: row
-                        .try_get("display_title")
-                        .map_err(|_| "CODEX_HISTORY_QUERY_FAILED")?,
+                    title,
                     directory: row
                         .try_get("cwd")
                         .map_err(|_| "CODEX_HISTORY_QUERY_FAILED")?,
@@ -172,6 +192,89 @@ pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static 
     .map_err(|_| "CODEX_HISTORY_UNAVAILABLE")?
 }
 
+fn select_title(db_name: Option<&str>, index_name: Option<&str>, db_title: Option<&str>) -> String {
+    [db_name, index_name, db_title]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .unwrap_or("(no messages)")
+        .to_string()
+}
+
+fn session_index_names(home: &Path) -> HashMap<String, String> {
+    let path = home.join("session_index.jsonl");
+    let Some(file) = trusted_session_index(&path) else {
+        return HashMap::new();
+    };
+    let mut names = HashMap::new();
+    let mut reader = BufReader::new(file);
+    loop {
+        let mut line = Vec::new();
+        let read = match reader
+            .by_ref()
+            .take(MAX_SESSION_INDEX_LINE_BYTES + 1)
+            .read_until(b'\n', &mut line)
+        {
+            Ok(read) => read,
+            Err(_) => break,
+        };
+        if read == 0 {
+            break;
+        }
+        if read as u64 > MAX_SESSION_INDEX_LINE_BYTES {
+            break;
+        }
+        let Ok(entry) = serde_json::from_slice::<SessionIndexEntry>(&line) else {
+            continue;
+        };
+        let Some(name) = entry.thread_name.map(|name| name.trim().to_string()) else {
+            continue;
+        };
+        if valid_session_id(&entry.id) && !name.is_empty() {
+            names.insert(entry.id, name);
+        }
+    }
+    names
+}
+
+#[cfg(unix)]
+fn trusted_session_index(path: &Path) -> Option<File> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.nlink() != 1
+        || metadata.len() > MAX_SESSION_INDEX_BYTES
+    {
+        return None;
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let opened = file.metadata().ok()?;
+    (opened.is_file()
+        && opened.dev() == metadata.dev()
+        && opened.ino() == metadata.ino()
+        && opened.len() <= MAX_SESSION_INDEX_BYTES)
+        .then_some(file)
+}
+
+#[cfg(not(unix))]
+fn trusted_session_index(path: &Path) -> Option<File> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_SESSION_INDEX_BYTES
+    {
+        return None;
+    }
+    let file = File::open(path).ok()?;
+    let opened = file.metadata().ok()?;
+    (opened.is_file() && opened.len() <= MAX_SESSION_INDEX_BYTES).then_some(file)
+}
+
 async fn query_rows(
     pool: &SqlitePool,
     schema: Schema,
@@ -187,9 +290,9 @@ async fn query_rows(
         "COALESCE(updated_at * 1000, 0)"
     };
     let name = if schema.name {
-        "NULLIF(TRIM(name), '')"
+        "NULLIF(TRIM(name), '') AS db_name"
     } else {
-        "NULL"
+        "NULL AS db_name"
     };
     let recency = if schema.recency_at_ms {
         if schema.updated_at_ms {
@@ -202,7 +305,7 @@ async fn query_rows(
     };
     let filter = thread_filter(schema);
     let query = format!(
-        "SELECT id, cwd, rollout_path, COALESCE({name}, NULLIF(TRIM(title), ''), '(no messages)') AS display_title, {created} AS time_created, {updated} AS time_updated, {recency} AS recency FROM threads WHERE {filter} ORDER BY recency DESC, id DESC"
+        "SELECT id, cwd, rollout_path, {name}, NULLIF(TRIM(title), '') AS db_title, {created} AS time_created, {updated} AS time_updated, {recency} AS recency FROM threads WHERE {filter} ORDER BY recency DESC, id DESC"
     );
     sqlx::query(&query)
         .fetch_all(pool)
@@ -642,6 +745,66 @@ mod tests {
         assert_eq!(delete_args("id"), ["delete", "--force", "id"]);
     }
 
+    #[test]
+    fn title_priority_is_name_then_index_then_title() {
+        assert_eq!(
+            select_title(Some(" DB name "), Some("index"), Some("title")),
+            "DB name"
+        );
+        assert_eq!(select_title(None, Some(" index "), Some("title")), "index");
+        assert_eq!(select_title(Some(" "), None, Some(" title ")), "title");
+        assert_eq!(select_title(None, Some(" "), None), "(no messages)");
+    }
+
+    #[test]
+    fn session_index_uses_latest_valid_name_and_ignores_bad_lines() {
+        let home = temporary_home();
+        let id = Uuid::new_v4().to_string();
+        fs::write(
+            home.join("session_index.jsonl"),
+            format!(
+                "{{\"id\":\"{id}\",\"thread_name\":\" first \"}}\nnot json\n{{\"id\":\"{id}\",\"thread_name\":\" latest \"}}\n{{\"id\":\"{id}\",\"thread_name\":\" \"}}\n"
+            ),
+        )
+        .unwrap();
+        let names = session_index_names(&home);
+        assert_eq!(names.get(&id).map(String::as_str), Some("latest"));
+        fs::remove_file(home.join("session_index.jsonl")).unwrap();
+        assert!(session_index_names(&home).is_empty());
+        fs::remove_dir_all(home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn schema_without_name_selects_separate_null_name_and_title() {
+        let home = temporary_home();
+        let cwd = home.join("work");
+        fs::create_dir(&cwd).unwrap();
+        let pool = database(&home, false).await;
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, archived) VALUES (?, NULL, 1, 1, ?, ' Title ', 0)")
+            .bind(id)
+            .bind(path_string(cwd))
+            .execute(&pool)
+            .await
+            .unwrap();
+        let rows = query_rows(&pool, validate_schema(&pool).await.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows[0].try_get::<Option<String>, _>("db_name").unwrap(),
+            None
+        );
+        assert_eq!(
+            rows[0]
+                .try_get::<Option<String>, _>("db_title")
+                .unwrap()
+                .as_deref(),
+            Some("Title")
+        );
+        pool.close().await;
+        fs::remove_dir_all(home).unwrap();
+    }
+
     #[tokio::test]
     async fn filters_official_history_and_uses_name_then_title() {
         let home = temporary_home();
@@ -696,11 +859,31 @@ mod tests {
         let rows = query_rows(&pool, schema).await.unwrap();
         assert_eq!(rows.len(), 3);
         assert_eq!(
-            rows[0].try_get::<String, _>("display_title").unwrap(),
+            select_title(
+                rows[0]
+                    .try_get::<Option<String>, _>("db_name")
+                    .unwrap()
+                    .as_deref(),
+                None,
+                rows[0]
+                    .try_get::<Option<String>, _>("db_title")
+                    .unwrap()
+                    .as_deref(),
+            ),
             "Named"
         );
         assert_eq!(
-            rows[1].try_get::<String, _>("display_title").unwrap(),
+            select_title(
+                rows[1]
+                    .try_get::<Option<String>, _>("db_name")
+                    .unwrap()
+                    .as_deref(),
+                None,
+                rows[1]
+                    .try_get::<Option<String>, _>("db_title")
+                    .unwrap()
+                    .as_deref(),
+            ),
             "Title"
         );
         assert_eq!(
