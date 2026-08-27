@@ -22,9 +22,12 @@ use crate::{
     terminal::{CreateRequest, RenameRequest, error, invalid_cwd, remove_session},
 };
 
-use launch::{available, installed_version, spawn_opencode, spawn_pi, spawn_traecli};
-use reconcile::{start_fork_reconciler, start_history_reconciler};
+pub(crate) use launch::executable_path;
+use launch::{available, installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli};
+use reconcile::{start_codex_reconciler, start_fork_reconciler, start_history_reconciler};
 
+pub(crate) const CODEX_ID: &str = "codex";
+pub(crate) const CODEX_NAME: &str = "Codex";
 pub(crate) const OPENCODE_ID: &str = "opencode";
 pub(crate) const OPENCODE_NAME: &str = "OpenCode";
 pub(crate) const TRAECLI_ID: &str = "traecli";
@@ -42,7 +45,15 @@ struct AgentDefinition {
     supports_skills: bool,
 }
 
-const AGENTS: [AgentDefinition; 3] = [
+const AGENTS: [AgentDefinition; 4] = [
+    AgentDefinition {
+        id: CODEX_ID,
+        name: CODEX_NAME,
+        diagnostic: "CODEX_NOT_FOUND",
+        history: Some(HistoryKind::Codex),
+        supports_resume: true,
+        supports_skills: true,
+    },
     AgentDefinition {
         id: OPENCODE_ID,
         name: OPENCODE_NAME,
@@ -164,6 +175,10 @@ pub async fn create(
     if !supported(&request.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
+    let agent = definition(&request.agent_id).unwrap();
+    if request.skill_profile_id.is_some() && !agent.supports_skills {
+        return error(StatusCode::BAD_REQUEST, "AGENT_SKILLS_UNSUPPORTED");
+    }
     if !available(&request.agent_id) {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     }
@@ -209,6 +224,46 @@ pub async fn create(
     };
     match prepared {
         PreparedLaunch::None => error(StatusCode::BAD_REQUEST, "AGENT_HISTORY_UNSUPPORTED"),
+        PreparedLaunch::CodexNew { home, baseline } => {
+            if invalid_cwd(terminal_request.cwd.as_ref()) {
+                return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
+            }
+            let session = match spawn_codex(
+                state.clone(),
+                terminal_request,
+                home.clone(),
+                None,
+                launch_config,
+                skill_generation.as_deref(),
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            start_codex_reconciler(&session, state, home, baseline);
+            created_session(Ok(session))
+        }
+        PreparedLaunch::CodexResume {
+            home,
+            id,
+            path,
+            cwd,
+        } => {
+            terminal_request.cwd = Some(serde_json::Value::String(
+                cwd.to_string_lossy().into_owned(),
+            ));
+            let session = match spawn_codex(
+                state,
+                terminal_request,
+                home,
+                Some((id, path)),
+                launch_config,
+                skill_generation.as_deref(),
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            created_session(Ok(session))
+        }
         PreparedLaunch::TraeNew { id } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
@@ -367,14 +422,22 @@ pub async fn socket(
 
 #[cfg(test)]
 mod tests {
-    use super::{OPENCODE_ID, PI_ID, TRAECLI_ID, definition, supported};
+    use super::{CODEX_ID, OPENCODE_ID, PI_ID, TRAECLI_ID, definition, supported};
 
     #[test]
     fn registry_supports_built_in_agents() {
+        assert!(supported(CODEX_ID));
         assert!(supported(OPENCODE_ID));
         assert!(supported(TRAECLI_ID));
         assert!(supported(PI_ID));
-        assert!(!supported("codex"));
+    }
+
+    #[test]
+    fn registry_advertises_codex_capabilities() {
+        let codex = definition(CODEX_ID).unwrap();
+        assert!(matches!(codex.history, Some(super::HistoryKind::Codex)));
+        assert!(codex.supports_resume);
+        assert!(codex.supports_skills);
     }
 
     #[test]

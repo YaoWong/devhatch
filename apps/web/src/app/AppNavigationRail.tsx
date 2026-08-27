@@ -62,9 +62,13 @@ export function AppNavigationRail({
       terminalContent={
         <WorkspaceList
           workspaces={terminal.workspaces}
+          sessions={terminal.sessions}
           selectedWorkspace={terminal.selectedWorkspace}
           homePaths={homePaths}
           onSelect={terminal.activateWorkspace}
+          onPin={(workspace) => void terminal.pinWorkspace(workspace)}
+          onDelete={terminal.removeWorkspace}
+          onConfirm={onConfirm}
           onAdd={onPickWorkspace}
         />
       }

@@ -3,9 +3,13 @@ import type { ThemeId } from "./types";
 
 export const ThemeContext = createContext<{
   themeId: ThemeId;
+  agentLaunchPathsMaxHeightPx: number;
+  navigationRailWidthPx: number;
   saving: boolean;
   error: string | null;
   selectTheme: (themeId: ThemeId) => void;
+  setAgentLaunchPathsMaxHeightPx: (value: number) => void;
+  setNavigationRailWidthPx: (value: number) => void;
 } | null>(null);
 
 export function useTheme() {

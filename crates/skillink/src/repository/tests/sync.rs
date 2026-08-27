@@ -60,6 +60,12 @@ async fn sync_preserves_identity_on_slug_rename() {
         .unwrap();
     assert_eq!(result.new_commit, new_commit);
     assert_eq!(result.update.len(), 1);
+    let preview = app
+        .prepare_repository_sync(&repository.id, true)
+        .await
+        .unwrap();
+    assert!(preview.plan.noop);
+    assert_eq!(preview.plan.new_commit, new_commit);
     let new = app.list_skills().await.unwrap().remove(0);
     assert_eq!(new.id, old.id);
     assert_eq!(new.slug, "renamed");

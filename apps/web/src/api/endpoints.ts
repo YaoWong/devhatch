@@ -1,4 +1,4 @@
-import type { Agent, AgentLaunchConfig, AgentLaunchPath, AgentSession, HistoryResponse, TerminalInfo, WebApp } from "../types";
+import type { Agent, AgentLaunchConfig, AgentLaunchPath, AgentSession, HistoryResponse, TerminalInfo, TerminalWorkspace, WebApp } from "../types";
 import { requestJson } from "./client";
 
 export const endpoints = {
@@ -17,5 +17,11 @@ export const endpoints = {
       "/api/terminals",
       undefined,
       "Unable to load terminal sessions",
+    ),
+  terminalWorkspaces: () =>
+    requestJson<{ terminalWorkspaces: TerminalWorkspace[] }>(
+      "/api/terminal-workspaces",
+      undefined,
+      "Unable to load terminal workspaces",
     ),
 };

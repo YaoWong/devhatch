@@ -1,5 +1,11 @@
 export type ThemeId = "default" | "latte" | "frappe" | "macchiato" | "mocha";
-export type AppSettings = { theme: ThemeId; createdAt: number; updatedAt: number };
+export type AppSettings = {
+  theme: ThemeId;
+  agentLaunchPathsMaxHeightPx: number;
+  navigationRailWidthPx: number;
+  createdAt: number;
+  updatedAt: number;
+};
 
 export type TerminalInfo = {
   id: string;
@@ -12,6 +18,15 @@ export type TerminalInfo = {
   createdAt: number;
   updatedAt: number;
   exitCode: number | null;
+};
+
+export type TerminalWorkspace = {
+  id: string;
+  path: string;
+  pinned: boolean;
+  lastUsedAt: number;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type AgentSession = TerminalInfo & {

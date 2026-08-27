@@ -1,4 +1,4 @@
-import type { AgentSession, DirectoryListing, TerminalInfo } from "../types";
+import type { AgentSession, DirectoryListing, TerminalInfo, TerminalWorkspace } from "../types";
 import { requestEmpty, requestJson } from "./client";
 
 export function listDirectories(directory?: string) {
@@ -12,6 +12,26 @@ export function createTerminal(cwd?: string) {
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cwd }) },
     "Unable to create terminal session",
   );
+}
+
+export function createTerminalWorkspace(path: string) {
+  return requestJson<{ terminalWorkspace: TerminalWorkspace }>(
+    "/api/terminal-workspaces",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path }) },
+    "Unable to add terminal workspace",
+  );
+}
+
+export function updateTerminalWorkspace(id: string, pinned: boolean) {
+  return requestJson<{ terminalWorkspace: TerminalWorkspace }>(
+    `/api/terminal-workspaces/${id}`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ pinned }) },
+    "Unable to update terminal workspace",
+  );
+}
+
+export function deleteTerminalWorkspace(id: string) {
+  return requestEmpty(`/api/terminal-workspaces/${id}`, { method: "DELETE" }, "Unable to remove terminal workspace");
 }
 
 export function renameRemoteSession(route: string, id: string, name: string) {

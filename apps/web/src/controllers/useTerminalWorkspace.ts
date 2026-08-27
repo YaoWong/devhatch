@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createTerminal, deleteRemoteSession, endpoints, renameRemoteSession } from "../api";
-import type { DeleteTarget, TerminalInfo } from "../types";
-import { logicalPath, uniquePaths } from "../utils";
+import {
+  ApiError,
+  createTerminal,
+  createTerminalWorkspace,
+  deleteRemoteSession,
+  deleteTerminalWorkspace,
+  endpoints,
+  renameRemoteSession,
+  updateTerminalWorkspace,
+} from "../api";
+import type { DeleteTarget, TerminalInfo, TerminalWorkspace } from "../types";
+import { logicalPath } from "../utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
@@ -13,7 +22,7 @@ export function useTerminalWorkspace(
   bumpFocus: () => void,
 ) {
   const [sessions, setSessions] = useState<TerminalInfo[]>([]);
-  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [workspaces, setWorkspaces] = useState<TerminalWorkspace[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<TerminalInfo[]>([]);
@@ -22,6 +31,37 @@ export function useTerminalWorkspace(
     sessionsRef.current = sessions;
   }, [sessions]);
 
+  const normalizeWorkspace = useCallback(
+    (workspace: TerminalWorkspace): TerminalWorkspace => ({
+      ...workspace,
+      path: logicalPath(workspace.path, homePaths?.home, homePaths?.resolvedHome),
+    }),
+    [homePaths],
+  );
+
+  const refreshWorkspaces = useCallback(async () => {
+    const data = await endpoints.terminalWorkspaces();
+    const next = data.terminalWorkspaces.map(normalizeWorkspace);
+    setWorkspaces(next);
+    setSelectedWorkspace((current) =>
+      current && next.some((workspace) => workspace.path === current) ? current : (next[0]?.path ?? null),
+    );
+    return next;
+  }, [normalizeWorkspace]);
+
+  useEffect(() => {
+    setWorkspaces((current) => current.map(normalizeWorkspace));
+    setSessions((current) =>
+      current.map((session) => ({
+        ...session,
+        cwd: logicalPath(session.cwd, homePaths?.home, homePaths?.resolvedHome),
+      })),
+    );
+    setSelectedWorkspace((current) =>
+      current ? logicalPath(current, homePaths?.home, homePaths?.resolvedHome) : current,
+    );
+  }, [homePaths, normalizeWorkspace]);
+
   const initialize = useCallback(
     (data: Awaited<ReturnType<typeof endpoints.terminals>>) => {
       const paths = { home: data.home, resolvedHome: data.resolvedHome };
@@ -29,14 +69,23 @@ export function useTerminalWorkspace(
         ...session,
         cwd: logicalPath(session.cwd, paths.home, paths.resolvedHome),
       }));
-      const workspaces = uniquePaths(normalized);
       setHomePaths(paths);
       setSessions(normalized);
-      setWorkspaces(workspaces);
-      setSelectedWorkspace(workspaces[0] ?? null);
       setActiveId(normalized[0]?.id ?? null);
     },
     [setHomePaths],
+  );
+
+  const initializeWorkspaces = useCallback(
+    (data: Awaited<ReturnType<typeof endpoints.terminalWorkspaces>>, paths: HomePaths) => {
+      const next = data.terminalWorkspaces.map((workspace) => ({
+        ...workspace,
+        path: logicalPath(workspace.path, paths?.home, paths?.resolvedHome),
+      }));
+      setWorkspaces(next);
+      setSelectedWorkspace((current) => current ?? next[0]?.path ?? null);
+    },
+    [],
   );
 
   const addTerminal = useCallback(
@@ -48,7 +97,7 @@ export function useTerminalWorkspace(
           cwd: logicalPath(terminal.cwd, homePaths?.home, homePaths?.resolvedHome),
         };
         setSessions((current) => [...current, normalized]);
-        setWorkspaces((current) => (current.includes(normalized.cwd) ? current : [normalized.cwd, ...current]));
+        await refreshWorkspaces();
         setSelectedWorkspace(normalized.cwd);
         setActiveId(normalized.id);
         closeSidebar();
@@ -57,17 +106,24 @@ export function useTerminalWorkspace(
         reportError(reason instanceof Error ? reason.message : String(reason));
       }
     },
-    [bumpFocus, closeSidebar, homePaths, reportError],
+    [bumpFocus, closeSidebar, homePaths, refreshWorkspaces, reportError],
   );
 
   const chooseWorkspace = useCallback(
-    (path: string) => {
-      const normalized = logicalPath(path, homePaths?.home, homePaths?.resolvedHome);
-      setWorkspaces((current) => (current.includes(normalized) ? current : [normalized, ...current]));
-      setSelectedWorkspace(normalized);
-      setActiveId(sessionsRef.current.find((session) => session.cwd === normalized)?.id ?? null);
+    async (path: string) => {
+      try {
+        const { terminalWorkspace } = await createTerminalWorkspace(path);
+        const normalized = normalizeWorkspace(terminalWorkspace);
+        await refreshWorkspaces();
+        setSelectedWorkspace(normalized.path);
+        setActiveId(sessionsRef.current.find((session) => session.cwd === normalized.path)?.id ?? null);
+        return true;
+      } catch (reason) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      }
     },
-    [homePaths],
+    [normalizeWorkspace, refreshWorkspaces, reportError],
   );
 
   const activateWorkspace = useCallback(
@@ -77,6 +133,49 @@ export function useTerminalWorkspace(
       closeSidebar();
     },
     [closeSidebar],
+  );
+
+  const pinWorkspace = useCallback(
+    async (workspace: TerminalWorkspace) => {
+      try {
+        await updateTerminalWorkspace(workspace.id, !workspace.pinned);
+        await refreshWorkspaces();
+        setSelectedWorkspace(workspace.path);
+      } catch (reason) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+      }
+    },
+    [refreshWorkspaces, reportError],
+  );
+
+  const removeWorkspace = useCallback(
+    async (workspace: TerminalWorkspace) => {
+      try {
+        const index = workspaces.findIndex((item) => item.id === workspace.id);
+        await deleteTerminalWorkspace(workspace.id);
+        const next = await refreshWorkspaces();
+        if (selectedWorkspace === workspace.path) {
+          const selected = next[Math.min(index, next.length - 1)] ?? next[0];
+          setSelectedWorkspace(selected?.path ?? null);
+          setActiveId(selected ? (sessionsRef.current.find((session) => session.cwd === selected.path)?.id ?? null) : null);
+        }
+        return true;
+      } catch (reason) {
+        await Promise.allSettled([endpoints.terminals(), endpoints.terminalWorkspaces()]).then(([terminalResult, workspaceResult]) => {
+          if (terminalResult.status === "fulfilled") initialize(terminalResult.value);
+          if (workspaceResult.status === "fulfilled") initializeWorkspaces(workspaceResult.value, homePaths);
+        });
+        reportError(
+          reason instanceof ApiError && reason.status === 409 && reason.code === "WORKSPACE_HAS_TERMINALS"
+            ? "Close all terminals in this workspace before removing it."
+            : reason instanceof Error
+              ? reason.message
+              : String(reason),
+        );
+        return true;
+      }
+    },
+    [homePaths, initialize, initializeWorkspaces, refreshWorkspaces, reportError, selectedWorkspace, workspaces],
   );
 
   const activateSession = useCallback(
@@ -133,9 +232,12 @@ export function useTerminalWorkspace(
     activeSession,
     visibleSessions,
     initialize,
+    initializeWorkspaces,
     addTerminal,
     chooseWorkspace,
     activateWorkspace,
+    pinWorkspace,
+    removeWorkspace,
     activateSession,
     renameSession,
     deleteSession,

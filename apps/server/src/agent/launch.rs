@@ -11,10 +11,11 @@ use portable_pty::CommandBuilder;
 use uuid::Uuid;
 
 use super::{
-    OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID, TRAECLI_NAME,
+    CODEX_ID, CODEX_NAME, OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID, TRAECLI_NAME,
     events::start_event_watcher,
     launch_workspace::{
-        copy_skills, create_run_dir, prepare_trae_home, write_pi_identity_extension, write_wrapper,
+        copy_skills, create_run_dir, prepare_codex_home, prepare_trae_home,
+        write_pi_identity_extension, write_wrapper,
     },
 };
 use crate::{
@@ -56,7 +57,7 @@ pub(super) async fn installed_version(executable_name: &str) -> Option<String> {
     (!version.is_empty()).then_some(version)
 }
 
-pub(super) fn executable_path(executable: &str) -> Option<PathBuf> {
+pub(crate) fn executable_path(executable: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
             .map(|path| path.join(executable))
@@ -66,6 +67,141 @@ pub(super) fn executable_path(executable: &str) -> Option<PathBuf> {
                     .flatten()
             })
     })
+}
+
+pub(super) fn spawn_codex(
+    state: Arc<AppState>,
+    request: CreateRequest,
+    home: PathBuf,
+    resume: Option<(String, PathBuf)>,
+    launch_config: AgentLaunchConfig,
+    skill_generation: Option<&Path>,
+) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
+    let fallback_cwd = default_cwd();
+    let requested_cwd = request
+        .cwd
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&fallback_cwd);
+    let cwd = resolve_path(requested_cwd)?;
+    if !cwd.is_dir() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
+    }
+    let executable = executable_path(CODEX_ID).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "codex executable not found")
+    })?;
+    let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
+    let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
+    let run_dir = create_run_dir(state.data_dir())?;
+    let runtime_home = if let Some(generation) = skill_generation {
+        match prepare_codex_home(&run_dir, generation, &home) {
+            Ok(runtime_home) => runtime_home,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&run_dir);
+                return Err(error.into());
+            }
+        }
+    } else {
+        home.clone()
+    };
+    let wrapper = run_dir.join("launch.sh");
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, true) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let shell = executable.to_string_lossy().into_owned();
+    let mut command = CommandBuilder::new("/bin/sh");
+    command.arg(&wrapper);
+    command.arg(&executable);
+    let arguments = match codex_args(
+        resume.as_ref().map(|value| value.0.as_str()),
+        &home,
+        skill_generation.is_some(),
+    ) {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&run_dir);
+            return Err(error.into());
+        }
+    };
+    for argument in arguments {
+        command.arg(argument);
+    }
+    configure_environment(&mut command, &cwd);
+    command.env("CODEX_HOME", &runtime_home);
+    command.env("DEVHATCH_AGENT_ID", CODEX_ID);
+    command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
+    command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
+    command.env("DEVHATCH_CWD", &cwd);
+    command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    let cleanup_path = run_dir.clone();
+    let runtime = resume.clone();
+    let runtime_cwd = cwd.clone();
+    let result = Session::spawn(
+        state,
+        SessionSpawn {
+            command,
+            shell,
+            kind: SessionKind::Agent,
+            upstream_session_id: resume.as_ref().map(|value| value.0.clone()),
+            cwd,
+            name: CODEX_NAME.to_string(),
+            cols,
+            rows,
+            agent_id: Some(CODEX_ID),
+            agent_name: Some(CODEX_NAME),
+            cleanup_path: Some(cleanup_path),
+        },
+        move |session| {
+            if let Some((id, path)) = &runtime {
+                session.update_runtime_identity(
+                    id.clone(),
+                    Some(path.clone()),
+                    Some(runtime_cwd.clone()),
+                );
+            }
+        },
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+fn codex_args(
+    id: Option<&str>,
+    base_home: &Path,
+    selected_profile: bool,
+) -> std::io::Result<Vec<OsString>> {
+    let mut arguments = Vec::new();
+    if selected_profile {
+        let home = base_home.to_str().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Codex home is not valid UTF-8",
+            )
+        })?;
+        let sqlite_home = serde_json::to_string(home).map_err(std::io::Error::other)?;
+        let log_dir = serde_json::to_string(base_home.join("log").to_str().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Codex log path is not valid UTF-8",
+            )
+        })?)
+        .map_err(std::io::Error::other)?;
+        arguments.extend([
+            OsString::from("-c"),
+            OsString::from(format!("sqlite_home={sqlite_home}")),
+            OsString::from("-c"),
+            OsString::from(format!("log_dir={log_dir}")),
+            OsString::from("--disable"),
+            OsString::from("plugins"),
+        ]);
+    }
+    if let Some(id) = id {
+        arguments.extend([OsString::from("resume"), OsString::from(id)]);
+    }
+    Ok(arguments)
 }
 
 pub(super) fn spawn_opencode(
@@ -101,7 +237,7 @@ pub(super) fn spawn_opencode(
         return Err(error.into());
     }
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, skill_generation.is_some()) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, skill_generation.is_some(), false) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -185,7 +321,7 @@ pub(super) fn spawn_traecli(
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, false) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, false) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -343,7 +479,7 @@ pub(super) fn spawn_pi(
         }
     };
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, false) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, false) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -524,7 +660,33 @@ fn available_loopback_port() -> std::io::Result<u16> {
 mod tests {
     use std::{ffi::OsString, path::Path};
 
-    use super::{parse_pi_identity_state, pi_args, safe_runtime_cwd, trae_args};
+    use super::{codex_args, parse_pi_identity_state, pi_args, safe_runtime_cwd, trae_args};
+
+    #[test]
+    fn builds_codex_args_for_new_and_resume() {
+        let home = Path::new("/home/user/.codex");
+        assert!(codex_args(None, home, false).unwrap().is_empty());
+        assert_eq!(
+            codex_args(Some("session-id"), home, false).unwrap(),
+            vec![OsString::from("resume"), OsString::from("session-id")]
+        );
+        let profile = vec![
+            OsString::from("-c"),
+            OsString::from("sqlite_home=\"/home/user/.codex\""),
+            OsString::from("-c"),
+            OsString::from("log_dir=\"/home/user/.codex/log\""),
+            OsString::from("--disable"),
+            OsString::from("plugins"),
+        ];
+        assert_eq!(codex_args(None, home, true).unwrap(), profile);
+        let mut resumed = profile;
+        resumed.extend([OsString::from("resume"), OsString::from("session-id")]);
+        assert_eq!(codex_args(Some("session-id"), home, true).unwrap(), resumed);
+        assert_eq!(
+            codex_args(None, Path::new("/home/a\"b"), true).unwrap()[1],
+            OsString::from("sqlite_home=\"/home/a\\\"b\"")
+        );
+    }
 
     #[test]
     fn builds_trae_args_for_new_and_resume() {

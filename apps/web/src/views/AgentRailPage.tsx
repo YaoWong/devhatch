@@ -1,5 +1,5 @@
-import { ChevronRight, Code2, Layers3 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Code2, Layers3 } from "lucide-react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { AgentIcon } from "../Branding";
 import { CustomSelect } from "../components/CustomSelect";
 import type {
@@ -116,6 +116,17 @@ export function AgentRailPage({
   const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
   const [renameAlias, setRenameAlias] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
+  const launchSetupStorageKey = selectedAgentId
+    ? `devhatch-agent-launch-setup-collapsed:${selectedAgentId}`
+    : null;
+  const [launchSetupCollapsed, setLaunchSetupCollapsed] = useState(() =>
+    launchSetupStorageKey ? localStorage.getItem(launchSetupStorageKey) === "true" : false,
+  );
+  useLayoutEffect(() => {
+    setLaunchSetupCollapsed(
+      launchSetupStorageKey ? localStorage.getItem(launchSetupStorageKey) === "true" : false,
+    );
+  }, [launchSetupStorageKey]);
   const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
@@ -134,7 +145,7 @@ export function AgentRailPage({
     });
 
   return (
-    <>
+    <div className="agent-rail-layout">
       {configOpen && (
         <AgentConfigDialog
           key={selectedAgent?.id}
@@ -198,49 +209,66 @@ export function AgentRailPage({
               renderOption={(agent) => <AgentOption agent={agent} />}
             />
             <div className="launch-setup">
-              <p className="launch-setup-label">Launch setup</p>
-              {selectedAgent && !selectedAgent.available && (
-                <div className="agent-install-message">
-                  <strong>{selectedAgent.name} is not installed</strong>
-                  {selectedAgent.id === "opencode" ? (
-                    <>
-                      <span>Install it to launch agent sessions:</span>
-                      <code>curl -fsSL https://opencode.ai/install | bash</code>
-                    </>
-                  ) : selectedAgent.id === "pi" ? (
-                    <>
-                      <span>Install it to launch agent sessions:</span>
-                      <code>npm install -g --ignore-scripts @earendil-works/pi-coding-agent</code>
-                    </>
-                  ) : (
-                    <span>
-                      {selectedAgent.id === "traecli"
-                        ? "The traecli executable was not found on PATH. Install Trae CLI using its official distribution."
-                        : (selectedAgent.diagnostic ?? `Install ${selectedAgent.name} and make sure it is available on PATH.`)}
-                    </span>
+              <button
+                className="launch-setup-toggle"
+                type="button"
+                aria-expanded={!launchSetupCollapsed}
+                aria-controls="agent-launch-setup-body"
+                onClick={() => {
+                  const collapsed = !launchSetupCollapsed;
+                  setLaunchSetupCollapsed(collapsed);
+                  if (launchSetupStorageKey) localStorage.setItem(launchSetupStorageKey, String(collapsed));
+                }}
+              >
+                <span>Launch setup</span>
+                <ChevronDown />
+              </button>
+              {!launchSetupCollapsed && (
+                <div className="launch-setup-body" id="agent-launch-setup-body">
+                  {selectedAgent && !selectedAgent.available && (
+                    <div className="agent-install-message">
+                      <strong>{selectedAgent.name} is not installed</strong>
+                      {selectedAgent.id === "opencode" ? (
+                        <>
+                          <span>Install it to launch agent sessions:</span>
+                          <code>curl -fsSL https://opencode.ai/install | bash</code>
+                        </>
+                      ) : selectedAgent.id === "pi" ? (
+                        <>
+                          <span>Install it to launch agent sessions:</span>
+                          <code>npm install -g --ignore-scripts @earendil-works/pi-coding-agent</code>
+                        </>
+                      ) : (
+                        <span>
+                          {selectedAgent.id === "traecli"
+                            ? "The traecli executable was not found on PATH. Install Trae CLI using its official distribution."
+                            : (selectedAgent.diagnostic ?? `Install ${selectedAgent.name} and make sure it is available on PATH.`)}
+                        </span>
+                      )}
+                    </div>
                   )}
+                  {selectedAgent?.supportsSkills && (
+                    <CustomSelect
+                      label="Skills"
+                      value={selectedProfileId ?? "none"}
+                      options={[{ id: "none", slug: "None" }, ...profiles]}
+                      onChange={(id) => onSelectProfile(id === "none" ? null : id)}
+                      renderTrigger={(profile) => (
+                        <span className="launch-setting-copy">
+                          <Layers3 />
+                          <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
+                        </span>
+                      )}
+                      renderOption={(profile) => <span className="select-copy"><strong>{profile.slug}</strong><small>{profile.id === "none" ? "Launch without managed skills" : "Apply on new sessions"}</small></span>}
+                    />
+                  )}
+                  <button className="launch-setting-row" type="button" onClick={() => setConfigOpen(true)}>
+                    <Code2 />
+                    <span><small>Launch script</small><strong>{selectedConfig?.name ?? "None"}</strong></span>
+                    <ChevronRight />
+                  </button>
                 </div>
               )}
-              {selectedAgent?.supportsSkills && (
-                <CustomSelect
-                  label="Skills"
-                  value={selectedProfileId ?? "none"}
-                  options={[{ id: "none", slug: "None" }, ...profiles]}
-                  onChange={(id) => onSelectProfile(id === "none" ? null : id)}
-                  renderTrigger={(profile) => (
-                    <span className="launch-setting-copy">
-                      <Layers3 />
-                      <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
-                    </span>
-                  )}
-                  renderOption={(profile) => <span className="select-copy"><strong>{profile.slug}</strong><small>{profile.id === "none" ? "Launch without managed skills" : "Apply on new sessions"}</small></span>}
-                />
-              )}
-              <button className="launch-setting-row" type="button" onClick={() => setConfigOpen(true)}>
-                <Code2 />
-                <span><small>Launch script</small><strong>{selectedConfig?.name ?? "None"}</strong></span>
-                <ChevronRight />
-              </button>
             </div>
           </>
         ) : (
@@ -291,7 +319,7 @@ export function AgentRailPage({
         onDeleteHistory={onDeleteHistory}
         onRetryHistory={onRetryHistory}
       />
-    </>
+    </div>
   );
 }
 
@@ -313,7 +341,7 @@ function AgentOption({ agent, fallback }: { agent?: Agent; fallback?: string }) 
   return (
     <>
       <span className="agent-brand">
-        <AgentIcon id={agent?.id} />
+        <AgentIcon id={agent?.id} className="agent-option-icon" />
       </span>
       <span className="select-copy">
         <strong>{agent?.name ?? fallback}</strong>

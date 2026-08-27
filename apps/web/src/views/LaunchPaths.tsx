@@ -38,9 +38,9 @@ export function LaunchPaths({
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   const visiblePaths = paths.length > 24 ? paths.slice((page - 1) * 10, page * 10) : paths;
   return (
-    <div className="menu-section">
+    <div className="menu-section paths-section">
       <div className="path-section-head">
-        <p className="menu-label">Launch Path</p>
+        <p className="menu-label">Launch Paths</p>
         <div className="path-head-actions">
           <button
             className={`path-mode-toggle ${pathDisplay}`}
@@ -59,47 +59,70 @@ export function LaunchPaths({
           </button>
         </div>
       </div>
-      <div className={`agent-path-list ${paths.length > 8 && paths.length <= 24 ? "scrollable" : ""}`}>
+      <div className="agent-path-list">
         {visiblePaths.length ? (
           visiblePaths.map((item) => (
             <div
               key={item.id}
               className={`agent-path-row ${selectedPathId === item.id ? "active" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-pressed={selectedPathId === item.id}
-              onClick={() => onSelect(item)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(item);
-                }
-              }}
             >
               <Folder />
-              <span className="path-main" title={item.path}>
-                <strong>{pathDisplay === "folder" ? item.alias || workspaceName(item.path) : item.path}</strong>
-                {pathDisplay === "folder" && (
-                  <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>
-                )}
-              </span>
-              <span className="path-actions" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                className="path-main"
+                title={item.path}
+                aria-pressed={selectedPathId === item.id}
+                onClick={(event) => {
+                  onSelect(item);
+                  if (event.detail > 0) event.currentTarget.blur();
+                }}
+              >
+                <span>
+                  <strong>{pathDisplay === "folder" ? item.alias || workspaceName(item.path) : item.path}</strong>
+                  {pathDisplay === "folder" && (
+                    <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>
+                  )}
+                </span>
+              </button>
+              <span className="path-actions">
                 <button
                   className={item.pinned ? "pinned" : ""}
                   aria-label={item.pinned ? "Unpin path" : "Pin path"}
                   aria-pressed={item.pinned}
                   title={item.pinned ? "Pinned" : "Pin path"}
-                  onClick={() => onPin(item)}
+                  onClick={(event) => {
+                    onPin(item);
+                    if (event.detail > 0) event.currentTarget.blur();
+                  }}
                 >
                   <Pin />
                 </button>
-                <button aria-label="Launch path" disabled={!available} onClick={() => onLaunch(item)}>
+                <button
+                  aria-label="Launch path"
+                  disabled={!available}
+                  onClick={(event) => {
+                    onLaunch(item);
+                    if (event.detail > 0) event.currentTarget.blur();
+                  }}
+                >
                   <Play />
                 </button>
-                <button aria-label="Rename alias" onClick={() => onRename(item)}>
+                <button
+                  aria-label="Rename alias"
+                  onClick={(event) => {
+                    onRename(item);
+                    if (event.detail > 0) event.currentTarget.blur();
+                  }}
+                >
                   <Pencil />
                 </button>
-                <button aria-label="Delete path" onClick={() => onDelete(item)}>
+                <button
+                  aria-label="Delete path"
+                  onClick={(event) => {
+                    onDelete(item);
+                    if (event.detail > 0) event.currentTarget.blur();
+                  }}
+                >
                   <Trash2 />
                 </button>
               </span>

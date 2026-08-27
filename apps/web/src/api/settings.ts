@@ -1,4 +1,4 @@
-import type { AppSettings, ThemeId } from "../types";
+import type { AppSettings } from "../types";
 import { requestJson } from "./client";
 
 export function getSettings() {
@@ -6,13 +6,15 @@ export function getSettings() {
     .then(({ settings }) => settings);
 }
 
-export function updateSettings(theme: ThemeId) {
+export function updateSettings(
+  patch: Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx">>,
+) {
   return requestJson<{ settings: AppSettings }>(
     "/api/settings",
     {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ theme }),
+      body: JSON.stringify(patch),
     },
     "Unable to save settings",
   ).then(({ settings }) => settings);

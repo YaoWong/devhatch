@@ -49,7 +49,29 @@ pub(crate) struct SessionRecord {
 struct Schema {
     created_at_ms: bool,
     updated_at_ms: bool,
+    recency_at_ms: bool,
     first_user_message: bool,
+    preview: bool,
+    source: bool,
+    has_user_event: bool,
+}
+
+fn thread_filter(schema: Schema) -> String {
+    let visible = if schema.first_user_message {
+        "NULLIF(TRIM(first_user_message), '') IS NOT NULL"
+    } else if schema.preview {
+        "NULLIF(TRIM(preview), '') IS NOT NULL"
+    } else if schema.has_user_event {
+        "has_user_event != 0 AND NULLIF(TRIM(title), '') IS NOT NULL"
+    } else {
+        "NULLIF(TRIM(title), '') IS NOT NULL"
+    };
+    let source = if schema.source {
+        " AND ((typeof(source) = 'integer' AND source IN (0, 1, 4)) OR (typeof(source) = 'text' AND lower(trim(source)) IN ('cli', 'vscode', 'unknown')))"
+    } else {
+        ""
+    };
+    format!("COALESCE(archived, 0) = 0 AND {visible}{source}")
 }
 
 #[derive(Deserialize)]
@@ -156,8 +178,18 @@ async fn list_from(
     } else {
         "NULL"
     };
+    let recency = if schema.recency_at_ms {
+        if schema.updated_at_ms {
+            "COALESCE(recency_at_ms, updated_at_ms, updated_at * 1000, 0)"
+        } else {
+            "COALESCE(recency_at_ms, updated_at * 1000, 0)"
+        }
+    } else {
+        updated
+    };
+    let filter = thread_filter(schema);
     let query = format!(
-        "SELECT id, cwd, rollout_path, COALESCE(NULLIF(TRIM(title), ''), {first_user_message}, '(no messages)') AS display_title, {created} AS time_created, {updated} AS time_updated FROM threads WHERE COALESCE(archived, 0) = 0 ORDER BY time_updated DESC, id ASC"
+        "SELECT id, cwd, rollout_path, COALESCE(NULLIF(TRIM(title), ''), {first_user_message}, '(no messages)') AS display_title, {created} AS time_created, {updated} AS time_updated, {recency} AS recency FROM threads WHERE {filter} ORDER BY recency DESC, id DESC"
     );
     let rows = sqlx::query(&query)
         .fetch_all(&pool)
@@ -240,12 +272,13 @@ pub(crate) async fn lookup(homes: TraeHomes, id: String) -> Result<SessionRecord
     let pool = open_pool(&homes)
         .await
         .map_err(|_| HistoryError::Unavailable)?;
-    validate_schema(&pool)
+    let schema = validate_schema(&pool)
         .await
         .map_err(|_| HistoryError::Unavailable)?;
-    let row = sqlx::query(
-        "SELECT id, rollout_path, cwd FROM threads WHERE id = ? AND COALESCE(archived, 0) = 0",
-    )
+    let filter = thread_filter(schema);
+    let row = sqlx::query(&format!(
+        "SELECT id, rollout_path, cwd FROM threads WHERE id = ? AND {filter}"
+    ))
     .bind(&id)
     .fetch_optional(&pool)
     .await
@@ -525,7 +558,11 @@ async fn validate_schema(pool: &SqlitePool) -> Result<Schema, &'static str> {
     Ok(Schema {
         created_at_ms: columns.contains("created_at_ms"),
         updated_at_ms: columns.contains("updated_at_ms"),
+        recency_at_ms: columns.contains("recency_at_ms"),
         first_user_message: columns.contains("first_user_message"),
+        preview: columns.contains("preview"),
+        source: columns.contains("source"),
+        has_user_event: columns.contains("has_user_event"),
     })
 }
 
@@ -583,7 +620,7 @@ mod tests {
             .await
             .unwrap();
         let extra = if full_schema {
-            ", created_at_ms INTEGER, updated_at_ms INTEGER, source TEXT, thread_source TEXT, has_user_event INTEGER"
+            ", created_at_ms INTEGER, updated_at_ms INTEGER, recency_at_ms INTEGER, preview TEXT, source, thread_source TEXT, has_user_event INTEGER"
         } else {
             ""
         };
@@ -793,16 +830,90 @@ mod tests {
         let items = list_from(homes.clone(), HashSet::new(), HashSet::new())
             .await
             .unwrap();
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 2);
         assert_eq!(
             items
                 .iter()
                 .map(|item| item.title.as_str())
                 .collect::<Vec<_>>(),
-            ["No user", "Named", "First prompt", "(no messages)"]
+            ["Named", "First prompt"]
         );
-        assert_eq!(items[1].time_created, 1000);
-        assert_eq!(items[1].time_updated, 3000);
+        assert_eq!(items[0].time_created, 1000);
+        assert_eq!(items[0].time_updated, 3000);
+        fs::remove_dir_all(homes.trae_home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn filters_sources_and_lookup_with_the_same_visibility() {
+        let homes = temporary_homes();
+        let cwd = homes.trae_home.join("work");
+        fs::create_dir(&cwd).unwrap();
+        let pool = database(&homes, true).await;
+        let mut ids = Vec::new();
+        for (title, first, source) in [
+            ("CLI", "prompt", "cli"),
+            ("ACP", "prompt", "acp"),
+            ("Subagent", "prompt", r#"{"subagent":true}"#),
+            ("No message", "", "cli"),
+        ] {
+            let id = Uuid::new_v4().to_string();
+            let rollout = homes.cli_home.join("sessions").join(format!("{id}.jsonl"));
+            fs::write(&rollout, "{}\n").unwrap();
+            sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived, source) VALUES (?, ?, 1, 1, ?, ?, ?, 0, ?)")
+                .bind(&id).bind(path_string(rollout)).bind(path_string(&cwd)).bind(title).bind(first).bind(source).execute(&pool).await.unwrap();
+            ids.push(id);
+        }
+        let integer = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived, source) VALUES (?, NULL, 1, 1, ?, 'Integer', 'prompt', 0, 1)")
+            .bind(&integer).bind(path_string(&cwd)).execute(&pool).await.unwrap();
+        pool.close().await;
+        let items = list_from(homes.clone(), HashSet::new(), HashSet::new())
+            .await
+            .unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.title == "CLI"));
+        assert!(items.iter().any(|item| item.title == "Integer"));
+        assert!(lookup(homes.clone(), ids[0].clone()).await.is_ok());
+        for id in &ids[1..] {
+            assert_eq!(
+                lookup(homes.clone(), id.clone()).await.unwrap_err(),
+                HistoryError::NotFound
+            );
+        }
+        fs::remove_dir_all(homes.trae_home).unwrap();
+    }
+
+    #[tokio::test]
+    async fn supports_old_schema_without_optional_columns() {
+        let homes = temporary_homes();
+        let pool = SqlitePoolOptions::new()
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(homes.cli_home.join("state_5.sqlite"))
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, created_at INTEGER, updated_at INTEGER, cwd TEXT, title TEXT, archived INTEGER)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO threads VALUES (?, NULL, 1, 1, '/tmp', 'Legacy', 0)")
+            .bind(Uuid::new_v4().to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+        let schema = validate_schema(&pool).await.unwrap();
+        assert!(
+            !schema.first_user_message
+                && !schema.preview
+                && !schema.source
+                && !schema.has_user_event
+        );
+        pool.close().await;
+        let items = list_from(homes.clone(), HashSet::new(), HashSet::new())
+            .await
+            .unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Legacy");
         fs::remove_dir_all(homes.trae_home).unwrap();
     }
 
@@ -815,7 +926,7 @@ mod tests {
         fs::write(&rollout, "{}\n").unwrap();
         let id = Uuid::new_v4().to_string();
         let pool = database(&homes, true).await;
-        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived) VALUES (?, ?, 1, 1, ?, '', '', 0)")
+        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived, source) VALUES (?, ?, 1, 1, ?, 'session', 'prompt', 0, 'cli')")
             .bind(&id).bind(path_string(&rollout)).bind(path_string(&cwd)).execute(&pool).await.unwrap();
         pool.close().await;
         let record = lookup(homes.clone(), id.clone()).await.unwrap();
@@ -857,7 +968,7 @@ mod tests {
         fs::write(&rollout, "{}\n").unwrap();
         let id = Uuid::new_v4().to_string();
         let pool = database(&homes, true).await;
-        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived) VALUES (?, ?, 1, 1, ?, '', '', 0)")
+        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived, source) VALUES (?, ?, 1, 1, ?, 'session', 'prompt', 0, 'cli')")
             .bind(&id)
             .bind(path_string(&rollout))
             .bind(path_string(&cwd))

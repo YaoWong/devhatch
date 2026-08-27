@@ -10,10 +10,11 @@ use portable_pty::CommandBuilder;
 use serde::Deserialize;
 
 use crate::{
-    filesystem::{default_cwd, home_dir, path_string, resolve_path, validated_directory},
+    filesystem::{default_cwd, home_dir, path_string, validated_directory},
     session::{Session, SessionKind, SessionSpawn, dimension},
     session_socket,
     state::AppState,
+    terminal_workspace,
 };
 
 const DEFAULT_COLS: u16 = 120;
@@ -79,21 +80,41 @@ pub async fn create(
     if invalid_cwd(request.cwd.as_ref()) {
         return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
     }
-    match spawn(state, request) {
-        Ok(session) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({ "terminal": session.view() })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({
-                "error": "TERMINAL_SPAWN_FAILED",
-                "message": error.to_string()
-            })),
-        )
-            .into_response(),
+    let fallback_cwd = default_cwd();
+    let requested_cwd = request
+        .cwd
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(&fallback_cwd);
+    let cwd = match validated_directory(requested_cwd) {
+        Ok(value) => value,
+        Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_CWD"),
+    };
+    let _lifecycle = state.terminal_workspace_lifecycle().lock().await;
+    if terminal_workspace::ensure(state.pool(), &cwd)
+        .await
+        .is_err()
+    {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR");
     }
+    let session = match spawn_with_cwd(state.clone(), request, cwd.into()) {
+        Ok(session) => session,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "TERMINAL_SPAWN_FAILED",
+                    "message": error.to_string()
+                })),
+            )
+                .into_response();
+        }
+    };
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "terminal": session.view() })),
+    )
+        .into_response()
 }
 
 pub async fn rename(
@@ -130,20 +151,11 @@ pub async fn socket(
     session_socket::upgrade(state, id, headers, upgrade, SessionKind::Terminal)
 }
 
-pub(crate) fn spawn(
+pub(crate) fn spawn_with_cwd(
     state: Arc<AppState>,
     request: CreateRequest,
+    cwd: std::path::PathBuf,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
-    let fallback_cwd = default_cwd();
-    let requested_cwd = request
-        .cwd
-        .as_ref()
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(&fallback_cwd);
-    let cwd = resolve_path(requested_cwd)?;
-    if !cwd.is_dir() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
-    }
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let shell = resolve_shell();

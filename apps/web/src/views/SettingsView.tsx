@@ -49,7 +49,16 @@ export function SettingsView({
   onConfirmDeleteChange: (enabled: boolean) => void;
   onLogout: () => Promise<void>;
 }) {
-  const { themeId, saving, error, selectTheme } = useTheme();
+  const {
+    themeId,
+    agentLaunchPathsMaxHeightPx,
+    navigationRailWidthPx,
+    saving,
+    error,
+    selectTheme,
+    setAgentLaunchPathsMaxHeightPx,
+    setNavigationRailWidthPx,
+  } = useTheme();
   return (
     <div className="settings-workspace">
       <div className="settings-content">
@@ -84,6 +93,43 @@ export function SettingsView({
             <p>Control terminal and agent session behavior.</p>
           </div>
           <div className="settings-group">
+            <label className="settings-row settings-range-row">
+              <span>
+                <strong>Navigation sidebar width</strong>
+                <small>Set the desktop navigation sidebar width.</small>
+                {error && <small className="settings-error" role="alert">{error}</small>}
+              </span>
+              <span className="settings-range-control">
+                <input
+                  type="range"
+                  min="240"
+                  max="480"
+                  step="8"
+                  value={navigationRailWidthPx}
+                  aria-label="Navigation sidebar width"
+                  onChange={(event) => setNavigationRailWidthPx(event.target.valueAsNumber)}
+                />
+                <output>{navigationRailWidthPx}px</output>
+              </span>
+            </label>
+            <label className="settings-row settings-range-row">
+              <span>
+                <strong>Launch Paths maximum height</strong>
+                <small>Limit Launch Paths so Sessions can use the remaining navigation height.</small>
+              </span>
+              <span className="settings-range-control">
+                <input
+                  type="range"
+                  min="160"
+                  max="480"
+                  step="8"
+                  value={agentLaunchPathsMaxHeightPx}
+                  aria-label="Launch Paths maximum height"
+                  onChange={(event) => setAgentLaunchPathsMaxHeightPx(event.target.valueAsNumber)}
+                />
+                <output>{agentLaunchPathsMaxHeightPx}px</output>
+              </span>
+            </label>
             <label className="settings-row">
               <span>
                 <strong>Confirm before closing live sessions</strong>

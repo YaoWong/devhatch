@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::{agent, state::AppState};
 
+pub(crate) mod codex;
 pub(crate) mod opencode;
 pub(crate) mod pi;
 pub(crate) mod trae;
@@ -18,6 +19,7 @@ pub(crate) use opencode::{fork_successor, fork_successor_id, unique_new_session}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryKind {
+    Codex,
     OpenCode,
     Pi,
     Trae,
@@ -25,6 +27,7 @@ pub(crate) enum HistoryKind {
 
 #[derive(Clone, Copy)]
 pub(crate) enum HistoryBackend {
+    Codex,
     OpenCode,
     Pi,
     Trae,
@@ -33,6 +36,16 @@ pub(crate) enum HistoryBackend {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PreparedLaunch {
     None,
+    CodexNew {
+        home: PathBuf,
+        baseline: HashSet<String>,
+    },
+    CodexResume {
+        home: PathBuf,
+        id: String,
+        path: PathBuf,
+        cwd: PathBuf,
+    },
     OpenCodeNew {
         baseline: HashSet<String>,
     },
@@ -94,6 +107,7 @@ pub(crate) struct HistoryItem {
 impl HistoryKind {
     pub(crate) const fn backend(self) -> HistoryBackend {
         match self {
+            Self::Codex => HistoryBackend::Codex,
             Self::OpenCode => HistoryBackend::OpenCode,
             Self::Pi => HistoryBackend::Pi,
             Self::Trae => HistoryBackend::Trae,
@@ -104,6 +118,7 @@ impl HistoryKind {
 impl HistoryBackend {
     async fn items(self, state: &AppState) -> Result<Vec<HistoryItem>, &'static str> {
         match self {
+            Self::Codex => codex::list(state).await,
             Self::OpenCode => opencode::list(state).await,
             Self::Pi => {
                 let _history_guard = state.history_reconciliation().lock().await;
@@ -128,6 +143,7 @@ impl HistoryBackend {
         requested_id: Option<&str>,
     ) -> Result<PreparedLaunch, HistoryError> {
         let agent_id = match self {
+            Self::Codex => agent::CODEX_ID,
             Self::OpenCode => agent::OPENCODE_ID,
             Self::Pi => agent::PI_ID,
             Self::Trae => agent::TRAECLI_ID,
@@ -137,6 +153,7 @@ impl HistoryBackend {
             return Err(HistoryError::Active);
         }
         match self {
+            Self::Codex => codex::prepare(requested_id).await,
             Self::OpenCode => opencode::prepare(state.history_pool(), requested_id).await,
             Self::Pi => {
                 let mut workspaces = crate::launch_path::paths_for_agent(state, agent::PI_ID)
@@ -151,6 +168,7 @@ impl HistoryBackend {
 
     async fn delete(self, state: &AppState, id: String) -> Result<(), DeleteError> {
         match self {
+            Self::Codex => codex::delete(state, id).await,
             Self::OpenCode => opencode::delete(state, id).await,
             Self::Pi => {
                 let mut workspaces = crate::launch_path::paths_for_agent(state, agent::PI_ID)
@@ -247,6 +265,7 @@ fn history_error_response(kind: HistoryKind, value: HistoryError) -> Response {
         HistoryError::Unavailable => error(
             StatusCode::SERVICE_UNAVAILABLE,
             match kind {
+                HistoryKind::Codex => "CODEX_HISTORY_UNAVAILABLE",
                 HistoryKind::OpenCode => "OPENCODE_HISTORY_UNAVAILABLE",
                 HistoryKind::Pi => "PI_HISTORY_UNAVAILABLE",
                 HistoryKind::Trae => "TRAE_HISTORY_UNAVAILABLE",

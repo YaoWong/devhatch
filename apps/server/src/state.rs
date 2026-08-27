@@ -17,6 +17,7 @@ use crate::{
 pub struct AppState {
     sessions: RwLock<IndexMap<String, Arc<Session>>>,
     history_reconciliation: tokio::sync::Mutex<()>,
+    terminal_workspace_lifecycle: tokio::sync::Mutex<()>,
     data_dir: PathBuf,
     pool: SqlitePool,
     history_pool: Option<SqlitePool>,
@@ -37,6 +38,7 @@ impl AppState {
         Self {
             sessions: RwLock::new(IndexMap::new()),
             history_reconciliation: tokio::sync::Mutex::new(()),
+            terminal_workspace_lifecycle: tokio::sync::Mutex::new(()),
             data_dir,
             pool,
             history_pool,
@@ -125,6 +127,10 @@ impl AppState {
         &self.history_reconciliation
     }
 
+    pub(crate) fn terminal_workspace_lifecycle(&self) -> &tokio::sync::Mutex<()> {
+        &self.terminal_workspace_lifecycle
+    }
+
     pub(crate) fn data_dir(&self) -> &PathBuf {
         &self.data_dir
     }
@@ -174,6 +180,26 @@ impl AppState {
             .filter(|session| session.kind() == kind)
             .map(|session| session.view())
             .collect()
+    }
+
+    pub(crate) fn terminal_cwds(&self) -> HashSet<String> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| session.kind() == SessionKind::Terminal)
+            .map(|session| session.correlation_details().0)
+            .collect()
+    }
+
+    pub(crate) fn has_terminal_cwd(&self, cwd: &str) -> bool {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .any(|session| {
+                session.kind() == SessionKind::Terminal && session.correlation_details().0 == cwd
+            })
     }
 
     pub(crate) fn contains_session(&self, session: &Arc<Session>) -> bool {

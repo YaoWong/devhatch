@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createSkill,
   createSkillProfile,
@@ -25,6 +25,16 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   const [syncPlan, setSyncPlan] = useState<SkillSyncPlan | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const syncGeneration = useRef(0);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      syncGeneration.current += 1;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     const [repositoryData, skillData, profileData] = await Promise.all([
@@ -109,20 +119,40 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     renameRepository: (id: string, name: string) => mutate(() => updateSkillRepository(id, { name })),
     deleteRepository: (id: string) => mutate(() => deleteSkillRepository(id)),
     previewSync: async (id: string) => {
+      const generation = ++syncGeneration.current;
       setBusy(true);
       try {
         const { syncPlan: next } = await previewSkillRepositorySync(id);
-        setSyncPlan(next);
+        if (mounted.current && syncGeneration.current === generation && next.repositoryId === id) {
+          setSyncPlan(next);
+        }
       } catch (reason) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
+        if (mounted.current && syncGeneration.current === generation) {
+          reportError(reason instanceof Error ? reason.message : String(reason));
+        }
       } finally {
-        setBusy(false);
+        if (mounted.current && syncGeneration.current === generation) setBusy(false);
       }
     },
-    syncRepository: (id: string) => mutate(async () => {
-      const { syncResult } = await syncSkillRepository(id);
-      setSyncPlan(syncResult);
-    }),
+    syncRepository: async (id: string) => {
+      const generation = ++syncGeneration.current;
+      setBusy(true);
+      try {
+        await syncSkillRepository(id);
+        if (mounted.current && syncGeneration.current === generation) {
+          setSyncPlan((current) => (current?.repositoryId === id ? null : current));
+        }
+        await refresh();
+        return true;
+      } catch (reason) {
+        if (mounted.current && syncGeneration.current === generation) {
+          reportError(reason instanceof Error ? reason.message : String(reason));
+        }
+        return false;
+      } finally {
+        if (mounted.current && syncGeneration.current === generation) setBusy(false);
+      }
+    },
     createSkill: (slug: string, description: string) => mutate(() => createSkill({ slug, description })),
     deleteSkill: (id: string) => mutate(() => deleteSkill(id)),
     createProfile: async (slug: string) => {

@@ -7,6 +7,7 @@
   .shell { border: 0; border-radius: 0; box-shadow: none; }
   .app.sidebar-hidden { gap: 0; }
   .app.sidebar-hidden .rail { width: min(320px, calc(100vw - 24px)); padding: 12px; border-inline-width: 1px; opacity: 1; pointer-events: auto; }
+  .rail-resize-handle { display: none; }
   .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 30; width: min(320px, calc(100vw - 24px)); transform: translateX(calc(-100% - 24px)); transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
   .drawer-open .rail { transform: translateX(0); }
   .drawer-backdrop { position: fixed; inset: 0; z-index: 20; border: 0; background: rgb(var(--overlay-color) / 35%); }

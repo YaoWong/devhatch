@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { AppDialogs } from "./app/AppDialogs";
 import { AppHeader } from "./app/AppHeader";
 import { AppNavigationRail } from "./app/AppNavigationRail";
 import { AppWorkspaceContent } from "./app/AppWorkspaceContent";
 import { getModeSubtitle } from "./app/modeSubtitle";
+import { RailResizeHandle } from "./components/RailResizeHandle";
+import { useTheme } from "./ThemeContext";
 import { useAgentWorkspace } from "./controllers/useAgentWorkspace";
 import { useInitialWorkspaceData } from "./controllers/useInitialWorkspaceData";
 import { useNavigation } from "./controllers/useNavigation";
@@ -17,6 +19,13 @@ import type { SkillsSection } from "./views/SkillsRailPage";
 import "./App.css";
 
 function App({ onLogout }: { onLogout: () => Promise<void> }) {
+  const {
+    agentLaunchPathsMaxHeightPx,
+    navigationRailWidthPx,
+    setNavigationRailWidthPx,
+  } = useTheme();
+  const [draftRailWidth, setDraftRailWidth] = useState(navigationRailWidthPx);
+  const [railResizing, setRailResizing] = useState(false);
   const [focusVersion, setFocusVersion] = useState(0);
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null);
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
@@ -32,6 +41,7 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
+  useEffect(() => setDraftRailWidth(navigationRailWidthPx), [navigationRailWidthPx]);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
@@ -57,11 +67,16 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
     initializeSessions,
     deleteSession: deleteAgentSession,
   } = agent;
-  const { initialize: initializeTerminals, deleteSession: deleteTerminalSession } = terminal;
+  const {
+    initialize: initializeTerminals,
+    initializeWorkspaces: initializeTerminalWorkspaces,
+    deleteSession: deleteTerminalSession,
+  } = terminal;
 
   const markReady = useCallback(() => setBusy(false), []);
   useInitialWorkspaceData({
     initializeTerminals,
+    initializeTerminalWorkspaces,
     initializeAgents,
     initializeSessions,
     initializePaths,
@@ -132,8 +147,15 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
 
   return (
     <main
+      style={
+        {
+          "--agent-launch-paths-max-height": `${agentLaunchPathsMaxHeightPx}px`,
+          "--navigation-rail-width": `${draftRailWidth}px`,
+        } as CSSProperties
+      }
       className={
-        `app ${navigation.sidebarOpen ? "drawer-open" : ""} ` + `${navigation.sidebarHidden ? "sidebar-hidden" : ""}`
+        `app ${navigation.sidebarOpen ? "drawer-open" : ""} ` +
+        `${navigation.sidebarHidden ? "sidebar-hidden" : ""} ${railResizing ? "rail-resizing" : ""}`
       }
     >
       <AppDialogs
@@ -150,8 +172,9 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
               if (added) closePicker();
             });
           } else {
-            terminal.chooseWorkspace(path);
-            setPickerPurpose(null);
+            void terminal.chooseWorkspace(path).then((added) => {
+              if (added) setPickerPurpose(null);
+            });
           }
         }}
         confirmAction={confirmAction}
@@ -182,6 +205,13 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
         onPickAgentPath={() => setPickerPurpose("agent")}
         onCloseAgentSession={(session) => requestClose(session, true)}
         onConfirm={setConfirmAction}
+      />
+      <RailResizeHandle
+        value={draftRailWidth}
+        hidden={navigation.sidebarHidden}
+        onPreview={setDraftRailWidth}
+        onCommit={setNavigationRailWidthPx}
+        onResizingChange={setRailResizing}
       />
       <section className="shell">
         <AppHeader

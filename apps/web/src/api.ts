@@ -1,5 +1,5 @@
 export { authStatus, login, logout, setupAdmin, type AuthStatus } from "./api/auth";
-export { configureAuth, requestEmpty, requestJson } from "./api/client";
+export { ApiError, configureAuth, requestEmpty, requestJson } from "./api/client";
 export { getSettings, updateSettings } from "./api/settings";
 export { endpoints } from "./api/endpoints";
 export {
@@ -39,4 +39,12 @@ export {
   stopOpenDesign,
   updateOpenDesign,
 } from "./api/webApps";
-export { createTerminal, deleteRemoteSession, listDirectories, renameRemoteSession } from "./api/workspaces";
+export {
+  createTerminal,
+  createTerminalWorkspace,
+  deleteRemoteSession,
+  deleteTerminalWorkspace,
+  listDirectories,
+  renameRemoteSession,
+  updateTerminalWorkspace,
+} from "./api/workspaces";

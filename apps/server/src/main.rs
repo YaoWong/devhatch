@@ -13,6 +13,7 @@ mod settings;
 mod skillink;
 mod state;
 mod terminal;
+mod terminal_workspace;
 mod web_app;
 
 #[tokio::main]
