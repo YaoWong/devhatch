@@ -1,8 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
-    env,
     net::IpAddr,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
     time::Duration,
 };
 
@@ -28,6 +27,8 @@ const COOKIE_NAME: &str = "devhatch_session";
 const SESSION_LIFETIME_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const LOGIN_WINDOW_MS: u64 = 15 * 60 * 1000;
 const LOGIN_LIMIT: usize = 5;
+static ARGON2_JOBS: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(2)));
 
 pub struct AuthState {
     setup_token_hash: Option<String>,
@@ -53,19 +54,19 @@ struct SessionRecord {
 }
 
 impl AuthState {
-    pub fn new(setup_token: Option<&str>) -> Self {
+    pub fn new(setup_token: Option<&str>, secure_cookie: bool) -> Self {
         Self {
             setup_token_hash: setup_token.map(hash_token),
             login_attempts: Mutex::new(HashMap::new()),
-            secure_cookie: env::var("DEVHATCH_SECURE_COOKIE").map_or_else(
-                |_| env::var_os("DEVHATCH_PUBLIC_ORIGIN").is_some(),
-                |value| value != "0",
-            ),
+            secure_cookie,
         }
     }
 
-    fn login_allowed(&self, ip: IpAddr) -> bool {
-        let now = clock::now();
+    fn reserve_login(&self, ip: IpAddr) -> bool {
+        self.reserve_login_at(ip, clock::now())
+    }
+
+    fn reserve_login_at(&self, ip: IpAddr, now: u64) -> bool {
         let mut attempts = self
             .login_attempts
             .lock()
@@ -77,16 +78,11 @@ impl AuthState {
         {
             attempts.pop_front();
         }
-        attempts.len() < LOGIN_LIMIT
-    }
-
-    fn record_failure(&self, ip: IpAddr) {
-        self.login_attempts
-            .lock()
-            .expect("login attempts lock poisoned")
-            .entry(ip)
-            .or_default()
-            .push_back(clock::now());
+        if attempts.len() >= LOGIN_LIMIT {
+            return false;
+        }
+        attempts.push_back(now);
+        true
     }
 
     fn clear_failures(&self, ip: IpAddr) {
@@ -128,8 +124,20 @@ pub async fn setup(
     if !valid_token {
         return error(StatusCode::FORBIDDEN, "INVALID_SETUP_TOKEN");
     }
-    let Some(password_hash) = password_hash(&request.password) else {
-        return error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD");
+    let password = request.password;
+    let permit = match ARGON2_JOBS.clone().acquire_owned().await {
+        Ok(permit) => permit,
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_HASH_FAILED"),
+    };
+    let password_hash = match tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        password_hash(&password)
+    })
+    .await
+    {
+        Ok(Some(hash)) => hash,
+        Ok(None) => return error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD"),
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_HASH_FAILED"),
     };
     let now = clock::now() as i64;
     let result = sqlx::query(
@@ -151,7 +159,7 @@ pub async fn login(
     ConnectInfo(address): ConnectInfo<std::net::SocketAddr>,
     Json(request): Json<LoginRequest>,
 ) -> Response {
-    if !state.auth().login_allowed(address.ip()) {
+    if !state.auth().reserve_login(address.ip()) {
         return error(StatusCode::TOO_MANY_REQUESTS, "LOGIN_RATE_LIMITED");
     }
     let hash =
@@ -160,11 +168,26 @@ pub async fn login(
             .await
             .ok()
             .flatten();
-    let valid = hash
-        .as_deref()
-        .is_some_and(|hash| verify_password(hash, &request.password));
+    let valid = if let Some(hash) = hash {
+        let password = request.password;
+        match ARGON2_JOBS.clone().acquire_owned().await {
+            Ok(permit) => match tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                verify_password(&hash, &password)
+            })
+            .await
+            {
+                Ok(valid) => valid,
+                Err(_) => {
+                    return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_VERIFY_FAILED");
+                }
+            },
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_VERIFY_FAILED"),
+        }
+    } else {
+        false
+    };
     if !valid {
-        state.auth().record_failure(address.ip());
         tokio::time::sleep(Duration::from_millis(350)).await;
         return error(StatusCode::UNAUTHORIZED, "INVALID_CREDENTIALS");
     }
@@ -340,13 +363,50 @@ fn error(status: StatusCode, code: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_eq, password_hash, verify_password};
+    use super::{
+        AuthState, LOGIN_LIMIT, LOGIN_WINDOW_MS, constant_time_eq, password_hash, verify_password,
+    };
+    use std::{net::IpAddr, sync::Arc};
 
     #[test]
     fn hashes_and_verifies_passwords() {
         let hash = password_hash("a sufficiently long password").unwrap();
         assert!(verify_password(&hash, "a sufficiently long password"));
         assert!(!verify_password(&hash, "a different password"));
+    }
+
+    #[test]
+    fn reserves_attempts_atomically_at_the_limit() {
+        let state = Arc::new(AuthState::new(None, false));
+        let ip = IpAddr::from([127, 0, 0, 1]);
+        let threads = (0..LOGIN_LIMIT * 2)
+            .map(|_| {
+                let state = state.clone();
+                std::thread::spawn(move || state.reserve_login_at(ip, 1))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            threads
+                .into_iter()
+                .map(|thread| thread.join().unwrap())
+                .filter(|allowed| *allowed)
+                .count(),
+            LOGIN_LIMIT
+        );
+        assert!(!state.reserve_login_at(ip, 1));
+        assert!(state.reserve_login_at(ip, LOGIN_WINDOW_MS + 2));
+    }
+
+    #[test]
+    fn successful_login_clears_reserved_attempts() {
+        let state = AuthState::new(None, false);
+        let ip = IpAddr::from([127, 0, 0, 1]);
+        for _ in 0..LOGIN_LIMIT {
+            assert!(state.reserve_login_at(ip, 1));
+        }
+        assert!(!state.reserve_login_at(ip, 1));
+        state.clear_failures(ip);
+        assert!(state.reserve_login_at(ip, 1));
     }
 
     #[test]

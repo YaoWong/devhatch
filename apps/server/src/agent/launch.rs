@@ -421,7 +421,10 @@ fn start_trae_identity_watcher(
             let Ok(record) = record else {
                 continue;
             };
-            if !state.contains_session(&session) {
+            let _history_guard = state.history_reconciliation().lock().await;
+            if !state.contains_session(&session)
+                || state.history_deletion_pending(TRAECLI_ID, &record.id)
+            {
                 break;
             }
             session.update_runtime_identity(record.id, Some(record.path), Some(record.cwd));
@@ -623,7 +626,9 @@ fn start_pi_identity_watcher(session: &Arc<Session>, state: Arc<AppState>, path:
             last = bytes.clone();
             if let Some(identity) = parse_pi_identity_state(&bytes) {
                 let _history_guard = state.history_reconciliation().lock().await;
-                if state.contains_session(&session) {
+                if state.contains_session(&session)
+                    && !state.history_deletion_pending(PI_ID, &identity.id)
+                {
                     apply_pi_identity_state(&session, identity);
                 }
             }

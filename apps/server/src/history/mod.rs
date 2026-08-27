@@ -1,4 +1,10 @@
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    process::{Output, Stdio},
+    sync::Arc,
+    time::Duration,
+};
 
 use axum::{
     Json,
@@ -15,7 +21,9 @@ pub(crate) mod opencode;
 pub(crate) mod pi;
 pub(crate) mod trae;
 
-pub(crate) use opencode::{fork_successor, fork_successor_id, unique_new_session};
+pub(crate) use opencode::{
+    fork_successor, fork_successor_id, new_session_candidates, unique_unclaimed_session,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryKind {
@@ -149,7 +157,9 @@ impl HistoryBackend {
             Self::Trae => agent::TRAECLI_ID,
         };
         let active = state.active_upstream_session_ids_for(agent_id);
-        if requested_id.is_some_and(|id| active_resume(&active, id)) {
+        if requested_id.is_some_and(|id| {
+            active_resume(&active, id) || state.history_deletion_pending(agent_id, id)
+        }) {
             return Err(HistoryError::Active);
         }
         match self {
@@ -186,6 +196,45 @@ fn active_resume(active: &HashSet<String>, id: &str) -> bool {
     active.contains(id)
 }
 
+pub(crate) struct HistoryDeletion {
+    state: Arc<AppState>,
+    agent_id: String,
+    id: String,
+}
+
+impl Drop for HistoryDeletion {
+    fn drop(&mut self) {
+        self.state.end_history_deletion(&self.agent_id, &self.id);
+    }
+}
+
+pub(crate) async fn command_output_with_timeout(
+    command: &mut tokio::process::Command,
+    duration: Duration,
+) -> Result<Result<Output, std::io::Error>, tokio::time::error::Elapsed> {
+    #[cfg(unix)]
+    command.process_group(0);
+    command
+        .kill_on_drop(true)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => return Ok(Err(error)),
+    };
+    let pid = child.id();
+    let result = tokio::time::timeout(duration, child.wait_with_output()).await;
+    #[cfg(unix)]
+    if result.is_err()
+        && let Some(pid) = pid
+    {
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    result
+}
+
 #[derive(Debug)]
 pub(crate) enum DeleteError {
     History(HistoryError),
@@ -219,14 +268,26 @@ pub async fn remove(
     let Some(kind) = agent::history_kind(&agent_id) else {
         return error(StatusCode::BAD_REQUEST, "AGENT_HISTORY_UNSUPPORTED");
     };
-    let _history_guard = state.history_reconciliation().lock().await;
-    if state
-        .active_upstream_session_ids_for(&agent_id)
-        .contains(&id)
     {
-        return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
+        let _history_guard = state.history_reconciliation().lock().await;
+        if state
+            .active_upstream_session_ids_for(&agent_id)
+            .contains(&id)
+        {
+            return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
+        }
+        if !state.begin_history_deletion(&agent_id, &id) {
+            return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
+        }
     }
-    match kind.backend().delete(&state, id).await {
+    let deletion = HistoryDeletion {
+        state: state.clone(),
+        agent_id,
+        id: id.clone(),
+    };
+    let result = kind.backend().delete(&state, id).await;
+    drop(deletion);
+    match result {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(DeleteError::History(error_kind)) => history_error_response(kind, error_kind),
         Err(DeleteError::Failed {

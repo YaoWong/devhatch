@@ -1,6 +1,6 @@
 use std::{fs, path::Path};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::environment::{Prerequisites, prerequisites, public_url};
 use super::{ID, NAME, Progress, UpdateState, VERSION, WebAppManager};
@@ -29,6 +29,14 @@ pub(super) struct WebAppView {
     install_path: String,
     error: Option<String>,
     prerequisites: Prerequisites,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(super) struct PidRecord {
+    pub(super) pid: u32,
+    pub(super) starttime: u64,
+    pub(super) script: std::path::PathBuf,
+    pub(super) root: std::path::PathBuf,
 }
 
 impl WebAppManager {
@@ -134,12 +142,21 @@ impl WebAppManager {
         self.root.join("run/open-design.pid")
     }
 
-    pub(super) fn persisted_pid(&self) -> Option<u32> {
-        fs::read_to_string(self.pid_path())
-            .ok()?
-            .trim()
-            .parse()
-            .ok()
+    pub(super) fn persisted_process(&self) -> Option<PidRecord> {
+        match self.persisted_process_state() {
+            super::process::PidRecordState::Valid(process) => Some(process),
+            super::process::PidRecordState::Stale => {
+                let _ = fs::remove_file(self.pid_path());
+                None
+            }
+            super::process::PidRecordState::Missing | super::process::PidRecordState::Invalid => {
+                None
+            }
+        }
+    }
+
+    pub(super) fn persisted_process_state(&self) -> super::process::PidRecordState {
+        super::process::persisted_process_state(&self.pid_path(), &self.app_dir())
     }
 
     pub(super) fn set_progress(&self, phase: &'static str, percent: u8, error: Option<String>) {

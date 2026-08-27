@@ -18,7 +18,7 @@ import type { SettingsSection } from "./views/SettingsView";
 import type { SkillsSection } from "./views/SkillsRailPage";
 import "./App.css";
 
-function App({ onLogout }: { onLogout: () => Promise<void> }) {
+function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<void>; logoutBusy: boolean; logoutError: string | null }) {
   const {
     agentLaunchPathsMaxHeightPx,
     navigationRailWidthPx,
@@ -46,6 +46,25 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
   const navigation = useNavigation(bumpFocus);
+  const { selectMode } = navigation;
+  useEffect(() => {
+    const modes = ["terminal", "agent", "skills", "webapp", "settings"] as const;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
+        !(target instanceof HTMLElement) ||
+        target.matches("input, textarea, select") || target.isContentEditable
+      ) return;
+      const index = Number(event.key) - 1;
+      const mode = modes[index];
+      if (!mode) return;
+      event.preventDefault();
+      selectMode(mode);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectMode]);
   const terminal = useTerminalWorkspace(homePaths, setHomePaths, reportError, navigation.closeSidebar, bumpFocus);
   const agent = useAgentWorkspace({
     homePaths,
@@ -250,6 +269,8 @@ function App({ onLogout }: { onLogout: () => Promise<void> }) {
             localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
           }}
           onLogout={onLogout}
+          logoutBusy={logoutBusy}
+          logoutError={logoutError}
         />
       </section>
     </main>

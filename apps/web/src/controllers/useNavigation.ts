@@ -142,6 +142,14 @@ export function useNavigation(bumpFocus: () => void) {
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
+  const selectMode = useCallback((mode: DetailMode) => {
+    setWorkspaceMode(mode);
+    setRailPage(mode);
+    setRailMotion(null);
+    setSidebarOpen(false);
+    if (mode === "terminal" || mode === "agent") bumpFocus();
+  }, [bumpFocus]);
+
   return {
     railPage,
     workspaceMode,
@@ -154,6 +162,7 @@ export function useNavigation(bumpFocus: () => void) {
     titleRefs,
     modeMeta,
     animateRail,
+    selectMode,
     toggleSidebar,
     closeSidebar,
   };

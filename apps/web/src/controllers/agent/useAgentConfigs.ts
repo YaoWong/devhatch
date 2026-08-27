@@ -34,32 +34,34 @@ export function useAgentConfigs(selectedAgentId: string | null, reportError: (me
 
   const createConfig = useCallback(
     async (input: AgentLaunchConfigInput) => {
+      const agentId = selectedAgentId;
       try {
         const { agentLaunchConfig } = await createAgentLaunchConfig(input);
         await refreshConfigs();
-        setSelectedConfigId(agentLaunchConfig.id);
+        if (agentId && selectedAgentIdRef.current === agentId) setSelectedConfigId(agentLaunchConfig.id);
         return true;
       } catch (reason) {
         reportError(errorMessage(reason));
         return false;
       }
     },
-    [refreshConfigs, reportError],
+    [refreshConfigs, reportError, selectedAgentId],
   );
 
   const updateConfig = useCallback(
     async (id: string, input: Partial<AgentLaunchConfigInput>) => {
+      const agentId = selectedAgentId;
       try {
         await updateAgentLaunchConfig(id, input);
         await refreshConfigs();
-        setSelectedConfigId(id);
+        if (agentId && selectedAgentIdRef.current === agentId) setSelectedConfigId(id);
         return true;
       } catch (reason) {
         reportError(errorMessage(reason));
         return false;
       }
     },
-    [refreshConfigs, reportError],
+    [refreshConfigs, reportError, selectedAgentId],
   );
 
   const deleteConfig = useCallback(

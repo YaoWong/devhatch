@@ -7,6 +7,7 @@ export function AuthGate() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => {
     authStatus().then(setStatus).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
@@ -20,7 +21,20 @@ export function AuthGate() {
     return <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1><p>{error ?? "Loading…"}</p></section></main>;
   }
   if (status.authenticated) {
-    return <ThemeProvider><App onLogout={async () => { await logout(); setStatus({ initialized: true, authenticated: false, csrfToken: null }); }} /></ThemeProvider>;
+    const signOut = async () => {
+      if (logoutBusy) return;
+      setLogoutBusy(true);
+      setError(null);
+      try {
+        await logout();
+        setStatus({ initialized: true, authenticated: false, csrfToken: null });
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setLogoutBusy(false);
+      }
+    };
+    return <ThemeProvider><App onLogout={signOut} logoutBusy={logoutBusy} logoutError={error} /></ThemeProvider>;
   }
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {

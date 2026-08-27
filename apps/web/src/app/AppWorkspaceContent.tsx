@@ -32,6 +32,8 @@ type AppWorkspaceContentProps = {
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
   onConfirmDeleteChange: (enabled: boolean) => void;
   onLogout: () => Promise<void>;
+  logoutBusy: boolean;
+  logoutError: string | null;
 };
 
 export function AppWorkspaceContent({
@@ -55,6 +57,8 @@ export function AppWorkspaceContent({
   onConfirm,
   onConfirmDeleteChange,
   onLogout,
+  logoutBusy,
+  logoutError,
 }: AppWorkspaceContentProps) {
   return (
     <>
@@ -125,6 +129,8 @@ export function AppWorkspaceContent({
           confirmDelete={confirmDelete}
           onConfirmDeleteChange={onConfirmDeleteChange}
           onLogout={onLogout}
+          logoutBusy={logoutBusy}
+          logoutError={logoutError}
         />
       )}
     </>

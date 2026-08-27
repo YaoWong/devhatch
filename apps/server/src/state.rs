@@ -17,6 +17,7 @@ use crate::{
 pub struct AppState {
     sessions: RwLock<IndexMap<String, Arc<Session>>>,
     history_reconciliation: tokio::sync::Mutex<()>,
+    history_deletions: RwLock<HashSet<(String, String)>>,
     terminal_workspace_lifecycle: tokio::sync::Mutex<()>,
     data_dir: PathBuf,
     pool: SqlitePool,
@@ -33,18 +34,20 @@ impl AppState {
         history_pool: Option<SqlitePool>,
         skillink: Skillink,
         setup_token: Option<&str>,
+        secure_cookie: bool,
     ) -> Self {
         let web_apps = Arc::new(WebAppManager::new(&data_dir));
         Self {
             sessions: RwLock::new(IndexMap::new()),
             history_reconciliation: tokio::sync::Mutex::new(()),
+            history_deletions: RwLock::new(HashSet::new()),
             terminal_workspace_lifecycle: tokio::sync::Mutex::new(()),
             data_dir,
             pool,
             history_pool,
             web_apps,
             skillink,
-            auth: AuthState::new(setup_token),
+            auth: AuthState::new(setup_token, secure_cookie),
         }
     }
 
@@ -125,6 +128,27 @@ impl AppState {
 
     pub(crate) fn history_reconciliation(&self) -> &tokio::sync::Mutex<()> {
         &self.history_reconciliation
+    }
+
+    pub(crate) fn begin_history_deletion(&self, agent_id: &str, id: &str) -> bool {
+        self.history_deletions
+            .write()
+            .expect("history deletions lock poisoned")
+            .insert((agent_id.to_string(), id.to_string()))
+    }
+
+    pub(crate) fn end_history_deletion(&self, agent_id: &str, id: &str) {
+        self.history_deletions
+            .write()
+            .expect("history deletions lock poisoned")
+            .remove(&(agent_id.to_string(), id.to_string()));
+    }
+
+    pub(crate) fn history_deletion_pending(&self, agent_id: &str, id: &str) -> bool {
+        self.history_deletions
+            .read()
+            .expect("history deletions lock poisoned")
+            .contains(&(agent_id.to_string(), id.to_string()))
     }
 
     pub(crate) fn terminal_workspace_lifecycle(&self) -> &tokio::sync::Mutex<()> {

@@ -2,10 +2,53 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use super::DEFAULT_PUBLIC_URL;
+use super::PORT;
 
 pub(super) fn public_url() -> String {
-    std::env::var("DEVHATCH_OPEN_DESIGN_URL").unwrap_or_else(|_| DEFAULT_PUBLIC_URL.to_string())
+    resolve_public_url(
+        std::env::var("DEVHATCH_OPENDESIGN_PUBLIC_URL").ok(),
+        std::env::var("DEVHATCH_OPEN_DESIGN_URL").ok(),
+        std::env::var("DEVHATCH_PUBLIC_ORIGIN").ok(),
+    )
+}
+
+fn resolve_public_url(
+    current: Option<String>,
+    legacy: Option<String>,
+    origin: Option<String>,
+) -> String {
+    current
+        .filter(|url| valid_http_url(url))
+        .or_else(|| legacy.filter(|url| valid_http_url(url)))
+        .or_else(|| {
+            origin
+                .and_then(|origin| url::Url::parse(&origin).ok())
+                .filter(|origin| {
+                    matches!(origin.scheme(), "http" | "https")
+                        && origin.host_str().is_some()
+                        && origin.username().is_empty()
+                        && origin.password().is_none()
+                        && origin.path() == "/"
+                        && origin.query().is_none()
+                        && origin.fragment().is_none()
+                })
+                .and_then(|mut origin| {
+                    origin.set_port(Some(8443)).ok()?;
+                    Some(origin.to_string().trim_end_matches('/').to_string())
+                })
+        })
+        .unwrap_or_else(|| format!("http://127.0.0.1:{PORT}"))
+}
+
+fn valid_http_url(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+    })
 }
 
 pub(super) fn prerequisites() -> Prerequisites {
@@ -78,9 +121,29 @@ pub(super) struct Prerequisites {
 
 #[cfg(test)]
 mod tests {
-    use super::prefixed_path;
+    use super::{prefixed_path, resolve_public_url};
     use crate::web_app::PORT;
     use std::path::Path;
+
+    #[test]
+    fn prefers_current_public_url_and_accepts_legacy_url() {
+        assert_eq!(
+            resolve_public_url(
+                Some("https://new.example/open-design".into()),
+                Some("https://legacy.example/open-design".into()),
+                None,
+            ),
+            "https://new.example/open-design"
+        );
+        assert_eq!(
+            resolve_public_url(
+                Some("invalid".into()),
+                Some("https://legacy.example/open-design".into()),
+                None,
+            ),
+            "https://legacy.example/open-design"
+        );
+    }
 
     #[test]
     fn prefixes_node_directory_for_installer_commands() {

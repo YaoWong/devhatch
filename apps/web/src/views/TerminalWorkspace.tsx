@@ -81,11 +81,6 @@ export function TerminalWorkspace({
         )}
       </div>
       <Statusbar session={activeSession} phase={activeId ? phases[activeId] : undefined} />
-      <div className="mobile-keys">
-        {["Esc", "Tab", "Ctrl", "Alt", "↑", "↓", "←", "→"].map((key) => (
-          <button key={key}>{key}</button>
-        ))}
-      </div>
     </div>
   );
 }

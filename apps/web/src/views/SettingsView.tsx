@@ -43,11 +43,15 @@ export function SettingsView({
   confirmDelete,
   onConfirmDeleteChange,
   onLogout,
+  logoutBusy,
+  logoutError,
 }: {
   section: SettingsSection;
   confirmDelete: boolean;
   onConfirmDeleteChange: (enabled: boolean) => void;
   onLogout: () => Promise<void>;
+  logoutBusy: boolean;
+  logoutError: string | null;
 }) {
   const {
     themeId,
@@ -156,10 +160,11 @@ export function SettingsView({
                 <strong>Sign out</strong>
                 <small>End this browser session and return to the sign-in screen.</small>
               </span>
-              <button className="settings-signout" type="button" onClick={() => void onLogout()}>
-                Sign out
+              <button className="settings-signout" type="button" disabled={logoutBusy} aria-describedby={logoutError ? "logout-error" : undefined} onClick={() => void onLogout()}>
+                {logoutBusy ? "Signing out…" : "Sign out"}
               </button>
             </div>
+            {logoutError && <p id="logout-error" className="settings-error" role="alert">{logoutError}</p>}
           </div>
         </section>}
       </div>

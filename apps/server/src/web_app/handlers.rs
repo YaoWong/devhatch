@@ -70,6 +70,21 @@ pub async fn start(State(state): State<Arc<AppState>>) -> Response {
 }
 
 pub async fn stop(State(state): State<Arc<AppState>>) -> Response {
-    state.web_apps().stop().await;
-    Json(serde_json::json!({ "webApp": state.web_apps().view().await })).into_response()
+    match state.web_apps().stop().await {
+        Ok(()) => {
+            Json(serde_json::json!({ "webApp": state.web_apps().view().await })).into_response()
+        }
+        Err(message) => {
+            let status = if message.contains("manual cleanup is required") {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            (
+                status,
+                Json(serde_json::json!({ "error": "WEB_APP_STOP_FAILED", "message": message })),
+            )
+                .into_response()
+        }
+    }
 }

@@ -84,6 +84,7 @@ export function useAgentSessions({
         .then((data) => {
           if (
             selection === historySelection.current &&
+            historyAgentIdRef.current === agentId &&
             version === (historyVersions.current.get(agentId) ?? 0)
           ) {
             setHistoryState({ agentId, selection, response: data, loading: false, settled: true, loadError: null });
@@ -93,6 +94,7 @@ export function useAgentSessions({
           const message = errorMessage(reason);
           if (
             selection === historySelection.current &&
+            historyAgentIdRef.current === agentId &&
             version === (historyVersions.current.get(agentId) ?? 0)
           ) {
             setHistoryState((current) =>
@@ -100,8 +102,8 @@ export function useAgentSessions({
                 ? { ...current, loading: false, settled: true, loadError: message }
                 : current,
             );
+            reportError(message);
           }
-          reportError(message);
         })
         .finally(() => {
           if (historyRefreshes.current.get(agentId)?.request === request) historyRefreshes.current.delete(agentId);

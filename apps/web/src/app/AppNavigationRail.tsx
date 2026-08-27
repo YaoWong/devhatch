@@ -127,7 +127,6 @@ export function AppNavigationRail({
           app={webApps.openDesign}
           onInstall={webApps.install}
           onStart={webApps.start}
-          onOpen={webApps.open}
           onConfirm={onConfirm}
         />
       }

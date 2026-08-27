@@ -1,9 +1,11 @@
-use std::{collections::HashSet, fs, path::PathBuf};
+use std::{collections::HashSet, fs, path::PathBuf, time::Duration};
 
 use axum::http::StatusCode;
 use sqlx::{FromRow, Row, SqlitePool};
 
-use super::{DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence};
+use super::{
+    DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence, command_output_with_timeout,
+};
 use crate::{agent::OPENCODE_ID, clock::now, filesystem::path_string, state::AppState};
 
 const RECENT_MILLIS: i64 = 5 * 60 * 1000;
@@ -95,21 +97,26 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
         Ok(None) => return Err(DeleteError::History(HistoryError::NotFound)),
         Err(()) => return Err(DeleteError::History(HistoryError::Unavailable)),
     }
-    let result = tokio::process::Command::new("opencode")
-        .args(["--pure", "session", "delete", &id])
-        .kill_on_drop(true)
-        .output()
-        .await;
+    let result = command_output_with_timeout(
+        tokio::process::Command::new("opencode").args(["--pure", "session", "delete", &id]),
+        Duration::from_secs(15),
+    )
+    .await;
     match result {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(DeleteError::Failed {
+        Ok(Ok(output)) if output.status.success() => Ok(()),
+        Ok(Ok(output)) => Err(DeleteError::Failed {
             status: StatusCode::BAD_GATEWAY,
             code: "OPENCODE_SESSION_DELETE_FAILED",
             message: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
         }),
-        Err(_) => Err(DeleteError::Failed {
+        Ok(Err(_)) => Err(DeleteError::Failed {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "OPENCODE_UNAVAILABLE",
+            message: None,
+        }),
+        Err(_) => Err(DeleteError::Failed {
+            status: StatusCode::BAD_GATEWAY,
+            code: "OPENCODE_SESSION_DELETE_FAILED",
             message: None,
         }),
     }
@@ -129,26 +136,32 @@ pub(crate) async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSe
     .map_err(|_| ())
 }
 
-pub(crate) async fn unique_new_session(
+pub(crate) async fn new_session_candidates(
     pool: Option<&SqlitePool>,
     directory: &str,
     launched_at: i64,
     baseline: &HashSet<String>,
-    claimed: &HashSet<String>,
-) -> Result<Option<String>, ()> {
-    let Some(pool) = pool else { return Ok(None) };
+) -> Result<Vec<String>, ()> {
+    let Some(pool) = pool else {
+        return Ok(Vec::new());
+    };
     validate_schema(pool).await.map_err(|_| ())?;
-    let ids = sqlx::query_scalar::<_, String>("SELECT id FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND directory = ? AND time_created >= ? ORDER BY time_created ASC")
+    sqlx::query_scalar::<_, String>("SELECT id FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND directory = ? AND time_created >= ? ORDER BY time_created ASC")
         .bind(directory)
         .bind(launched_at.saturating_sub(2_000))
         .fetch_all(pool)
         .await
-        .map_err(|_| ())?;
-    let mut candidates = ids
-        .into_iter()
-        .filter(|id| !baseline.contains(id) && !claimed.contains(id));
+        .map(|ids| ids.into_iter().filter(|id| !baseline.contains(id)).collect())
+        .map_err(|_| ())
+}
+
+pub(crate) fn unique_unclaimed_session(
+    candidates: Vec<String>,
+    claimed: &HashSet<String>,
+) -> Option<String> {
+    let mut candidates = candidates.into_iter().filter(|id| !claimed.contains(id));
     let candidate = candidates.next();
-    Ok(candidate.filter(|_| candidates.next().is_none()))
+    candidate.filter(|_| candidates.next().is_none())
 }
 
 pub(crate) async fn fork_successor_id(
@@ -323,7 +336,7 @@ fn canonical_identity(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryRow, Presence, next_fork_title, presence_for};
+    use super::{HistoryRow, Presence, next_fork_title, presence_for, unique_unclaimed_session};
     use std::collections::HashSet;
 
     fn row() -> HistoryRow {
@@ -337,6 +350,16 @@ mod tests {
             time_created: 1,
             time_updated: 1000,
         }
+    }
+
+    #[test]
+    fn claim_selection_rechecks_current_claims() {
+        let candidates = vec!["ses_first".to_string(), "ses_second".to_string()];
+        assert!(unique_unclaimed_session(candidates.clone(), &HashSet::new()).is_none());
+        assert_eq!(
+            unique_unclaimed_session(candidates, &HashSet::from(["ses_first".to_string()])),
+            Some("ses_second".to_string())
+        );
     }
 
     #[test]

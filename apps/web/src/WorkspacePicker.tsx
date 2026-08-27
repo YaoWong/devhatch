@@ -19,17 +19,30 @@ export function WorkspacePicker({
   const [loading, setLoading] = useState(true);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const requestGeneration = useRef(0);
+  const mounted = useRef(true);
   const launch = purpose === "agent";
   const openDirectory = useCallback(async (directory?: string) => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setPickerError(null);
     try {
-      setListing(await listDirectories(directory));
+      const next = await listDirectories(directory);
+      if (mounted.current && requestGeneration.current === generation) setListing(next);
     } catch (reason) {
-      setPickerError(reason instanceof Error ? reason.message : String(reason));
+      if (mounted.current && requestGeneration.current === generation) {
+        setPickerError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      setLoading(false);
+      if (mounted.current && requestGeneration.current === generation) setLoading(false);
     }
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      requestGeneration.current += 1;
+    };
   }, []);
   useEffect(() => {
     void openDirectory(initialPath);

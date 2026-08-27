@@ -26,6 +26,7 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   const [profileError, setProfileError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const syncGeneration = useRef(0);
+  const refreshGeneration = useRef(0);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -33,15 +34,18 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     return () => {
       mounted.current = false;
       syncGeneration.current += 1;
+      refreshGeneration.current += 1;
     };
   }, []);
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     const [repositoryData, skillData, profileData] = await Promise.all([
       listSkillRepositories(),
       listSkills(),
       listSkillProfiles(),
     ]);
+    if (!mounted.current || refreshGeneration.current !== generation) return;
     setRepositories(repositoryData.skillRepositories);
     setSkills(skillData.skills);
     setProfiles(profileData.skillProfiles);
@@ -54,7 +58,9 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
 
   useEffect(() => {
     if (!active) return;
-    void refresh().catch((reason) => reportError(reason instanceof Error ? reason.message : String(reason)));
+    void refresh().catch((reason) => {
+      if (mounted.current) reportError(reason instanceof Error ? reason.message : String(reason));
+    });
   }, [active, refresh, reportError]);
 
   useEffect(() => {

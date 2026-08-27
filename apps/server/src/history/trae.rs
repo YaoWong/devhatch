@@ -17,7 +17,9 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use super::{DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence};
+use super::{
+    DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence, command_output_with_timeout,
+};
 use crate::{agent::TRAECLI_ID, filesystem::home_dir, state::AppState};
 
 const MAX_PEER_BYTES: u64 = 20 * 1024;
@@ -257,7 +259,17 @@ async fn prepare_from(
             id: Uuid::new_v4().to_string(),
         });
     };
-    let record = lookup(homes, id.to_string()).await?;
+    let record = lookup(homes.clone(), id.to_string()).await?;
+    resume_launch(record, externally_active(homes, id.to_string()).await?)
+}
+
+fn resume_launch(
+    record: SessionRecord,
+    externally_active: bool,
+) -> Result<PreparedLaunch, HistoryError> {
+    if externally_active {
+        return Err(HistoryError::ExternalActive);
+    }
     Ok(PreparedLaunch::TraeResume {
         id: record.id,
         path: record.path,
@@ -296,6 +308,15 @@ pub(crate) async fn lookup(homes: TraeHomes, id: String) -> Result<SessionRecord
     Ok(SessionRecord { id, path, cwd })
 }
 
+async fn externally_active(homes: TraeHomes, id: String) -> Result<bool, HistoryError> {
+    tokio::task::spawn_blocking(move || {
+        external_session_ids(&homes, &HashSet::from([id.clone()])).map(|ids| ids.contains(&id))
+    })
+    .await
+    .map_err(|_| HistoryError::Unavailable)?
+    .map_err(|_| HistoryError::Unavailable)
+}
+
 pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteError> {
     if !valid_session_id(&id) {
         return Err(DeleteError::History(HistoryError::InvalidId));
@@ -319,36 +340,35 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     {
         return Err(DeleteError::History(HistoryError::Active));
     }
-    let externally_active = tokio::task::spawn_blocking({
-        let homes = homes.clone();
-        let id = id.clone();
-        move || {
-            external_session_ids(&homes, &HashSet::from([id.clone()])).map(|ids| ids.contains(&id))
-        }
-    })
-    .await
-    .map_err(|_| DeleteError::History(HistoryError::Unavailable))?
-    .map_err(|_| DeleteError::History(HistoryError::Unavailable))?;
-    if externally_active {
+    if externally_active(homes.clone(), id.clone())
+        .await
+        .map_err(DeleteError::History)?
+    {
         return Err(DeleteError::History(HistoryError::ExternalActive));
     }
-    let result = tokio::process::Command::new("traecli")
-        .args(delete_args(&id))
-        .env("TRAE_HOME", &homes.trae_home)
-        .env("TRAECLI_HOME", &homes.cli_home)
-        .kill_on_drop(true)
-        .output()
-        .await;
+    let result = command_output_with_timeout(
+        tokio::process::Command::new("traecli")
+            .args(delete_args(&id))
+            .env("TRAE_HOME", &homes.trae_home)
+            .env("TRAECLI_HOME", &homes.cli_home),
+        Duration::from_secs(15),
+    )
+    .await;
     match result {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(DeleteError::Failed {
+        Ok(Ok(output)) if output.status.success() => Ok(()),
+        Ok(Ok(output)) => Err(DeleteError::Failed {
             status: StatusCode::BAD_GATEWAY,
             code: "TRAE_SESSION_DELETE_FAILED",
             message: Some(String::from_utf8_lossy(&output.stderr).trim().to_string()),
         }),
-        Err(_) => Err(DeleteError::Failed {
+        Ok(Err(_)) => Err(DeleteError::Failed {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "TRAECLI_UNAVAILABLE",
+            message: None,
+        }),
+        Err(_) => Err(DeleteError::Failed {
+            status: StatusCode::BAD_GATEWAY,
+            code: "TRAE_SESSION_DELETE_FAILED",
             message: None,
         }),
     }
@@ -952,6 +972,23 @@ mod tests {
             HistoryError::NotFound
         );
         fs::remove_dir_all(homes.trae_home).unwrap();
+    }
+
+    #[test]
+    fn resume_rejects_strong_external_active_evidence() {
+        let record = SessionRecord {
+            id: Uuid::new_v4().to_string(),
+            path: PathBuf::from("/tmp/session.jsonl"),
+            cwd: PathBuf::from("/tmp"),
+        };
+        assert_eq!(
+            resume_launch(record.clone(), true).unwrap_err(),
+            HistoryError::ExternalActive
+        );
+        assert!(matches!(
+            resume_launch(record, false).unwrap(),
+            PreparedLaunch::TraeResume { .. }
+        ));
     }
 
     #[tokio::test]

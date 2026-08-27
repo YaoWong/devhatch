@@ -76,7 +76,7 @@
   .webapp-detail-grid { grid-template-columns: 1fr; }
   .webapp-actions { flex-wrap: wrap; }
   .settings-section { grid-template-columns: 1fr; gap: 14px; }
-  .terminal-workspace { grid-template-rows: 48px minmax(0, 1fr) 38px 50px; }
+  .terminal-workspace { grid-template-rows: 48px minmax(0, 1fr) 38px; }
   .terminal-surface { padding: 8px 10px; }
   .tab { min-width: 136px; }
   .statusbar { padding: 0 12px; gap: 10px; }

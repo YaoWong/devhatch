@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 use tokio::sync::broadcast;
 
 use crate::{
+    agent::OPENCODE_ID,
     session::{Session, SessionEvent},
     state::AppState,
 };
@@ -86,7 +87,13 @@ pub(super) fn start_event_watcher(
                         .unwrap_or(false),
                     };
                     if belongs_to_session {
-                        session.update_upstream_session_id(id);
+                        let _reconciliation = app_state.history_reconciliation().lock().await;
+                        if app_state.contains_session(&session)
+                            && !session.is_deleting()
+                            && !app_state.history_deletion_pending(OPENCODE_ID, &id)
+                        {
+                            session.update_upstream_session_id(id);
+                        }
                     }
                 }
             }

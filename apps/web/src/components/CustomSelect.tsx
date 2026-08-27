@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   label,
@@ -26,6 +26,9 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   const [highlighted, setHighlighted] = useState(0);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const stableId = useId();
+  const listboxId = `${stableId}-listbox`;
+  const optionId = (id: Id) => `${stableId}-option-${encodeURIComponent(id)}`;
   const selected = options.find((option) => option.id === value);
   const enabledIndexes = options
     .map((option, index) => (isOptionDisabled?.(option) ? -1 : index))
@@ -95,7 +98,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
         aria-label={label}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls={`${label.replace(/\s/g, "-")}-listbox`}
+        aria-controls={listboxId}
+        aria-activedescendant={open && options[highlighted] ? optionId(options[highlighted].id) : undefined}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openMenu())}
       >
@@ -104,7 +108,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
       </button>
       {open && (
         <div
-          id={`${label.replace(/\s/g, "-")}-listbox`}
+          id={listboxId}
           className="custom-select-menu"
           role="listbox"
           aria-label={label}
@@ -113,7 +117,9 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
             <button
               type="button"
               key={option.id}
+              id={optionId(option.id)}
               role="option"
+              tabIndex={-1}
               aria-selected={option.id === value}
               aria-disabled={isOptionDisabled?.(option) || undefined}
               disabled={isOptionDisabled?.(option)}

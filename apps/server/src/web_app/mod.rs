@@ -19,7 +19,6 @@ const REVISION: &str = "eea8a8522dfc10951ff3e3575488c83ffcad8a33";
 const MANAGED_BRANCH: &str = "devhatch";
 const REPOSITORY: &str = "https://github.com/nexu-io/open-design.git";
 const PORT: u16 = 17456;
-const DEFAULT_PUBLIC_URL: &str = "https://work.yaowong.top:8443";
 
 pub(crate) struct WebAppManager {
     root: PathBuf,

@@ -6,21 +6,16 @@ export function WebAppsRailPage({
   app,
   onInstall,
   onStart,
-  onOpen,
   onConfirm,
 }: {
   app: WebApp | null;
   onInstall: () => Promise<void>;
   onStart: () => Promise<void>;
-  onOpen: () => void;
   onConfirm: (action: ConfirmAction) => void;
 }) {
   if (!app) return <div className="quiet-message">Loading Web Apps…</div>;
   const action = () => {
-    if (app.running) {
-      onOpen();
-      return;
-    }
+    if (app.running) return;
     if (app.installed) {
       void onStart();
       return;
@@ -37,7 +32,7 @@ export function WebAppsRailPage({
   return (
     <div className="menu-section">
       <p className="menu-label">Available Apps</p>
-      <button className="webapp-rail-card" onClick={action} disabled={app.installing}>
+      <button className="webapp-rail-card" onClick={action} disabled={app.installing || app.running}>
         <img src={openDesignIcon} alt="" />
         <span>
           <strong>{app.name}</strong>

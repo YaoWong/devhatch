@@ -172,7 +172,7 @@ export function useTerminalWorkspace(
               ? reason.message
               : String(reason),
         );
-        return true;
+        return false;
       }
     },
     [homePaths, initialize, initializeWorkspaces, refreshWorkspaces, reportError, selectedWorkspace, workspaces],
