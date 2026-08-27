@@ -2,8 +2,8 @@ use std::{env, sync::Arc};
 
 use axum::{
     Json,
-    extract::{Path, State, WebSocketUpgrade},
-    http::{HeaderMap, StatusCode},
+    extract::{Extension, Path, State, WebSocketUpgrade},
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
 use portable_pty::CommandBuilder;
@@ -11,8 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     filesystem::{default_cwd, home_dir, path_string, validated_directory},
-    session::{Session, SessionKind, SessionSpawn, dimension},
-    session_socket,
+    session::{Session, SessionKind, SessionSpawn, dimension, socket},
     state::AppState,
     terminal_workspace,
 };
@@ -145,10 +144,10 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
 pub async fn socket(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    headers: HeaderMap,
+    Extension(identity): Extension<crate::auth::AuthIdentity>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    session_socket::upgrade(state, id, headers, upgrade, SessionKind::Terminal)
+    socket::upgrade(state, id, identity, upgrade, SessionKind::Terminal)
 }
 
 pub(crate) fn spawn_with_cwd(
@@ -169,7 +168,7 @@ pub(crate) fn spawn_with_cwd(
         .unwrap_or("Terminal")
         .to_string();
     Session::spawn(
-        state,
+        state.session_registry(),
         SessionSpawn {
             command,
             shell,

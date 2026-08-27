@@ -1,6 +1,6 @@
 use crate::{
     Error, Result,
-    manifest::parse_strict,
+    skill::manifest::parse_strict,
     validation::{path_to_db, validate_slug},
 };
 use std::{collections::BTreeMap, path::Path};

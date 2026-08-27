@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 use uuid::Uuid;
 
-use crate::{clock::now, filesystem::validated_directory, state::AppState};
+use crate::{api::ApiError, clock::now, filesystem::validated_directory, state::AppState};
 
 #[derive(FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -170,8 +170,8 @@ fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "TERMINAL_WORKSPACE_NOT_FOUND")
 }
 
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+fn error(status: StatusCode, code: &'static str) -> Response {
+    ApiError::new(status, code).into_response()
 }
 
 #[cfg(test)]

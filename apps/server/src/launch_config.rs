@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Sqlite, Transaction};
 use uuid::Uuid;
 
-use crate::{clock::now, state::AppState};
+use crate::{api::ApiError, clock::now, state::AppState};
 
 const SCRIPT_LIMIT: usize = 65_536;
 
@@ -412,8 +412,8 @@ fn database_error() -> Response {
     error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
 }
 
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+fn error(status: StatusCode, code: &'static str) -> Response {
+    ApiError::new(status, code).into_response()
 }
 
 #[cfg(test)]

@@ -1,6 +1,9 @@
 use std::{
     path::PathBuf,
-    sync::{Mutex, RwLock},
+    sync::{
+        Mutex, RwLock,
+        atomic::{AtomicBool, AtomicU8, Ordering},
+    },
 };
 
 mod environment;
@@ -25,8 +28,48 @@ pub(crate) struct WebAppManager {
     progress: RwLock<Progress>,
     update: RwLock<UpdateState>,
     child: Mutex<Option<std::process::Child>>,
-    operation: tokio::sync::Mutex<()>,
+    child_identity: Mutex<Option<manager::PidRecord>>,
+    operation_lock: tokio::sync::Mutex<()>,
+    operation: AtomicU8,
+    operation_complete: tokio::sync::Notify,
+    shutdown_started: tokio::sync::Notify,
+    shutting_down: AtomicBool,
     install_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+const OPERATION_CONFLICT: &str = "WEB_APP_OPERATION_IN_PROGRESS";
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Operation {
+    Install = 1,
+    Update = 2,
+    Check = 3,
+    Start = 4,
+    Stop = 5,
+}
+
+impl Operation {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Update => "update",
+            Self::Check => "check",
+            Self::Start => "start",
+            Self::Stop => "stop",
+        }
+    }
+}
+
+struct OperationGuard {
+    manager: std::sync::Arc<WebAppManager>,
+}
+
+impl Drop for OperationGuard {
+    fn drop(&mut self) {
+        self.manager.operation.store(0, Ordering::Release);
+        self.manager.operation_complete.notify_waiters();
+    }
 }
 
 #[derive(Clone)]

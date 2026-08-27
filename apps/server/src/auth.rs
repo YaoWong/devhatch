@@ -12,7 +12,7 @@ use argon2::{
 use axum::{
     Json,
     extract::{ConnectInfo, Request, State},
-    http::{HeaderMap, Method, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{clock, state::AppState};
+use crate::{api::ApiError, clock, state::AppState};
 
 const COOKIE_NAME: &str = "devhatch_session";
 const SESSION_LIFETIME_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -33,6 +33,7 @@ static ARGON2_JOBS: LazyLock<Arc<tokio::sync::Semaphore>> =
 pub struct AuthState {
     setup_token_hash: Option<String>,
     login_attempts: Mutex<HashMap<IpAddr, VecDeque<u64>>>,
+    session_lifecycle: tokio::sync::RwLock<()>,
     secure_cookie: bool,
 }
 
@@ -49,7 +50,9 @@ pub struct LoginRequest {
     password: String,
 }
 
-struct SessionRecord {
+#[derive(Clone, Debug)]
+pub(crate) struct AuthIdentity {
+    session_id: String,
     csrf_token: String,
 }
 
@@ -58,6 +61,7 @@ impl AuthState {
         Self {
             setup_token_hash: setup_token.map(hash_token),
             login_attempts: Mutex::new(HashMap::new()),
+            session_lifecycle: tokio::sync::RwLock::new(()),
             secure_cookie,
         }
     }
@@ -91,24 +95,44 @@ impl AuthState {
             .expect("login attempts lock poisoned")
             .remove(&ip);
     }
+
+    pub(crate) fn session_lifecycle(&self) -> &tokio::sync::RwLock<()> {
+        &self.session_lifecycle
+    }
 }
 
 pub async fn status(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    let initialized = initialized(state.pool()).await.unwrap_or(false);
-    let session = authenticate(state.pool(), &headers).await.ok().flatten();
-    Json(serde_json::json!({
-        "initialized": initialized,
-        "authenticated": session.is_some(),
-        "csrfToken": session.map(|session| session.csrf_token)
-    }))
-    .into_response()
+    status_response(state.pool(), &headers).await
+}
+
+async fn status_response(pool: &SqlitePool, headers: &HeaderMap) -> Response {
+    let initialized = match initialized(pool).await {
+        Ok(initialized) => initialized,
+        Err(_) => return database_error(),
+    };
+    let session = match authenticate(pool, headers).await {
+        Ok(session) => session,
+        Err(_) => return database_error(),
+    };
+    with_no_store(
+        Json(serde_json::json!({
+            "initialized": initialized,
+            "authenticated": session.is_some(),
+            "csrfToken": session.map(|session| session.csrf_token)
+        }))
+        .into_response(),
+    )
 }
 
 pub async fn setup(
     State(state): State<Arc<AppState>>,
     Json(request): Json<SetupRequest>,
 ) -> Response {
-    if initialized(state.pool()).await.unwrap_or(true) {
+    let result = match initialized(state.pool()).await {
+        Ok(initialized) => initialized,
+        Err(_) => return database_error(),
+    };
+    if result {
         return error(StatusCode::CONFLICT, "ALREADY_INITIALIZED");
     }
     let valid_token = state
@@ -156,18 +180,21 @@ pub async fn setup(
 
 pub async fn login(
     State(state): State<Arc<AppState>>,
-    ConnectInfo(address): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(address): ConnectInfo<crate::server::ClientAddr>,
     Json(request): Json<LoginRequest>,
 ) -> Response {
-    if !state.auth().reserve_login(address.ip()) {
+    if !state.auth().reserve_login(address.0.ip()) {
         return error(StatusCode::TOO_MANY_REQUESTS, "LOGIN_RATE_LIMITED");
     }
-    let hash =
-        sqlx::query_scalar::<_, String>("SELECT password_hash FROM admin_credentials WHERE id = 1")
-            .fetch_optional(state.pool())
-            .await
-            .ok()
-            .flatten();
+    let hash = match sqlx::query_scalar::<_, String>(
+        "SELECT password_hash FROM admin_credentials WHERE id = 1",
+    )
+    .fetch_optional(state.pool())
+    .await
+    {
+        Ok(hash) => hash,
+        Err(_) => return database_error(),
+    };
     let valid = if let Some(hash) = hash {
         let password = request.password;
         match ARGON2_JOBS.clone().acquire_owned().await {
@@ -191,33 +218,47 @@ pub async fn login(
         tokio::time::sleep(Duration::from_millis(350)).await;
         return error(StatusCode::UNAUTHORIZED, "INVALID_CREDENTIALS");
     }
-    state.auth().clear_failures(address.ip());
+    state.auth().clear_failures(address.0.ip());
     create_session_response(&state).await
 }
 
-pub async fn verify() -> StatusCode {
-    StatusCode::NO_CONTENT
+pub async fn verify() -> Response {
+    with_no_store(StatusCode::NO_CONTENT.into_response())
 }
 
-pub async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if let Some(token) = cookie(&headers) {
-        let _ = sqlx::query("DELETE FROM auth_sessions WHERE token_hash = ?")
-            .bind(hash_token(&token))
-            .execute(state.pool())
-            .await;
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Extension(identity): axum::extract::Extension<AuthIdentity>,
+) -> Response {
+    logout_response(state.pool(), state.auth(), &identity).await
+}
+
+async fn logout_response(pool: &SqlitePool, auth: &AuthState, identity: &AuthIdentity) -> Response {
+    let _lifecycle = auth.session_lifecycle.write().await;
+    if revoke_identity(pool, identity).await.is_err() {
+        return database_error();
     }
-    let cookie = cookie_header("", true, state.auth().secure_cookie);
-    (StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response()
+    let cookie = cookie_header("", true, auth.secure_cookie);
+    with_no_store((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
+}
+
+async fn revoke_identity(pool: &SqlitePool, identity: &AuthIdentity) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM auth_sessions WHERE id = ?")
+        .bind(&identity.session_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn require_auth(
     State(state): State<Arc<AppState>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let session = match authenticate(state.pool(), request.headers()).await {
         Ok(Some(session)) => session,
-        _ => return error(StatusCode::UNAUTHORIZED, "AUTHENTICATION_REQUIRED"),
+        Ok(None) => return error(StatusCode::UNAUTHORIZED, "AUTHENTICATION_REQUIRED"),
+        Err(_) => return database_error(),
     };
     if request.method() != Method::GET
         && request.method() != Method::HEAD
@@ -232,6 +273,7 @@ pub async fn require_auth(
             return error(StatusCode::FORBIDDEN, "INVALID_CSRF_TOKEN");
         }
     }
+    request.extensions_mut().insert(session);
     next.run(request).await
 }
 
@@ -264,41 +306,52 @@ async fn create_session_response(state: &AppState) -> Response {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "SESSION_CREATE_FAILED");
     }
     let cookie = cookie_header(&token, false, state.auth().secure_cookie);
-    (
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie)],
-        Json(serde_json::json!({ "authenticated": true, "initialized": true, "csrfToken": csrf_token })),
+    with_no_store(
+        (
+            StatusCode::OK,
+            [(header::SET_COOKIE, cookie)],
+            Json(serde_json::json!({ "authenticated": true, "initialized": true, "csrfToken": csrf_token })),
+        )
+            .into_response(),
     )
-        .into_response()
 }
 
 async fn authenticate(
     pool: &SqlitePool,
     headers: &HeaderMap,
-) -> Result<Option<SessionRecord>, sqlx::Error> {
+) -> Result<Option<AuthIdentity>, sqlx::Error> {
     let Some(token) = cookie(headers) else {
         return Ok(None);
     };
     let now = clock::now() as i64;
-    sqlx::query("DELETE FROM auth_sessions WHERE expires_at <= ?")
-        .bind(now)
-        .execute(pool)
-        .await?;
-    let csrf_token = sqlx::query_scalar::<_, String>(
-        "SELECT csrf_token FROM auth_sessions WHERE token_hash = ? AND expires_at > ?",
+    sqlx::query_as::<_, (String, String)>(
+        "SELECT id, csrf_token FROM auth_sessions WHERE token_hash = ? AND expires_at > ?",
     )
     .bind(hash_token(&token))
     .bind(now)
     .fetch_optional(pool)
-    .await?;
-    if csrf_token.is_some() {
-        let _ = sqlx::query("UPDATE auth_sessions SET last_seen_at = ? WHERE token_hash = ?")
-            .bind(now)
-            .bind(hash_token(&token))
-            .execute(pool)
-            .await;
-    }
-    Ok(csrf_token.map(|csrf_token| SessionRecord { csrf_token }))
+    .await
+    .map(|session| {
+        session.map(|(session_id, csrf_token)| AuthIdentity {
+            session_id,
+            csrf_token,
+        })
+    })
+}
+
+pub(crate) async fn validate_identity(
+    pool: &SqlitePool,
+    identity: &AuthIdentity,
+) -> Result<bool, sqlx::Error> {
+    let now = clock::now() as i64;
+    sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM auth_sessions WHERE id = ? AND expires_at > ?)",
+    )
+    .bind(&identity.session_id)
+    .bind(now)
+    .fetch_one(pool)
+    .await
+    .map(|valid| valid != 0)
 }
 
 fn password_hash(password: &str) -> Option<String> {
@@ -357,16 +410,66 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         == 0
 }
 
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+fn error(status: StatusCode, code: &'static str) -> Response {
+    with_no_store(ApiError::new(status, code).into_response())
+}
+
+fn database_error() -> Response {
+    error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
+}
+
+pub(crate) fn with_no_store(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthState, LOGIN_LIMIT, LOGIN_WINDOW_MS, constant_time_eq, password_hash, verify_password,
+        AuthIdentity, AuthState, LOGIN_LIMIT, LOGIN_WINDOW_MS, authenticate, constant_time_eq,
+        hash_token, logout_response, password_hash, status_response, validate_identity,
+        verify_password,
     };
+    use axum::{
+        body::to_bytes,
+        http::{HeaderMap, HeaderValue, StatusCode, header},
+    };
+    use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
     use std::{net::IpAddr, sync::Arc};
+
+    async fn pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        pool
+    }
+
+    async fn response_body(response: axum::response::Response) -> String {
+        String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap()
+    }
+
+    async fn insert_session(pool: &SqlitePool, id: &str, token: &str, expires_at: i64) {
+        sqlx::query(
+            "INSERT INTO auth_sessions (id, token_hash, csrf_token, created_at, expires_at, last_seen_at) VALUES (?, ?, 'csrf', 0, ?, 0)",
+        )
+        .bind(id)
+        .bind(hash_token(token))
+        .bind(expires_at)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
 
     #[test]
     fn hashes_and_verifies_passwords() {
@@ -407,6 +510,64 @@ mod tests {
         assert!(!state.reserve_login_at(ip, 1));
         state.clear_failures(ip);
         assert!(state.reserve_login_at(ip, 1));
+    }
+
+    #[tokio::test]
+    async fn status_reports_database_errors_without_auth_fallback() {
+        let pool = pool().await;
+        pool.close().await;
+        let response = status_response(&pool, &HeaderMap::new()).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(
+            response_body(response).await,
+            r#"{"error":"DATABASE_ERROR"}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_failure_does_not_clear_cookie() {
+        let pool = pool().await;
+        pool.close().await;
+        let identity = AuthIdentity {
+            session_id: "session-1".into(),
+            csrf_token: "csrf".into(),
+        };
+        let auth = AuthState::new(None, false);
+        let response = logout_response(&pool, &auth, &identity).await;
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
+        assert_eq!(
+            response_body(response).await,
+            r#"{"error":"DATABASE_ERROR"}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn authenticated_identity_tracks_session_revocation_and_expiry() {
+        let pool = pool().await;
+        let now = crate::clock::now() as i64;
+        insert_session(&pool, "active", "token", now + 60_000).await;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("devhatch_session=token"),
+        );
+        let identity = authenticate(&pool, &headers).await.unwrap().unwrap();
+        assert_eq!(identity.session_id, "active");
+        assert!(validate_identity(&pool, &identity).await.unwrap());
+        sqlx::query("DELETE FROM auth_sessions WHERE id = 'active'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(!validate_identity(&pool, &identity).await.unwrap());
+
+        insert_session(&pool, "expired", "expired-token", now - 1).await;
+        let expired = AuthIdentity {
+            session_id: "expired".into(),
+            csrf_token: "csrf".into(),
+        };
+        assert!(!validate_identity(&pool, &expired).await.unwrap());
     }
 
     #[test]

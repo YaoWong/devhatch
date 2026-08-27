@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
-import type { Skill } from "../../types";
+import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, SourceFilterControl, WorkspaceSection } from "./controls";
 import { filterSkills, type SourceFilter } from "./search";

@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::now, state::AppState};
+use crate::{api::ApiError, clock::now, state::AppState};
 
 const MIN_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX: i64 = 160;
 const MAX_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX: i64 = 480;
@@ -162,8 +162,8 @@ fn database_error() -> Response {
     error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
 }
 
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+fn error(status: StatusCode, code: &'static str) -> Response {
+    ApiError::new(status, code).into_response()
 }
 
 #[cfg(test)]

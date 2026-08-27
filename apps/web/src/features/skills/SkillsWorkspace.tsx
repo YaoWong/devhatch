@@ -1,6 +1,6 @@
 import { ArrowDownToLine, ArrowUpToLine, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type UIEvent } from "react";
-import type { SkillsSection } from "../../views/SkillsRailPage";
+import type { SkillsSection } from "./SkillsRailPage";
 import type { SkillsController } from "./controller";
 import { Profiles } from "./Profiles";
 import { Repositories } from "./Repositories";

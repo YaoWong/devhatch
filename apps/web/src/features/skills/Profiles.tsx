@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, Plus, RotateCcw, Save, X } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
-import type { Skill } from "../../types";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
 import { filterSkills } from "./search";
@@ -13,6 +13,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   const [draft, setDraft] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const saveRef = useRef(false);
   useEffect(() => {
     const next = new Set(controller.profileDetail?.skills.map((skill) => skill.id) ?? []);
     setDraft(next);
@@ -24,7 +25,18 @@ export function Profiles({ controller }: { controller: SkillsController }) {
     if (await controller.createProfile(slug.trim())) setSlug("");
   };
   const save = async () => {
-    if (await controller.saveProfile([...draft])) setSaved(new Set(draft));
+    if (saveRef.current) return;
+    const targetId = controller.selectedProfileId;
+    if (!targetId) return;
+    const targetDraft = new Set(draft);
+    saveRef.current = true;
+    try {
+      if (await controller.saveProfile([...targetDraft]) && controller.selectedProfileId === targetId) {
+        setSaved(targetDraft);
+      }
+    } finally {
+      saveRef.current = false;
+    }
   };
   const filtered = filterSkills(controller.skills, query, "all");
   const customSkills = filtered.filter((skill) => skill.sourceType === "custom");

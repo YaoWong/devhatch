@@ -1,8 +1,10 @@
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import './index.css'
-import { applyTheme, cachedTheme } from './themes.ts'
-import { AuthGate } from './AuthGate.tsx'
+import App from './app/App.tsx'
+import { AppSettingsProvider } from './app/providers/SettingsProvider.tsx'
+import './app/styles/base.css'
+import { AuthGate } from './features/auth/AuthGate.tsx'
+import { applyTheme, cachedTheme } from './shared/theme/themes.ts'
 
 applyTheme(cachedTheme())
 
@@ -34,7 +36,13 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary>
-      <AuthGate />
+      <AuthGate>
+        {(auth) => (
+          <AppSettingsProvider>
+            <App {...auth} />
+          </AppSettingsProvider>
+        )}
+      </AuthGate>
     </AppErrorBoundary>
   </StrictMode>,
 )

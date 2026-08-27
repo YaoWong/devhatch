@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, io,
     net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -7,13 +7,67 @@ use std::{
     time::Duration,
 };
 
+use axum::{
+    extract::connect_info::Connected,
+    serve::{IncomingStream, Listener},
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use tokio::net::TcpListener;
+use tokio::{
+    net::TcpListener,
+    sync::{oneshot, watch},
+};
 
 use crate::state::AppState;
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 4173;
+const SESSION_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+
+struct StoppableListener {
+    listener: TcpListener,
+    stop: watch::Receiver<bool>,
+    stopped: Option<oneshot::Sender<()>>,
+}
+
+impl Listener for StoppableListener {
+    type Io = <TcpListener as Listener>::Io;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        if *self.stop.borrow() {
+            self.confirm_stopped();
+            return std::future::pending().await;
+        }
+        tokio::select! {
+            connection = Listener::accept(&mut self.listener) => connection,
+            _ = self.stop.changed() => {
+                self.confirm_stopped();
+                std::future::pending().await
+            },
+        }
+    }
+
+    fn local_addr(&self) -> io::Result<Self::Addr> {
+        self.listener.local_addr()
+    }
+}
+
+impl StoppableListener {
+    fn confirm_stopped(&mut self) {
+        if let Some(stopped) = self.stopped.take() {
+            let _ = stopped.send(());
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ClientAddr(pub(crate) SocketAddr);
+
+impl Connected<IncomingStream<'_, StoppableListener>> for ClientAddr {
+    fn connect_info(target: IncomingStream<'_, StoppableListener>) -> Self {
+        Self(*target.remote_addr())
+    }
+}
 
 pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -46,7 +100,9 @@ pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!().run(&pool).await?;
     secure_database_files(&database_path)?;
     let skillink = ::skillink::Skillink::open(Some(data_dir.join("skillink"))).await?;
-    let history_pool = open_history_pool().await;
+    let history_pool = crate::state::OpenCodeHistoryPool::new(
+        crate::filesystem::home_dir().join(".local/share/opencode/opencode.db"),
+    );
     let initialized =
         sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM admin_credentials WHERE id = 1)")
             .fetch_one(&pool)
@@ -74,11 +130,34 @@ pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let address = format!("{bind_host}:{PORT}");
     let listener = TcpListener::bind(&address).await?;
     println!("DevHatch listening on http://{address}");
+    let (stop, stop_requested) = watch::channel(false);
+    let (stopped, accept_stopped) = oneshot::channel();
+    let (cleanup_complete, cleanup_completed) = oneshot::channel();
+    let shutdown_state = state.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        let _ = stop.send(true);
+        let _ = accept_stopped.await;
+        if !shutdown_state
+            .shutdown_sessions(SESSION_SHUTDOWN_TIMEOUT)
+            .await
+        {
+            eprintln!("Timed out waiting for sessions to shut down");
+        }
+        shutdown_state.web_apps().shutdown().await;
+        let _ = cleanup_complete.send(());
+    });
     axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
+        StoppableListener {
+            listener,
+            stop: stop_requested,
+            stopped: Some(stopped),
+        },
+        app.into_make_service_with_connect_info::<ClientAddr>(),
     )
-    .with_graceful_shutdown(shutdown(state))
+    .with_graceful_shutdown(async {
+        let _ = cleanup_completed.await;
+    })
     .await?;
     Ok(())
 }
@@ -148,31 +227,7 @@ fn secure_database_files(_: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-async fn open_history_pool() -> Option<sqlx::SqlitePool> {
-    let path = crate::filesystem::home_dir().join(".local/share/opencode/opencode.db");
-    if !path.is_file() {
-        return None;
-    }
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .read_only(true)
-        .busy_timeout(Duration::from_secs(2));
-    SqlitePoolOptions::new()
-        .max_connections(2)
-        .after_connect(|connection, _| {
-            Box::pin(async move {
-                sqlx::query("PRAGMA query_only = ON")
-                    .execute(connection)
-                    .await?;
-                Ok(())
-            })
-        })
-        .connect_with(options)
-        .await
-        .ok()
-}
-
-async fn shutdown(state: Arc<AppState>) {
+async fn shutdown_signal() {
     let interrupt = async {
         tokio::signal::ctrl_c()
             .await
@@ -191,8 +246,6 @@ async fn shutdown(state: Arc<AppState>) {
         () = interrupt => {},
         () = terminate => {},
     }
-    state.terminate_all();
-    state.web_apps().shutdown().await;
 }
 
 #[cfg(all(test, unix))]
@@ -200,6 +253,22 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     use super::{prepare_data_dir, secure_database_files};
+
+    #[tokio::test]
+    async fn stop_acknowledgement_precedes_cleanup_signal() {
+        let (stop, mut stop_requested) = tokio::sync::watch::channel(false);
+        let (stopped, accept_stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            stop.send(true).unwrap();
+            accept_stopped.await.unwrap();
+            true
+        });
+        stop_requested.changed().await.unwrap();
+        assert!(*stop_requested.borrow());
+        assert!(!task.is_finished());
+        stopped.send(()).unwrap();
+        assert!(task.await.unwrap());
+    }
 
     #[test]
     fn secures_data_directory_and_database_files() {

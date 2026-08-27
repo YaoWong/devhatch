@@ -1,12 +1,41 @@
 use std::{
-    io::Write,
     path::PathBuf,
-    sync::{Mutex, atomic::AtomicBool},
+    sync::{Mutex, atomic::AtomicBool, mpsc::SyncSender},
 };
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
 use serde::Serialize;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
+
+#[derive(Clone)]
+pub(super) struct SessionCompletion {
+    completed: watch::Sender<bool>,
+}
+
+impl Default for SessionCompletion {
+    fn default() -> Self {
+        let (completed, _) = watch::channel(false);
+        Self { completed }
+    }
+}
+
+impl SessionCompletion {
+    pub(super) fn complete(&self) {
+        self.completed.send_replace(true);
+    }
+
+    pub(super) async fn wait(&self) {
+        let mut completed = self.completed.subscribe();
+        if *completed.borrow() {
+            return;
+        }
+        while completed.changed().await.is_ok() {
+            if *completed.borrow() {
+                return;
+            }
+        }
+    }
+}
 
 pub(crate) struct Session {
     pub(super) id: String,
@@ -14,11 +43,13 @@ pub(crate) struct Session {
     pub(super) kind: SessionKind,
     pub(super) identity: Mutex<SessionIdentity>,
     pub(super) process_id: u32,
+    pub(super) process_identity: Option<crate::process::ChildIdentity>,
     pub(super) state: Mutex<SessionState>,
     pub(super) master: Mutex<Box<dyn MasterPty + Send>>,
-    pub(super) writer: Mutex<Box<dyn Write + Send>>,
+    pub(super) input: Mutex<Option<SyncSender<Vec<u8>>>>,
     pub(super) killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     pub(super) deleting: AtomicBool,
+    pub(super) completion: SessionCompletion,
     pub(super) events: broadcast::Sender<SessionEvent>,
     pub(super) agent_id: Option<&'static str>,
     pub(super) agent_name: Option<&'static str>,
@@ -150,13 +181,20 @@ impl Session {
         (cwd, created_at)
     }
 
-    pub(crate) fn update_upstream_session_id(&self, id: String) {
+    pub(crate) fn compare_and_update_upstream_session_id(
+        &self,
+        expected: Option<&str>,
+        id: String,
+    ) -> bool {
         let mut identity = self
             .identity
             .lock()
             .expect("session identity lock poisoned");
+        if identity.upstream_session_id.as_deref() != expected {
+            return false;
+        }
         if identity.upstream_session_id.as_deref() == Some(&id) {
-            return;
+            return true;
         }
         identity.upstream_session_id = Some(id.clone());
         let cwd = identity.cwd.clone();
@@ -165,6 +203,7 @@ impl Session {
         let _ = self
             .events
             .send(SessionEvent::UpstreamSessionChanged { id, cwd });
+        true
     }
 
     pub(crate) fn update_runtime_identity(
@@ -238,6 +277,10 @@ impl Session {
         self.events.subscribe()
     }
 
+    pub(crate) async fn wait_for_completion(&self) {
+        self.completion.wait().await;
+    }
+
     fn view_from_state(&self, state: &SessionState, identity: &SessionIdentity) -> SessionView {
         SessionView {
             id: self.id.clone(),
@@ -284,7 +327,28 @@ fn merge_runtime_identity(
 
 #[cfg(test)]
 mod tests {
-    use super::merge_runtime_identity;
+    use std::time::Duration;
+
+    use super::{SessionCompletion, merge_runtime_identity};
+
+    #[tokio::test]
+    async fn completion_waits_until_marked_and_remains_ready() {
+        let completion = SessionCompletion::default();
+        let waiter = tokio::spawn({
+            let completion = completion.clone();
+            async move { completion.wait().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+        completion.complete();
+        tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), completion.wait())
+            .await
+            .unwrap();
+    }
 
     #[test]
     fn runtime_identity_updates_id_and_cwd() {

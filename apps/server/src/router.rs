@@ -165,6 +165,7 @@ async fn api_not_found() -> Response {
 }
 
 async fn require_trusted_request(request: Request, next: Next) -> Response {
+    let auth_response = request.uri().path().starts_with("/api/auth/");
     let host = request
         .headers()
         .get("host")
@@ -209,7 +210,17 @@ async fn require_trusted_request(request: Request, next: Next) -> Response {
                 .zip(expected_origin.as_deref())
                 .is_some_and(|(origin, expected)| origin == expected));
     if !trusted_host || !trusted_origin {
-        return StatusCode::FORBIDDEN.into_response();
+        let response = StatusCode::FORBIDDEN.into_response();
+        return if auth_response {
+            auth::with_no_store(response)
+        } else {
+            response
+        };
     }
-    next.run(request).await
+    let response = next.run(request).await;
+    if auth_response {
+        auth::with_no_store(response)
+    } else {
+        response
+    }
 }

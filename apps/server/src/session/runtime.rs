@@ -4,20 +4,71 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, SyncSender, TrySendError},
     },
 };
 
-use portable_pty::{NativePtySystem, PtySize, PtySystem};
+use portable_pty::{Child, NativePtySystem, PtySize, PtySystem};
 use uuid::Uuid;
 
-use super::model::{Session, SessionEvent, SessionKind, SessionSpawn, SessionState, SessionStatus};
-use crate::{clock::now, filesystem::path_string, state::AppState};
+use super::model::{
+    Session, SessionCompletion, SessionEvent, SessionKind, SessionSpawn, SessionState,
+    SessionStatus,
+};
+use crate::{clock::now, filesystem::path_string, state::SessionRegistry};
 
 const OUTPUT_LIMIT: usize = 512 * 1024;
+const INPUT_QUEUE_CAPACITY: usize = 64;
+
+type PtyChild = Box<dyn Child + Send>;
+
+trait ChildCleanup {
+    fn kill_child(&mut self);
+    fn wait_for_child(&mut self);
+}
+
+impl ChildCleanup for dyn Child + Send {
+    fn kill_child(&mut self) {
+        let _ = self.kill();
+    }
+
+    fn wait_for_child(&mut self) {
+        let _ = self.wait();
+    }
+}
+
+fn cleanup_child<T: ChildCleanup + ?Sized>(child: &mut T) {
+    child.kill_child();
+    child.wait_for_child();
+}
+
+struct SpawnedChild(Option<PtyChild>);
+
+impl SpawnedChild {
+    fn new(child: PtyChild) -> Self {
+        Self(Some(child))
+    }
+
+    fn child(&self) -> &PtyChild {
+        self.0.as_ref().expect("child must be present")
+    }
+
+    fn commit(mut self) -> PtyChild {
+        self.0.take().expect("child must be present")
+    }
+}
+
+impl Drop for SpawnedChild {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.as_mut() {
+            cleanup_child(child.as_mut());
+        }
+    }
+}
 
 impl Session {
     pub(crate) fn spawn<F>(
-        app_state: Arc<AppState>,
+        sessions: Arc<SessionRegistry>,
         spawn: SessionSpawn,
         started: F,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>>
@@ -32,11 +83,14 @@ impl Session {
             pixel_height: 0,
         })?;
         let child = pair.slave.spawn_command(spawn.command)?;
-        let process_id = child.process_id().unwrap_or_default();
-        let killer = child.clone_killer();
+        let child = SpawnedChild::new(child);
+        let process_id = child.child().process_id().unwrap_or_default();
+        let process_identity = crate::process::ChildIdentity::capture(process_id);
+        let killer = child.child().clone_killer();
         drop(pair.slave);
         let reader = pair.master.try_clone_reader()?;
         let writer = pair.master.take_writer()?;
+        let (input, input_receiver) = std::sync::mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
         let timestamp = now();
         let (events, _) = tokio::sync::broadcast::channel(1024);
         let session = Arc::new(Self {
@@ -49,6 +103,7 @@ impl Session {
                 cwd: path_string(spawn.cwd),
             }),
             process_id,
+            process_identity,
             state: std::sync::Mutex::new(SessionState {
                 name: spawn.name,
                 status: SessionStatus::Running,
@@ -60,17 +115,39 @@ impl Session {
                 output: String::new(),
             }),
             master: std::sync::Mutex::new(pair.master),
-            writer: std::sync::Mutex::new(writer),
+            input: std::sync::Mutex::new(Some(input)),
             killer: std::sync::Mutex::new(killer),
             deleting: AtomicBool::new(false),
+            completion: SessionCompletion::default(),
             events,
             agent_id: spawn.agent_id,
             agent_name: spawn.agent_name,
         });
-        app_state.insert_session(session.clone());
-        Self::start_reader(&session, reader);
+        if !sessions.insert(session.clone()) {
+            return Err("server is shutting down".into());
+        }
+        if let Err(error) = Self::start_reader(&session, reader) {
+            sessions.remove_if_same(session.id(), &session);
+            return Err(error.into());
+        }
+        if let Err(error) = Self::start_writer(&session, writer, input_receiver) {
+            sessions.remove_if_same(session.id(), &session);
+            return Err(error.into());
+        }
+        let waiter = match Self::start_waiter(&session, child, sessions.clone(), cleanup_path) {
+            Ok(waiter) => waiter,
+            Err(error) => {
+                sessions.remove_if_same(session.id(), &session);
+                session.input.lock().expect("input lock poisoned").take();
+                return Err(error.into());
+            }
+        };
         started(&session);
-        Self::start_waiter(&session, child, app_state, cleanup_path);
+        if waiter.send(()).is_err() {
+            sessions.remove_if_same(session.id(), &session);
+            session.input.lock().expect("input lock poisoned").take();
+            return Err("session waiter stopped before startup completed".into());
+        }
         Ok(session)
     }
 
@@ -82,16 +159,17 @@ impl Session {
         self.deleting.store(true, Ordering::Release);
     }
 
-    pub(crate) fn write_input(&self, data: &str) {
-        if !self.is_deleting()
-            && self.state.lock().expect("session lock poisoned").status == SessionStatus::Running
+    pub(crate) fn write_input(&self, data: &str) -> bool {
+        if self.is_deleting()
+            || self.state.lock().expect("session lock poisoned").status != SessionStatus::Running
         {
-            let _ = self
-                .writer
-                .lock()
-                .expect("writer lock poisoned")
-                .write_all(data.as_bytes());
+            return false;
         }
+        let input = self.input.lock().expect("input lock poisoned");
+        let Some(input) = input.as_ref() else {
+            return false;
+        };
+        enqueue_input(input, data.as_bytes().to_vec())
     }
 
     pub(crate) fn resize(&self, cols: u16, rows: u16) {
@@ -122,45 +200,76 @@ impl Session {
     }
 
     pub(crate) fn terminate(&self) {
+        self.input.lock().expect("input lock poisoned").take();
         if self.state.lock().expect("session lock poisoned").status == SessionStatus::Running {
+            #[cfg(unix)]
+            if let Some(identity) = self.process_identity {
+                let _ = crate::process::signal_owned_child(identity, libc::SIGTERM);
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                let _ = crate::process::signal_owned_child(identity, libc::SIGKILL);
+            }
             let _ = self.killer.lock().expect("killer lock poisoned").kill();
         }
         let _ = self.events.send(SessionEvent::Terminate);
     }
 
-    fn start_reader(session: &Arc<Self>, mut reader: Box<dyn Read + Send>) {
+    fn start_writer(
+        session: &Arc<Self>,
+        mut writer: Box<dyn Write + Send>,
+        input: Receiver<Vec<u8>>,
+    ) -> std::io::Result<()> {
         let weak = Arc::downgrade(session);
-        std::thread::spawn(move || {
-            let mut buffer = [0_u8; 8192];
-            let mut pending = Vec::new();
-            while let Ok(length) = reader.read(&mut buffer) {
-                if length == 0 {
-                    if !pending.is_empty()
-                        && let Some(session) = weak.upgrade()
-                    {
-                        session.publish_output(String::from_utf8_lossy(&pending).into_owned());
+        std::thread::Builder::new()
+            .name(format!("session-writer-{}", session.id))
+            .spawn(move || {
+                while let Ok(data) = input.recv() {
+                    if writer.write_all(&data).is_err() {
+                        break;
                     }
-                    break;
                 }
-                pending.extend_from_slice(&buffer[..length]);
-                let valid_length = match std::str::from_utf8(&pending) {
-                    Ok(_) => pending.len(),
-                    Err(error) if error.error_len().is_none() => error.valid_up_to(),
-                    Err(error) => error
-                        .valid_up_to()
-                        .saturating_add(error.error_len().unwrap_or(0)),
-                };
-                if valid_length == 0 {
-                    continue;
+                if let Some(session) = weak.upgrade() {
+                    session.input.lock().expect("input lock poisoned").take();
                 }
-                let Some(session) = weak.upgrade() else {
-                    break;
-                };
-                let data = String::from_utf8_lossy(&pending[..valid_length]).into_owned();
-                pending.drain(..valid_length);
-                session.publish_output(data);
-            }
-        });
+            })?;
+        Ok(())
+    }
+
+    fn start_reader(session: &Arc<Self>, mut reader: Box<dyn Read + Send>) -> std::io::Result<()> {
+        let weak = Arc::downgrade(session);
+        std::thread::Builder::new()
+            .name(format!("session-reader-{}", session.id))
+            .spawn(move || {
+                let mut buffer = [0_u8; 8192];
+                let mut pending = Vec::new();
+                while let Ok(length) = reader.read(&mut buffer) {
+                    if length == 0 {
+                        if !pending.is_empty()
+                            && let Some(session) = weak.upgrade()
+                        {
+                            session.publish_output(String::from_utf8_lossy(&pending).into_owned());
+                        }
+                        break;
+                    }
+                    pending.extend_from_slice(&buffer[..length]);
+                    let valid_length = match std::str::from_utf8(&pending) {
+                        Ok(_) => pending.len(),
+                        Err(error) if error.error_len().is_none() => error.valid_up_to(),
+                        Err(error) => error
+                            .valid_up_to()
+                            .saturating_add(error.error_len().unwrap_or(0)),
+                    };
+                    if valid_length == 0 {
+                        continue;
+                    }
+                    let Some(session) = weak.upgrade() else {
+                        break;
+                    };
+                    let data = String::from_utf8_lossy(&pending[..valid_length]).into_owned();
+                    pending.drain(..valid_length);
+                    session.publish_output(data);
+                }
+            })?;
+        Ok(())
     }
 
     fn publish_output(&self, data: String) {
@@ -173,35 +282,57 @@ impl Session {
 
     fn start_waiter(
         session: &Arc<Self>,
-        mut child: Box<dyn portable_pty::Child + Send>,
-        app_state: Arc<AppState>,
+        child: SpawnedChild,
+        sessions: Arc<SessionRegistry>,
         cleanup_path: Option<PathBuf>,
-    ) {
+    ) -> std::io::Result<std::sync::mpsc::Sender<()>> {
         let weak = Arc::downgrade(session);
+        let completion = session.completion.clone();
         let id = session.id.clone();
         let kind = session.kind;
-        std::thread::spawn(move || {
-            let status = child.wait();
-            if let Some(path) = cleanup_path {
-                let _ = std::fs::remove_dir_all(path);
-            }
-            let Some(session) = weak.upgrade() else {
-                return;
-            };
-            let code = status.ok().map(|status| status.exit_code());
-            {
-                let mut state = session.state.lock().expect("session lock poisoned");
-                state.status = SessionStatus::Exited;
-                state.exit_code = code;
-                state.updated_at = now();
-            }
-            let _ = session.events.send(SessionEvent::Exit(code));
-            if kind == SessionKind::Agent {
-                app_state.remove_session_if_same(&id, &session);
-                session.mark_deleting();
-                let _ = session.events.send(SessionEvent::Removed(code));
-            }
-        });
+        let (commit, committed) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name(format!("session-waiter-{}", session.id))
+            .spawn(move || {
+                if committed.recv().is_err() {
+                    drop(child);
+                    if let Some(path) = cleanup_path {
+                        let _ = std::fs::remove_dir_all(path);
+                    }
+                    completion.complete();
+                    return;
+                }
+                let mut child = child.commit();
+                let status = child.wait();
+                if let Some(path) = cleanup_path {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+                if let Some(session) = weak.upgrade() {
+                    let code = status.ok().map(|status| status.exit_code());
+                    session.input.lock().expect("input lock poisoned").take();
+                    {
+                        let mut state = session.state.lock().expect("session lock poisoned");
+                        state.status = SessionStatus::Exited;
+                        state.exit_code = code;
+                        state.updated_at = now();
+                    }
+                    let _ = session.events.send(SessionEvent::Exit(code));
+                    if kind == SessionKind::Agent {
+                        sessions.remove_if_same(&id, &session);
+                        session.mark_deleting();
+                        let _ = session.events.send(SessionEvent::Removed(code));
+                    }
+                }
+                completion.complete();
+            })?;
+        Ok(commit)
+    }
+}
+
+fn enqueue_input(input: &SyncSender<Vec<u8>>, data: Vec<u8>) -> bool {
+    match input.try_send(data) {
+        Ok(()) => true,
+        Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => false,
     }
 }
 
@@ -218,7 +349,52 @@ fn trim_output(output: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{OUTPUT_LIMIT, trim_output};
+    use std::sync::mpsc::TryRecvError;
+
+    use super::{ChildCleanup, OUTPUT_LIMIT, cleanup_child, enqueue_input, trim_output};
+
+    #[derive(Default)]
+    struct CleanupState {
+        killed: bool,
+        waited: bool,
+    }
+
+    impl ChildCleanup for CleanupState {
+        fn kill_child(&mut self) {
+            self.killed = true;
+        }
+
+        fn wait_for_child(&mut self) {
+            assert!(self.killed);
+            self.waited = true;
+        }
+    }
+
+    #[test]
+    fn bounded_input_queue_rejects_when_full_or_closed() {
+        let (input, receiver) = std::sync::mpsc::sync_channel(1);
+        assert!(enqueue_input(&input, vec![1]));
+        assert!(!enqueue_input(&input, vec![2]));
+        assert_eq!(receiver.recv().unwrap(), vec![1]);
+        drop(receiver);
+        assert!(!enqueue_input(&input, vec![3]));
+    }
+
+    #[test]
+    fn failed_spawn_cleanup_kills_before_waiting() {
+        let mut state = CleanupState::default();
+        cleanup_child(&mut state);
+        assert!(state.killed);
+        assert!(state.waited);
+    }
+
+    #[test]
+    fn waiter_commit_controls_child_ownership() {
+        let (commit, committed) = std::sync::mpsc::channel();
+        assert!(matches!(committed.try_recv(), Err(TryRecvError::Empty)));
+        commit.send(()).unwrap();
+        assert_eq!(committed.recv().unwrap(), ());
+    }
 
     #[test]
     fn trims_output_on_character_boundaries() {

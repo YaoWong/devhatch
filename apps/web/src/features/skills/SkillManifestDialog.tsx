@@ -1,8 +1,8 @@
 import { FileText, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { getSkillManifest } from "../../api";
-import type { Skill } from "../../types";
+import { getSkillManifest } from "../../api/skills";
+import type { Skill } from "../../types/skills";
 
 export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);

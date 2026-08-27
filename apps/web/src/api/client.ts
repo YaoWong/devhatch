@@ -25,6 +25,10 @@ export function configureAuth(token: string | null, onUnauthorized?: () => void)
   unauthorizedHandler = onUnauthorized ?? null;
 }
 
+export function notifyUnauthorized() {
+  unauthorizedHandler?.();
+}
+
 function authenticatedOptions(options?: RequestInit): RequestInit | undefined {
   if (!options) return options;
   const method = (options.method ?? "GET").toUpperCase();

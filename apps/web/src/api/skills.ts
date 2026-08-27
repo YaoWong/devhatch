@@ -1,4 +1,4 @@
-import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan, SkillSyncResult } from "../types";
+import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan, SkillSyncResult } from "../types/skills";
 import { requestEmpty, requestJson } from "./client";
 
 export function deleteSkillProfileSkill(profileId: string, skillId: string) {

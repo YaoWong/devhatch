@@ -1,4 +1,4 @@
-import type { Skill } from "../../types";
+import type { Skill } from "../../types/skills";
 
 export type SkillTreeNode = { name: string; path: string; directories: SkillTreeNode[]; skills: Skill[] };
 

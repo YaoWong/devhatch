@@ -1,0 +1,12 @@
+export type ConfirmAction = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger?: boolean;
+  action: () => boolean | void | Promise<boolean | void>;
+};
+export type DetailMode = "terminal" | "agent" | "skills" | "webapp" | "settings";
+export type RailPage = "modes" | DetailMode;
+export type WorkspaceMode = DetailMode;
+export type RailMotion = "forward" | "return" | null;
+export type DeleteTarget = { id: string; name: string; cwd: string; kind: "terminal" | "agent session" };

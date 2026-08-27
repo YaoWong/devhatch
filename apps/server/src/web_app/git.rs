@@ -1,8 +1,11 @@
-use std::process::Stdio;
+use std::{process::Stdio, time::Duration};
 
 use tokio::{io::AsyncReadExt, process::Command};
 
 use super::WebAppManager;
+
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+const OUTPUT_LIMIT: usize = 512 * 1024;
 
 impl WebAppManager {
     pub(super) async fn run_git_progress(
@@ -11,49 +14,74 @@ impl WebAppManager {
         start_percent: u8,
         end_percent: u8,
     ) -> Result<(), String> {
+        crate::process::configure_tokio_command(command);
         command
-            .kill_on_drop(true)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
         let mut child = command.spawn().map_err(|error| error.to_string())?;
+        let identity = child.id().and_then(crate::process::ChildIdentity::capture);
+        let mut guard = crate::process::ProcessGuard::new(identity);
         let mut stderr = child
             .stderr
             .take()
             .ok_or_else(|| "Unable to read Git progress".to_string())?;
-        let mut output = Vec::new();
-        let mut buffer = [0_u8; 4096];
-        loop {
-            let count = stderr
-                .read(&mut buffer)
-                .await
-                .map_err(|error| error.to_string())?;
-            if count == 0 {
-                break;
+        let result = tokio::time::timeout(COMMAND_TIMEOUT, async {
+            let mut output = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let count = stderr
+                    .read(&mut buffer)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if count == 0 {
+                    break;
+                }
+                let remaining = OUTPUT_LIMIT.saturating_sub(output.len());
+                output.extend_from_slice(&buffer[..count.min(remaining)]);
+                let text = String::from_utf8_lossy(&output);
+                if let Some(line) = text
+                    .rsplit(['\r', '\n'])
+                    .find(|line| line.contains("Receiving objects:"))
+                    && let Some((git_percent, downloaded_bytes)) = parse_git_progress(line)
+                {
+                    let percent = start_percent
+                        + ((end_percent - start_percent) as u16 * git_percent as u16 / 100) as u8;
+                    let total_bytes = (git_percent > 0)
+                        .then_some(downloaded_bytes)
+                        .flatten()
+                        .map(|bytes| bytes.saturating_mul(100) / u64::from(git_percent));
+                    let mut progress = self
+                        .progress
+                        .write()
+                        .expect("web app progress lock poisoned");
+                    progress.percent = percent;
+                    progress.downloaded_bytes = downloaded_bytes;
+                    progress.total_bytes = total_bytes;
+                }
             }
-            output.extend_from_slice(&buffer[..count]);
-            let text = String::from_utf8_lossy(&output);
-            if let Some(line) = text
-                .rsplit(['\r', '\n'])
-                .find(|line| line.contains("Receiving objects:"))
-                && let Some((git_percent, downloaded_bytes)) = parse_git_progress(line)
-            {
-                let percent = start_percent
-                    + ((end_percent - start_percent) as u16 * git_percent as u16 / 100) as u8;
-                let total_bytes = (git_percent > 0)
-                    .then_some(downloaded_bytes)
-                    .flatten()
-                    .map(|bytes| bytes.saturating_mul(100) / u64::from(git_percent));
-                let mut progress = self
-                    .progress
-                    .write()
-                    .expect("web app progress lock poisoned");
-                progress.percent = percent;
-                progress.downloaded_bytes = downloaded_bytes;
-                progress.total_bytes = total_bytes;
+            let status = child.wait().await.map_err(|error| error.to_string())?;
+            Ok::<_, String>((status, output))
+        })
+        .await;
+        let (status, output) = match result {
+            Ok(result) => {
+                let result = result?;
+                guard.disarm();
+                result
             }
-        }
-        let status = child.wait().await.map_err(|error| error.to_string())?;
+            Err(_) => {
+                #[cfg(unix)]
+                if let Some(identity) = identity {
+                    let _ = crate::process::signal_owned(identity, libc::SIGTERM);
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    let _ = crate::process::signal_owned(identity, libc::SIGKILL);
+                }
+                let _ = child.kill().await;
+                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                return Err("Command timed out".into());
+            }
+        };
         if status.success() {
             return Ok(());
         }
@@ -67,12 +95,7 @@ impl WebAppManager {
     }
 
     pub(super) async fn run_install_command(&self, command: &mut Command) -> Result<(), String> {
-        command
-            .kill_on_drop(true)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        let output = command.output().await.map_err(|error| error.to_string())?;
+        let output = crate::process::command_output(command, COMMAND_TIMEOUT, OUTPUT_LIMIT).await?;
         if output.status.success() {
             return Ok(());
         }

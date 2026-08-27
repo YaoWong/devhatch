@@ -1,4 +1,4 @@
-import type { AppSettings } from "../types";
+import type { AppSettings } from "../types/settings";
 import { requestJson } from "./client";
 
 export function getSettings() {

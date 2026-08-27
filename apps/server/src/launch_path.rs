@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{agent, clock::now, filesystem::validated_directory, state::AppState};
+use crate::{agent, api::ApiError, clock::now, filesystem::validated_directory, state::AppState};
 
 #[derive(FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,8 +197,8 @@ fn validate_alias(value: Option<String>) -> Result<Option<String>, &'static str>
 fn not_found() -> Response {
     error(StatusCode::NOT_FOUND, "AGENT_LAUNCH_PATH_NOT_FOUND")
 }
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+fn error(status: StatusCode, code: &'static str) -> Response {
+    ApiError::new(status, code).into_response()
 }
 
 #[cfg(test)]

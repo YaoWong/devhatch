@@ -32,7 +32,7 @@ pub(crate) struct SessionRecord {
     identity: FileIdentity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct FileIdentity {
     device: u64,
     inode: u64,
@@ -59,9 +59,11 @@ pub(crate) async fn list(
     workspaces: Vec<PathBuf>,
     active_ids: HashSet<String>,
     active_files: HashSet<PathBuf>,
+    owned_pids: HashSet<u32>,
 ) -> Result<Vec<HistoryItem>, &'static str> {
     tokio::task::spawn_blocking(move || {
         let roots = resolve_roots(&workspaces).map_err(|_| "PI_HISTORY_DIRECTORY_NOT_FOUND")?;
+        let external_files = external_open_files(&owned_pids);
         let mut records = records_in_roots(&roots);
         records.sort_by(|left, right| {
             right
@@ -76,6 +78,8 @@ pub(crate) async fn list(
                 presence: if active_files.contains(&record.path) || active_ids.contains(&record.id)
                 {
                     Presence::ActiveHere
+                } else if external_files.contains(&record.identity) {
+                    Presence::PossiblyActiveElsewhere
                 } else {
                     Presence::Inactive
                 },
@@ -146,7 +150,11 @@ pub(crate) async fn delete(
     ) {
         return Err(DeleteError::History(HistoryError::Active));
     }
+    let owned_pids = state.owned_process_ids();
     tokio::task::spawn_blocking(move || {
+        if external_open_files(&owned_pids).contains(&record.identity) {
+            return Err(DeleteError::History(HistoryError::ExternalActive));
+        }
         let roots = resolve_roots(&workspaces).map_err(DeleteError::History)?;
         let root = roots
             .iter()
@@ -176,6 +184,79 @@ fn active_file_matches(active_files: &HashSet<PathBuf>, requested: &Path) -> boo
                 (Some(requested), Ok(active)) if requested == &active
             )
     })
+}
+
+#[cfg(target_os = "linux")]
+fn external_open_files(owned_pids: &HashSet<u32>) -> HashSet<FileIdentity> {
+    let Ok(processes) = fs::read_dir("/proc") else {
+        return HashSet::new();
+    };
+    let mut files = HashSet::new();
+    for process in processes.filter_map(Result::ok) {
+        let Some(pid) = process
+            .file_name()
+            .to_string_lossy()
+            .parse::<u32>()
+            .ok()
+            .filter(|pid| !owned_pids.contains(pid) && !has_owned_ancestor(*pid, owned_pids))
+        else {
+            continue;
+        };
+        let Ok(descriptors) = fs::read_dir(process.path().join("fd")) else {
+            continue;
+        };
+        for descriptor in descriptors.filter_map(Result::ok) {
+            let fd = descriptor.file_name();
+            if !writable_fd(&format!("/proc/{pid}/fdinfo/{}", fd.to_string_lossy())) {
+                continue;
+            }
+            if let Ok(metadata) = fs::metadata(descriptor.path())
+                && metadata.is_file()
+            {
+                files.insert(FileIdentity::from(&metadata));
+            }
+        }
+    }
+    files
+}
+
+#[cfg(target_os = "linux")]
+fn writable_fd(path: &str) -> bool {
+    fs::read_to_string(path).ok().is_some_and(|value| {
+        value.lines().any(|line| {
+            line.strip_prefix("flags:\t")
+                .and_then(|flags| u32::from_str_radix(flags.trim(), 8).ok())
+                .is_some_and(|flags| flags & 3 != 0)
+        })
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn has_owned_ancestor(mut pid: u32, owned: &HashSet<u32>) -> bool {
+    for _ in 0..8 {
+        let Ok(status) = fs::read_to_string(format!("/proc/{pid}/status")) else {
+            return false;
+        };
+        let Some(parent) = status.lines().find_map(|line| line.strip_prefix("PPid:\t")) else {
+            return false;
+        };
+        let Ok(parent) = parent.trim().parse::<u32>() else {
+            return false;
+        };
+        if parent == 0 {
+            return false;
+        }
+        if owned.contains(&parent) {
+            return true;
+        }
+        pid = parent;
+    }
+    false
+}
+
+#[cfg(not(target_os = "linux"))]
+fn external_open_files(_: &HashSet<u32>) -> HashSet<FileIdentity> {
+    HashSet::new()
 }
 
 fn delete_record(root: &SessionRoot, record: &SessionRecord, id: &str) -> Result<(), DeleteError> {
@@ -652,6 +733,39 @@ mod tests {
             .map(|cwd| format!(",\"cwd\":\"{cwd}\""))
             .unwrap_or_default();
         fs::write(path, format!("{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"2025-01-01T00:00:00Z\"{cwd}}}\n{entries}")).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn proc_fd_evidence_detects_external_and_excludes_owned_processes() {
+        use std::io::Write;
+
+        let root = temporary_root();
+        let path = root.join("session.jsonl");
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(b"\n").unwrap();
+        let identity = FileIdentity::from(&file.metadata().unwrap());
+        assert!(external_open_files(&HashSet::new()).contains(&identity));
+        assert!(!external_open_files(&HashSet::from([std::process::id()])).contains(&identity));
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn proc_fd_evidence_ignores_read_only_handles() {
+        let root = temporary_root();
+        let path = root.join("session.jsonl");
+        fs::write(&path, "\n").unwrap();
+        let file = File::open(&path).unwrap();
+        let identity = FileIdentity::from(&file.metadata().unwrap());
+        assert!(!external_open_files(&HashSet::new()).contains(&identity));
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

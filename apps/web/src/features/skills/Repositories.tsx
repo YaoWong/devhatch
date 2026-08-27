@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, FolderGit2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import type { Skill } from "../../types";
+import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
 import { filterSkills } from "./search";

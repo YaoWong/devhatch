@@ -1,15 +1,16 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { useAgentWorkspace } from "../controllers/useAgentWorkspace";
-import type { useSkillsWorkspace } from "../controllers/useSkillsWorkspace";
-import type { useTerminalWorkspace } from "../controllers/useTerminalWorkspace";
-import type { useWebApps } from "../controllers/useWebApps";
-import type { ConfirmAction, ConnectionPhase, TerminalInfo, WorkspaceMode } from "../types";
+import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
+import { AgentWorkspace } from "../features/agents/AgentWorkspace";
+import { SettingsView, type SettingsSection } from "../features/settings/SettingsView";
+import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
-import { AgentWorkspace } from "../views/AgentWorkspace";
-import { SettingsView, type SettingsSection } from "../views/SettingsView";
-import type { SkillsSection } from "../views/SkillsRailPage";
-import { TerminalWorkspace } from "../views/TerminalWorkspace";
-import { WebAppsWorkspace } from "../views/WebApps";
+import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
+import { TerminalWorkspace } from "../features/terminals/TerminalWorkspace";
+import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import { WebAppsWorkspace } from "../features/web-apps/WebApps";
+import type { useWebApps } from "../features/web-apps/useWebApps";
+import type { ConfirmAction, WorkspaceMode } from "../types/app";
+import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
 type AppWorkspaceContentProps = {
   mode: WorkspaceMode;
@@ -65,6 +66,7 @@ export function AppWorkspaceContent({
       <TerminalWorkspace
         visible={mode === "terminal"}
         busy={busy}
+        launching={terminal.launching}
         sessions={terminal.sessions}
         visibleSessions={terminal.visibleSessions}
         activeId={terminal.activeId}

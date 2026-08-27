@@ -10,6 +10,10 @@ export function authStatus() {
   return requestJson<AuthStatus>("/api/auth/status");
 }
 
+export function verifyAuth() {
+  return requestEmpty("/api/auth/verify", { method: "GET" }, "Unable to verify authentication");
+}
+
 export function setupAdmin(setupToken: string, password: string) {
   return requestJson<AuthStatus>("/api/auth/setup", {
     method: "POST",

@@ -1,5 +1,6 @@
 import { LoaderCircle, Menu, PanelLeftClose, Plus, Square } from "lucide-react";
-import type { WorkspaceMode } from "../types";
+import type { WorkspaceMode } from "../types/app";
+import type { WebAppOperation } from "../types/web-apps";
 
 export function AppHeader({
   mode,
@@ -7,6 +8,7 @@ export function AppHeader({
   subtitle,
   onToggleNavigation,
   onNewTerminal,
+  newTerminalBusy,
   webAppRunning,
   webAppOperation,
   onStopWebApp,
@@ -16,8 +18,9 @@ export function AppHeader({
   subtitle: string;
   onToggleNavigation: () => void;
   onNewTerminal: () => void;
+  newTerminalBusy: boolean;
   webAppRunning: boolean;
-  webAppOperation: "start" | "stop" | "check" | null;
+  webAppOperation: WebAppOperation | null;
   onStopWebApp: () => void;
 }) {
   return (
@@ -32,7 +35,7 @@ export function AppHeader({
       </div>
       {mode === "terminal" && (
         <div className="top-actions">
-          <button className="secondary-button" onClick={onNewTerminal}>
+          <button className="secondary-button" disabled={newTerminalBusy} onClick={onNewTerminal}>
             <Plus />
             <span>New terminal</span>
           </button>

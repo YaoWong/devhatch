@@ -1,6 +1,7 @@
 mod dimensions;
 mod model;
 mod runtime;
+pub(crate) mod socket;
 
 pub(crate) use dimensions::dimension;
 #[allow(unused_imports)]

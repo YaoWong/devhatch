@@ -4,6 +4,7 @@ use std::{
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
     path::{Path, PathBuf},
     process::{Child, Stdio},
+    sync::Arc,
     time::Duration,
 };
 
@@ -12,7 +13,7 @@ use std::os::unix::fs::OpenOptionsExt;
 
 use super::environment::{node24_path, public_url};
 use super::manager::PidRecord;
-use super::{PORT, WebAppManager};
+use super::{Operation, PORT, WebAppManager};
 
 pub(super) enum PidRecordState {
     Missing,
@@ -43,10 +44,18 @@ fn managed_process_state_decision(
 }
 
 impl WebAppManager {
-    pub async fn start(&self) -> Result<(), String> {
-        let _operation = self.operation.lock().await;
-        self.recover_interrupted_publish_locked().await?;
-        self.start_locked().await
+    pub async fn start(self: &Arc<Self>) -> Result<(), String> {
+        let _guard = self
+            .begin_operation(Operation::Start)
+            .map_err(str::to_string)?;
+        tokio::select! {
+            result = async {
+                let _operation = self.operation_lock.lock().await;
+                self.recover_interrupted_publish_locked().await?;
+                self.start_locked().await
+            } => result,
+            _ = self.wait_for_shutdown() => Err(super::OPERATION_CONFLICT.into()),
+        }
     }
 
     pub(super) async fn start_locked(&self) -> Result<(), String> {
@@ -86,6 +95,7 @@ impl WebAppManager {
             .canonicalize()
             .map_err(|error| error.to_string())?;
         let mut command = std::process::Command::new(node);
+        crate::process::configure_std_command(&mut command);
         command
             .arg(&script)
             .arg("--no-open")
@@ -105,45 +115,68 @@ impl WebAppManager {
             .stdout(Stdio::from(log))
             .stderr(Stdio::from(stderr));
         let mut child = command.spawn().map_err(|error| error.to_string())?;
-        let setup = self.persist_child_identity(&child, &app, &script);
-        if let Err(error) = setup {
+        let identity = match self.child_record(&child, &app, &script) {
+            Ok(identity) => identity,
+            Err(error) => {
+                terminate_child(&mut child);
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.persist_child_identity(&identity) {
             terminate_child(&mut child);
             return Err(error);
         }
+        *self
+            .child_identity
+            .lock()
+            .expect("web app child identity lock poisoned") = Some(identity);
         *self.child.lock().expect("web app child lock poisoned") = Some(child);
         self.set_progress("starting", 95, None);
         for _ in 0..90 {
+            if self.is_shutting_down() {
+                return Err("OpenDesign shutdown interrupted start".into());
+            }
             if self.refresh_running().await {
                 self.set_progress("running", 100, None);
                 return Ok(());
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                _ = self.shutdown_started.notified() => {}
+            }
         }
         self.stop_locked().await;
         Err("OpenDesign did not become ready within 90 seconds".into())
     }
 
-    fn persist_child_identity(
-        &self,
-        child: &Child,
-        app: &Path,
-        script: &Path,
-    ) -> Result<(), String> {
-        let identity = PidRecord {
+    fn child_record(&self, child: &Child, app: &Path, script: &Path) -> Result<PidRecord, String> {
+        Ok(PidRecord {
             pid: child.id(),
             starttime: process_starttime(child.id())
                 .ok_or_else(|| "Unable to identify OpenDesign process".to_string())?,
             script: script.to_path_buf(),
             root: app.to_path_buf(),
-        };
+        })
+    }
+
+    fn persist_child_identity(&self, identity: &PidRecord) -> Result<(), String> {
         fs::create_dir_all(self.root.join("run")).map_err(|error| error.to_string())?;
-        let value = serde_json::to_vec(&identity).map_err(|error| error.to_string())?;
+        let value = serde_json::to_vec(identity).map_err(|error| error.to_string())?;
         atomic_write_file(&self.pid_path(), &value).map_err(|error| error.to_string())
     }
 
-    pub async fn stop(&self) -> Result<(), String> {
-        let _operation = self.operation.lock().await;
-        self.stop_locked_result().await
+    pub async fn stop(self: &Arc<Self>) -> Result<(), String> {
+        let _guard = self
+            .begin_operation(Operation::Stop)
+            .map_err(str::to_string)?;
+        tokio::select! {
+            result = async {
+                let _operation = self.operation_lock.lock().await;
+                self.recover_interrupted_publish_locked().await?;
+                self.stop_locked_result().await
+            } => result,
+            _ = self.wait_for_shutdown() => Err(super::OPERATION_CONFLICT.into()),
+        }
     }
 
     pub(super) async fn stop_locked(&self) {
@@ -164,41 +197,66 @@ impl WebAppManager {
             .expect("web app child lock poisoned")
             .as_ref()
             .map(Child::id);
-        let memory_record = memory_pid
-            .filter(|pid| persisted.as_ref().is_none_or(|record| record.pid != *pid))
-            .map(|pid| self.record_for_pid(pid))
-            .transpose()?
-            .flatten();
+        let persisted_direct = persisted
+            .as_ref()
+            .is_some_and(|record| memory_pid == Some(record.pid));
+        let memory_record = self
+            .child_identity
+            .lock()
+            .expect("web app child identity lock poisoned")
+            .clone()
+            .filter(|record| memory_pid == Some(record.pid))
+            .filter(|record| {
+                persisted
+                    .as_ref()
+                    .is_none_or(|saved| saved.pid != record.pid)
+            });
         let mut records = Vec::new();
         if let Some(record) = persisted {
-            records.push(record);
+            records.push((record, persisted_direct));
         }
         if let Some(record) = memory_record {
-            records.push(record);
+            records.push((record, true));
         }
-        for record in &records {
-            signal_record(record, "-TERM")?;
+        let process_groups = records
+            .iter()
+            .map(|(record, _)| process_group(record.pid) == Some(record.pid))
+            .collect::<Vec<_>>();
+        for ((record, direct), process_group) in records.iter().zip(&process_groups) {
+            signal_record(record, libc::SIGTERM, *process_group, *direct)?;
         }
         for _ in 0..25 {
             self.reap_child();
-            if records.iter().all(record_stopped) {
+            if records
+                .iter()
+                .zip(&process_groups)
+                .all(|((record, direct), group)| record_stopped(record, *group, *direct))
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         self.reap_child();
-        for record in &records {
-            signal_record(record, "-KILL")?;
+        for ((record, direct), process_group) in records.iter().zip(&process_groups) {
+            signal_record(record, libc::SIGKILL, *process_group, *direct)?;
         }
         for _ in 0..50 {
             self.reap_child();
-            if records.iter().all(record_stopped) {
+            if records
+                .iter()
+                .zip(&process_groups)
+                .all(|((record, direct), group)| record_stopped(record, *group, *direct))
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         self.reap_child();
-        if records.iter().any(|record| !record_stopped(record)) {
+        if records
+            .iter()
+            .zip(&process_groups)
+            .any(|((record, direct), group)| !record_stopped(record, *group, *direct))
+        {
             return Err(
                 "OpenDesign process could not be stopped; manual cleanup is required".into(),
             );
@@ -210,37 +268,36 @@ impl WebAppManager {
         Ok(())
     }
 
-    fn record_for_pid(&self, pid: u32) -> Result<Option<PidRecord>, String> {
-        let Some(starttime) = process_starttime(pid) else {
-            return Ok(None);
-        };
-        let root = self
-            .app_dir()
-            .canonicalize()
-            .map_err(|error| error.to_string())?;
-        let script = root
-            .join("apps/daemon/dist/cli.js")
-            .canonicalize()
-            .map_err(|error| error.to_string())?;
-        Ok(Some(PidRecord {
-            pid,
-            starttime,
-            script,
-            root,
-        }))
-    }
-
     fn reap_child(&self) {
         let mut child = self.child.lock().expect("web app child lock poisoned");
-        if child
+        let exited = child
             .as_mut()
-            .is_some_and(|child| child.try_wait().ok().flatten().is_some())
-        {
-            child.take();
+            .is_some_and(|child| child.try_wait().ok().flatten().is_some());
+        if exited {
+            let identity = self
+                .child_identity
+                .lock()
+                .expect("web app child identity lock poisoned")
+                .clone();
+            let group_alive = identity
+                .and_then(|record| {
+                    crate::process::ChildIdentity::from_known(record.pid, record.starttime)
+                })
+                .is_some_and(|identity| crate::process::owned_group_alive(identity, true));
+            if !group_alive {
+                child.take();
+                self.child_identity
+                    .lock()
+                    .expect("web app child identity lock poisoned")
+                    .take();
+            }
         }
     }
 
-    pub async fn shutdown(&self) {
+    pub async fn shutdown(self: &Arc<Self>) {
+        self.shutting_down
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.shutdown_started.notify_waiters();
         let task = self
             .install_task
             .lock()
@@ -250,7 +307,70 @@ impl WebAppManager {
             task.abort();
             let _ = task.await;
         }
-        let _ = self.stop().await;
+        if tokio::time::timeout(Duration::from_secs(5), self.wait_for_operation())
+            .await
+            .is_err()
+        {
+            self.force_stop_managed_process();
+            return;
+        }
+        let Ok(operation) =
+            tokio::time::timeout(Duration::from_secs(2), self.operation_lock.lock()).await
+        else {
+            self.force_stop_managed_process();
+            return;
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(5), self.stop_locked_result()).await;
+        self.force_stop_managed_process();
+        let _ = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.recover_interrupted_publish_locked(),
+        )
+        .await;
+        self.cleanup_staging_locked();
+        drop(operation);
+    }
+
+    fn force_stop_managed_process(&self) {
+        let persisted = match self.persisted_process_state() {
+            PidRecordState::Valid(record) => Some(record),
+            PidRecordState::Missing | PidRecordState::Stale | PidRecordState::Invalid => None,
+        };
+        let persisted_group = persisted
+            .as_ref()
+            .is_some_and(|record| process_group(record.pid) == Some(record.pid));
+        let memory = self
+            .child_identity
+            .lock()
+            .expect("web app child identity lock poisoned")
+            .clone()
+            .filter(|record| {
+                self.child
+                    .lock()
+                    .expect("web app child lock poisoned")
+                    .as_ref()
+                    .is_some_and(|child| child.id() == record.pid)
+            });
+        let memory_group = memory
+            .as_ref()
+            .is_some_and(|record| process_group(record.pid) == Some(record.pid));
+        for (record, process_group) in persisted
+            .iter()
+            .zip(std::iter::once(persisted_group))
+            .chain(memory.iter().zip(std::iter::once(memory_group)))
+        {
+            let _ = signal_record(record, libc::SIGKILL, process_group, true);
+        }
+        let mut child = self.child.lock().expect("web app child lock poisoned");
+        if let Some(child) = child.as_mut() {
+            terminate_child(child);
+        }
+        child.take();
+        self.child_identity
+            .lock()
+            .expect("web app child identity lock poisoned")
+            .take();
+        let _ = fs::remove_file(self.pid_path());
     }
 
     pub(super) fn managed_process_state(&self) -> ManagedProcessState {
@@ -296,6 +416,10 @@ impl WebAppManager {
             self.child
                 .lock()
                 .expect("web app child lock poisoned")
+                .take();
+            self.child_identity
+                .lock()
+                .expect("web app child identity lock poisoned")
                 .take();
             let _ = fs::remove_file(self.pid_path());
             if self.installed() {
@@ -372,8 +496,7 @@ where
 }
 
 fn terminate_child(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
+    crate::process::terminate_std_child(child, Duration::from_millis(250));
 }
 
 fn process_exists(pid: u32) -> bool {
@@ -394,30 +517,59 @@ fn stop_decision(matches_record: bool) -> StopDecision {
     }
 }
 
-fn record_stopped(record: &PidRecord) -> bool {
-    stop_decision(process_matches(record)) == StopDecision::Stopped
+fn record_stopped(record: &PidRecord, process_group: bool, direct_child_owned: bool) -> bool {
+    if process_group {
+        let Some(identity) =
+            crate::process::ChildIdentity::from_known(record.pid, record.starttime)
+        else {
+            return true;
+        };
+        !crate::process::owned_group_alive(identity, direct_child_owned)
+    } else {
+        stop_decision(process_matches(record)) == StopDecision::Stopped
+    }
 }
 
-fn signal_record(record: &PidRecord, signal: &str) -> Result<(), String> {
-    if record_stopped(record) {
+fn signal_record(
+    record: &PidRecord,
+    signal: i32,
+    process_group: bool,
+    direct_child_owned: bool,
+) -> Result<(), String> {
+    if !process_group && record_stopped(record, false, direct_child_owned) {
         return Ok(());
     }
     #[cfg(unix)]
     {
-        let status = std::process::Command::new("kill")
-            .args([signal, &record.pid.to_string()])
-            .status()
-            .map_err(|error| error.to_string())?;
-        if !status.success() && !record_stopped(record) {
+        let Some(identity) =
+            crate::process::ChildIdentity::from_known(record.pid, record.starttime)
+        else {
+            return Err("Invalid OpenDesign process identity".into());
+        };
+        let sent = if process_group {
+            if direct_child_owned {
+                crate::process::signal_owned_child(identity, signal)
+            } else {
+                crate::process::signal_owned(identity, signal)
+            }
+        } else if identity.is_current() {
+            let Ok(pid) = i32::try_from(record.pid) else {
+                return Err("Invalid OpenDesign process ID".into());
+            };
+            unsafe { libc::kill(pid, signal) == 0 }
+        } else {
+            true
+        };
+        if !sent && (!process_group && !record_stopped(record, false, direct_child_owned)) {
             return Err(format!(
                 "Unable to signal OpenDesign process {}",
                 record.pid
             ));
         }
     }
-    #[cfg(test)]
+    #[cfg(not(unix))]
     {
-        let _ = signal;
+        let _ = (signal, process_group);
     }
     Ok(())
 }
@@ -461,13 +613,19 @@ pub(super) fn persisted_process_state(pid_path: &Path, app_dir: &Path) -> PidRec
 }
 
 pub(super) fn process_starttime(pid: u32) -> Option<u64> {
-    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    stat.rsplit_once(") ")?
-        .1
-        .split_whitespace()
-        .nth(19)?
-        .parse()
-        .ok()
+    process_stat(pid)?.split_whitespace().nth(19)?.parse().ok()
+}
+
+#[cfg(unix)]
+fn process_group(pid: u32) -> Option<u32> {
+    process_stat(pid)?.split_whitespace().nth(2)?.parse().ok()
+}
+
+fn process_stat(pid: u32) -> Option<String> {
+    fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()?
+        .rsplit_once(") ")
+        .map(|(_, stat)| stat.to_string())
 }
 
 pub(super) fn process_matches(process: &PidRecord) -> bool {

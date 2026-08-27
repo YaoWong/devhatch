@@ -1,4 +1,4 @@
-import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan } from "../../types";
+import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan } from "../../types/skills";
 
 export type SkillsController = {
   repositories: SkillRepository[];

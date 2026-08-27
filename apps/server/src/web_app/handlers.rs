@@ -33,6 +33,11 @@ pub async fn check_update(State(state): State<Arc<AppState>>) -> Response {
         Ok(()) => {
             Json(serde_json::json!({ "webApp": state.web_apps().view().await })).into_response()
         }
+        Err(message) if message == super::OPERATION_CONFLICT => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": super::OPERATION_CONFLICT, "message": message })),
+        )
+            .into_response(),
         Err(message) => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({ "error": "WEB_APP_UPDATE_CHECK_FAILED", "message": message })),
@@ -61,6 +66,11 @@ pub async fn start(State(state): State<Arc<AppState>>) -> Response {
         Ok(()) => {
             Json(serde_json::json!({ "webApp": state.web_apps().view().await })).into_response()
         }
+        Err(message) if message == super::OPERATION_CONFLICT => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": super::OPERATION_CONFLICT, "message": message })),
+        )
+            .into_response(),
         Err(message) => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({ "error": "WEB_APP_START_FAILED", "message": message })),
@@ -74,6 +84,11 @@ pub async fn stop(State(state): State<Arc<AppState>>) -> Response {
         Ok(()) => {
             Json(serde_json::json!({ "webApp": state.web_apps().view().await })).into_response()
         }
+        Err(message) if message == super::OPERATION_CONFLICT => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": super::OPERATION_CONFLICT, "message": message })),
+        )
+            .into_response(),
         Err(message) => {
             let status = if message.contains("manual cleanup is required") {
                 StatusCode::CONFLICT

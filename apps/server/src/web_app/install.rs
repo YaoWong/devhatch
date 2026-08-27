@@ -1,12 +1,24 @@
-use std::{ffi::OsStr, fs, path::Path, sync::Arc};
+use std::{ffi::OsStr, fs, future::Future, path::Path, sync::Arc};
 
 use tokio::process::Command;
 
 use super::environment::{executable_on_path, node24_path, prefixed_path, sibling_executable};
-use super::{MANAGED_BRANCH, REPOSITORY, REVISION, WebAppManager};
+use super::{MANAGED_BRANCH, Operation, REPOSITORY, REVISION, WebAppManager};
 
 impl WebAppManager {
     pub fn begin_install(self: &Arc<Self>) -> Result<(), &'static str> {
+        let guard = self.begin_operation(Operation::Install)?;
+        let mut task_slot = self
+            .install_task
+            .lock()
+            .expect("install task lock poisoned");
+        if self.is_shutting_down() {
+            return Err(super::OPERATION_CONFLICT);
+        }
+        if task_slot.as_ref().is_some_and(|task| !task.is_finished()) {
+            return Err(super::OPERATION_CONFLICT);
+        }
+        task_slot.take();
         if self.installed() && !self.root.join("app.update-backup").exists() {
             return Err("WEB_APP_ALREADY_INSTALLED");
         }
@@ -15,33 +27,41 @@ impl WebAppManager {
                 .progress
                 .write()
                 .expect("web app progress lock poisoned");
-            if matches!(
-                progress.phase,
-                "preparing" | "downloading" | "installing" | "building"
-            ) {
-                return Err("WEB_APP_INSTALL_IN_PROGRESS");
-            }
             progress.phase = "preparing";
             progress.percent = 3;
             progress.downloaded_bytes = None;
             progress.total_bytes = None;
             progress.error = None;
         }
+        let (start, ready) = tokio::sync::oneshot::channel();
         let manager = self.clone();
         let task = tokio::spawn(async move {
-            if let Err(error) = manager.install().await {
-                manager.set_progress("failed", 0, Some(error));
-            }
+            let _ = ready.await;
+            let operation_manager = manager.clone();
+            run_install_task(
+                manager,
+                guard,
+                async move { operation_manager.install().await },
+            )
+            .await;
         });
-        *self
-            .install_task
-            .lock()
-            .expect("install task lock poisoned") = Some(task);
+        *task_slot = Some(task);
+        let _ = start.send(());
         Ok(())
     }
 
-    pub async fn check_update(&self) -> Result<(), String> {
-        let _operation = self.operation.lock().await;
+    pub async fn check_update(self: &Arc<Self>) -> Result<(), String> {
+        let _guard = self
+            .begin_operation(Operation::Check)
+            .map_err(str::to_string)?;
+        tokio::select! {
+            result = self.check_update_operation() => result,
+            _ = self.wait_for_shutdown() => Err(super::OPERATION_CONFLICT.into()),
+        }
+    }
+
+    async fn check_update_operation(&self) -> Result<(), String> {
+        let _operation = self.operation_lock.lock().await;
         self.recover_interrupted_publish_locked().await?;
         if !self.installed() {
             return Err("OpenDesign is not installed".into());
@@ -58,11 +78,10 @@ impl WebAppManager {
                     .current_dir(&app),
             )
             .await?;
-            let current = self.git_output(["rev-parse", "HEAD"])?;
-            let remote = self.git_output(["rev-parse", "origin/HEAD"])?;
-            let installed_version = self.installed_version();
-            let latest_version = self.remote_version()?;
-            let update_available = installed_version != latest_version;
+            let current = self.git_output(["rev-parse", "HEAD"]).await?;
+            let remote = self.git_output(["rev-parse", "origin/HEAD"]).await?;
+            let latest_version = self.remote_version().await?;
+            let update_available = current != remote;
             let mut update = self.update.write().expect("web app update lock poisoned");
             update.current_revision = Some(current);
             update.remote_revision = Some(remote);
@@ -79,6 +98,18 @@ impl WebAppManager {
     }
 
     pub fn begin_update(self: &Arc<Self>) -> Result<(), &'static str> {
+        let guard = self.begin_operation(Operation::Update)?;
+        let mut task_slot = self
+            .install_task
+            .lock()
+            .expect("install task lock poisoned");
+        if self.is_shutting_down() {
+            return Err(super::OPERATION_CONFLICT);
+        }
+        if task_slot.as_ref().is_some_and(|task| !task.is_finished()) {
+            return Err(super::OPERATION_CONFLICT);
+        }
+        task_slot.take();
         if !self.installed() && !self.root.join("app.update-backup").exists() {
             return Err("WEB_APP_NOT_INSTALLED");
         }
@@ -87,39 +118,40 @@ impl WebAppManager {
                 .progress
                 .write()
                 .expect("web app progress lock poisoned");
-            if matches!(
-                progress.phase,
-                "updating" | "installing-update" | "building-update"
-            ) {
-                return Err("WEB_APP_UPDATE_IN_PROGRESS");
-            }
             progress.phase = "updating";
             progress.percent = 10;
             progress.downloaded_bytes = None;
             progress.total_bytes = None;
             progress.error = None;
         }
+        let (start, ready) = tokio::sync::oneshot::channel();
         let manager = self.clone();
         let task = tokio::spawn(async move {
-            if let Err(error) = manager.update().await {
-                manager.set_progress("failed", 0, Some(error));
-            }
+            let _ = ready.await;
+            let operation_manager = manager.clone();
+            run_install_task(
+                manager,
+                guard,
+                async move { operation_manager.update().await },
+            )
+            .await;
         });
-        *self
-            .install_task
-            .lock()
-            .expect("install task lock poisoned") = Some(task);
+        *task_slot = Some(task);
+        let _ = start.send(());
         Ok(())
     }
 
     async fn update(&self) -> Result<(), String> {
-        let _operation = self.operation.lock().await;
+        let _operation = self.operation_lock.lock().await;
         self.recover_interrupted_publish_locked().await?;
+        if !self.installed() {
+            return Err("OpenDesign is not installed".into());
+        }
         let node = node24_path().ok_or_else(|| "Node.js 24 is required".to_string())?;
         let corepack = sibling_executable(&node, "corepack")
             .ok_or_else(|| "Corepack is required".to_string())?;
         let app = self.app_dir();
-        if !self.git_output(["status", "--porcelain"])?.is_empty() {
+        if !self.git_output(["status", "--porcelain"]).await?.is_empty() {
             return Err("OpenDesign has local changes; update was cancelled".into());
         }
         let was_running = self.has_managed_process()?;
@@ -167,7 +199,7 @@ impl WebAppManager {
             )
             .await?;
             self.build_staging(&staging, &node, &corepack, true).await?;
-            let revision = git_revision(&staging)?;
+            let revision = self.git_output_at(&staging, ["rev-parse", "HEAD"]).await?;
             let published = publish_directory(&staging, &app, &backup)?;
             Ok((published, revision))
         }
@@ -175,7 +207,7 @@ impl WebAppManager {
         let (published, revision) = match update_result {
             Ok(result) => result,
             Err(update) => {
-                let _ = fs::remove_dir_all(&staging);
+                let update = cleanup_failed_staging(&self.root, &staging, update);
                 return if was_running {
                     match self.start_locked().await {
                         Ok(()) => Err(update),
@@ -218,8 +250,14 @@ impl WebAppManager {
     }
 
     async fn install(&self) -> Result<(), String> {
-        let _operation = self.operation.lock().await;
+        let _operation = self.operation_lock.lock().await;
         self.recover_interrupted_publish_locked().await?;
+        if self.installed() {
+            return Err("OpenDesign is already installed".into());
+        }
+        if self.has_managed_process()? {
+            return Err("OpenDesign process is running".into());
+        }
         let node = node24_path().ok_or_else(|| "Node.js 24 is required".to_string())?;
         let corepack = sibling_executable(&node, "corepack")
             .ok_or_else(|| "Corepack is required".to_string())?;
@@ -228,45 +266,54 @@ impl WebAppManager {
         }
         fs::create_dir_all(&self.root).map_err(|error| error.to_string())?;
         let staging = self.root.join("app.update-staging");
-        if staging.exists() {
-            fs::remove_dir_all(&staging).map_err(|error| error.to_string())?;
-        }
-        self.set_progress("downloading", 10, None);
-        self.run_git_progress(
-            Command::new("git")
-                .args([
-                    "clone",
-                    "--progress",
-                    "--filter=blob:none",
-                    "--no-checkout",
-                    REPOSITORY,
-                ])
-                .arg(&staging),
-            10,
-            40,
-        )
-        .await?;
-        self.run_install_command(
-            Command::new("git")
-                .args(["checkout", "-B", MANAGED_BRANCH, REVISION])
-                .current_dir(&staging),
-        )
-        .await?;
-        self.run_install_command(
-            Command::new("git")
-                .args(["branch", "--set-upstream-to", "origin/HEAD", MANAGED_BRANCH])
-                .current_dir(&staging),
-        )
-        .await?;
-        self.build_staging(&staging, &node, &corepack, false)
+        remove_staging_directory(&self.root, &staging)?;
+        let install_result = async {
+            self.set_progress("downloading", 10, None);
+            self.run_git_progress(
+                Command::new("git")
+                    .args([
+                        "clone",
+                        "--progress",
+                        "--filter=blob:none",
+                        "--no-checkout",
+                        REPOSITORY,
+                    ])
+                    .arg(&staging),
+                10,
+                40,
+            )
             .await?;
-        let app = self.app_dir();
-        let backup = self.root.join("app.update-backup");
-        let published = publish_directory(&staging, &app, &backup)?;
-        finalize_publish(published, &backup)?;
+            self.run_install_command(
+                Command::new("git")
+                    .args(["checkout", "-B", MANAGED_BRANCH, REVISION])
+                    .current_dir(&staging),
+            )
+            .await?;
+            self.run_install_command(
+                Command::new("git")
+                    .args(["branch", "--set-upstream-to", "origin/HEAD", MANAGED_BRANCH])
+                    .current_dir(&staging),
+            )
+            .await?;
+            self.build_staging(&staging, &node, &corepack, false)
+                .await?;
+            let app = self.app_dir();
+            let backup = self.root.join("app.update-backup");
+            let published = publish_directory(&staging, &app, &backup)?;
+            finalize_publish(published, &backup)
+        }
+        .await;
+        if let Err(error) = install_result {
+            return Err(cleanup_failed_staging(&self.root, &staging, error));
+        }
         fs::create_dir_all(self.root.join("data")).map_err(|error| error.to_string())?;
         self.set_progress("stopped", 100, None);
         Ok(())
+    }
+
+    pub(super) fn cleanup_staging_locked(&self) {
+        let _ = remove_staging_directory(&self.root, &self.root.join("app.update-staging"));
+        cleanup_discarded_directories(&self.root);
     }
 
     pub(super) async fn recover_interrupted_publish_locked(&self) -> Result<(), String> {
@@ -370,16 +417,18 @@ impl WebAppManager {
     }
 }
 
-fn git_revision(path: &std::path::Path) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(path)
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+async fn run_install_task<F>(
+    manager: Arc<WebAppManager>,
+    guard: super::OperationGuard,
+    operation: F,
+) where
+    F: Future<Output = Result<(), String>>,
+{
+    let result = operation.await;
+    drop(guard);
+    if let Err(error) = result {
+        manager.set_progress("failed", 0, Some(error));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 fn remove_directory_if_exists(path: &std::path::Path) -> Result<(), String> {
@@ -387,6 +436,30 @@ fn remove_directory_if_exists(path: &std::path::Path) -> Result<(), String> {
         fs::remove_dir_all(path).map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+fn remove_staging_directory(root: &Path, staging: &Path) -> Result<(), String> {
+    if staging.parent() != Some(root)
+        || staging.file_name() != Some(OsStr::new("app.update-staging"))
+    {
+        return Err("OpenDesign staging path is not managed".into());
+    }
+    let metadata = match fs::symlink_metadata(staging) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+        return Err("OpenDesign staging path is not a managed directory".into());
+    }
+    fs::remove_dir_all(staging).map_err(|error| error.to_string())
+}
+
+fn cleanup_failed_staging(root: &Path, staging: &Path, error: String) -> String {
+    match remove_staging_directory(root, staging) {
+        Ok(()) => error,
+        Err(cleanup) => format!("{error}; staging cleanup failed: {cleanup}"),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -520,11 +593,12 @@ fn recover_interrupted_publish(
 #[cfg(test)]
 mod tests {
     use super::{
-        PublishedDirectory, cleanup_discarded_directories, finalize_publish, finalize_publish_with,
-        publish_directory, recover_interrupted_publish, rollback_publish,
+        PublishedDirectory, cleanup_discarded_directories, cleanup_failed_staging,
+        finalize_publish, finalize_publish_with, publish_directory, recover_interrupted_publish,
+        rollback_publish, run_install_task,
     };
-    use crate::web_app::{WebAppManager, manager::PidRecord};
-    use std::fs;
+    use crate::web_app::{Operation, WebAppManager, manager::PidRecord};
+    use std::{fs, sync::Arc};
 
     fn root() -> std::path::PathBuf {
         std::env::temp_dir().join(format!("devhatch-publish-{}", uuid::Uuid::new_v4()))
@@ -537,6 +611,65 @@ mod tests {
 
     fn version(path: &std::path::Path) -> String {
         fs::read_to_string(path.join("version")).unwrap()
+    }
+
+    #[test]
+    fn failed_install_cleanup_removes_managed_staging() {
+        let root = root();
+        let staging = root.join("app.update-staging");
+        write_version(&staging, "partial");
+        assert_eq!(
+            cleanup_failed_staging(&root, &staging, "clone failed".into()),
+            "clone failed"
+        );
+        assert!(!staging.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_install_cleanup_does_not_remove_non_directory() {
+        let root = root();
+        let staging = root.join("app.update-staging");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&staging, "owned elsewhere").unwrap();
+        let error = cleanup_failed_staging(&root, &staging, "build failed".into());
+        assert!(error.starts_with("build failed; staging cleanup failed:"));
+        assert_eq!(fs::read_to_string(&staging).unwrap(), "owned elsewhere");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_install_cleanup_does_not_remove_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root = root();
+        let outside = root.with_file_name(format!("devhatch-outside-{}", uuid::Uuid::new_v4()));
+        let staging = root.join("app.update-staging");
+        write_version(&outside, "outside");
+        fs::create_dir_all(&root).unwrap();
+        symlink(&outside, &staging).unwrap();
+        let error = cleanup_failed_staging(&root, &staging, "checkout failed".into());
+        assert!(error.starts_with("checkout failed; staging cleanup failed:"));
+        assert!(staging.exists());
+        assert_eq!(version(&outside), "outside");
+        let _ = fs::remove_file(staging);
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
+    }
+
+    #[tokio::test]
+    async fn failed_install_task_releases_operation_guard() {
+        let data = root();
+        let manager = Arc::new(WebAppManager::new(&data));
+        let guard = manager.begin_operation(Operation::Install).unwrap();
+        run_install_task(manager.clone(), guard, async { Err("clone failed".into()) }).await;
+        assert_eq!(manager.operation_name(), None);
+        assert_eq!(
+            manager.progress.read().unwrap().error.as_deref(),
+            Some("clone failed")
+        );
+        let _ = fs::remove_dir_all(data);
     }
 
     #[test]

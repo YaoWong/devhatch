@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import type { Skill } from "../../types";
+import type { Skill } from "../../types/skills";
 
 export type SourceFilter = "all" | "custom" | "repository";
 

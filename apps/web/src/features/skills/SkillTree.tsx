@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ChevronRight, FileText, Folder } from "lucide-react";
-import type { Skill } from "../../types";
+import type { Skill } from "../../types/skills";
 import { countNodeSkills, type SkillTreeNode } from "./treeUtils";
 
 export function SkillTree({ nodes, collapsed, namespace, onToggle, selected, onToggleSkill, onViewSkill, depth = 0 }: {

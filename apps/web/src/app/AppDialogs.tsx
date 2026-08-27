@@ -1,6 +1,6 @@
-import { ActionDialog, DeleteSessionDialog } from "../Dialogs";
-import { WorkspacePicker } from "../WorkspacePicker";
-import type { ConfirmAction, DeleteTarget } from "../types";
+import { ActionDialog, DeleteSessionDialog } from "../shared/ui/Dialogs";
+import { WorkspacePicker } from "../features/terminals/WorkspacePicker";
+import type { ConfirmAction, DeleteTarget } from "../types/app";
 
 export function AppDialogs({
   pickerPurpose,

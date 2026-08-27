@@ -1,5 +1,7 @@
-import type { Agent, AgentSession, WebApp, WorkspaceMode } from "../types";
-import { displayPath } from "../utils";
+import type { WorkspaceMode } from "../types/app";
+import type { Agent, AgentSession } from "../types/agents";
+import type { WebApp } from "../types/web-apps";
+import { displayPath } from "../shared/lib/utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 

@@ -1,16 +1,17 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { useAgentWorkspace } from "../controllers/useAgentWorkspace";
-import type { useNavigation } from "../controllers/useNavigation";
-import type { useSkillsWorkspace } from "../controllers/useSkillsWorkspace";
-import type { useTerminalWorkspace } from "../controllers/useTerminalWorkspace";
-import type { useWebApps } from "../controllers/useWebApps";
-import type { ConfirmAction, TerminalInfo } from "../types";
-import { AgentRailPage } from "../views/AgentRailPage";
-import { NavigationRail } from "../views/NavigationRail";
-import { SettingsRailPage, type SettingsSection } from "../views/SettingsView";
-import { SkillsRailPage, type SkillsSection } from "../views/SkillsRailPage";
-import { WebAppsRailPage } from "../views/WebApps";
-import { WorkspaceList } from "../views/WorkspaceList";
+import type { ConfirmAction } from "../types/app";
+import type { TerminalInfo } from "../types/terminals";
+import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
+import { AgentRailPage } from "../features/agents/AgentRailPage";
+import { NavigationRail } from "../features/navigation/NavigationRail";
+import type { useNavigation } from "../features/navigation/useNavigation";
+import { SettingsRailPage, type SettingsSection } from "../features/settings/SettingsView";
+import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
+import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
+import { WorkspaceList } from "../features/terminals/WorkspaceList";
+import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import { WebAppsRailPage } from "../features/web-apps/WebApps";
+import type { useWebApps } from "../features/web-apps/useWebApps";
 
 type AppNavigationRailProps = {
   navigation: ReturnType<typeof useNavigation>;
@@ -75,6 +76,7 @@ export function AppNavigationRail({
       agentContent={
         <AgentRailPage
           busy={busy}
+          launching={agent.launching}
           agents={agent.agents}
           selectedAgentId={agent.selectedAgentId}
           selectedAgent={agent.selectedAgent}
@@ -127,6 +129,7 @@ export function AppNavigationRail({
           app={webApps.openDesign}
           onInstall={webApps.install}
           onStart={webApps.start}
+          operation={webApps.operation}
           onConfirm={onConfirm}
         />
       }

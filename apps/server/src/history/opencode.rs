@@ -33,14 +33,24 @@ pub(crate) struct HistoryRow {
 }
 
 pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static str> {
-    let Some(pool) = state.history_pool() else {
+    let Some(handle) = state.history_pool().await else {
         return Err("OPENCODE_HISTORY_DATABASE_NOT_FOUND");
     };
-    validate_schema(pool).await?;
-    let rows = sqlx::query_as::<_, HistoryRow>("SELECT s.id, s.title, s.directory, s.project_id, p.name AS project_name, p.worktree AS project_worktree, s.time_created, s.time_updated FROM session s LEFT JOIN project p ON p.id = s.project_id WHERE s.parent_id IS NULL AND s.time_archived IS NULL ORDER BY s.time_updated DESC")
-        .fetch_all(pool).await.map_err(|_| "OPENCODE_HISTORY_QUERY_FAILED")?;
+    let pool = &handle.pool;
+    if let Err(error) = validate_schema(pool).await {
+        state.invalidate_history_pool(&handle).await;
+        return Err(error);
+    }
+    let rows = match sqlx::query_as::<_, HistoryRow>("SELECT s.id, s.title, s.directory, s.project_id, p.name AS project_name, p.worktree AS project_worktree, s.time_created, s.time_updated FROM session s LEFT JOIN project p ON p.id = s.project_id WHERE s.parent_id IS NULL AND s.time_archived IS NULL ORDER BY s.time_updated DESC")
+        .fetch_all(pool).await {
+            Ok(rows) => rows,
+            Err(_) => {
+                state.invalidate_history_pool(&handle).await;
+                return Err("OPENCODE_HISTORY_QUERY_FAILED");
+            }
+        };
     let active_here = state.active_upstream_session_ids_for(OPENCODE_ID);
-    let external_directories = external_opencode_directories(&state.owned_process_ids());
+    let external_directories = external_opencode_directories(state.owned_process_ids()).await;
     Ok(rows
         .into_iter()
         .map(|row| {
@@ -61,13 +71,22 @@ pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static 
 }
 
 pub(crate) async fn prepare(
-    pool: Option<&SqlitePool>,
+    state: &AppState,
     requested_id: Option<&str>,
 ) -> Result<PreparedLaunch, HistoryError> {
+    let handle = state.history_pool().await;
+    let pool = handle.as_ref().map(|handle| &handle.pool);
     let Some(id) = requested_id else {
-        return Ok(PreparedLaunch::OpenCodeNew {
-            baseline: root_session_ids(pool).await.unwrap_or_default(),
-        });
+        let baseline = match root_session_ids(pool).await {
+            Ok(baseline) => baseline,
+            Err(()) => {
+                if let Some(handle) = &handle {
+                    state.invalidate_history_pool(handle).await;
+                }
+                HashSet::new()
+            }
+        };
+        return Ok(PreparedLaunch::OpenCodeNew { baseline });
     };
     if !valid_session_id(id) {
         return Err(HistoryError::InvalidId);
@@ -78,7 +97,12 @@ pub(crate) async fn prepare(
             cwd,
         }),
         Ok(None) => Err(HistoryError::NotFound),
-        Err(()) => Err(HistoryError::Unavailable),
+        Err(()) => {
+            if let Some(handle) = &handle {
+                state.invalidate_history_pool(handle).await;
+            }
+            Err(HistoryError::Unavailable)
+        }
     }
 }
 
@@ -92,10 +116,22 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     {
         return Err(DeleteError::History(HistoryError::Active));
     }
-    match resumable_session(state.history_pool(), &id).await {
-        Ok(Some(_)) => {}
+    let Some(handle) = state.history_pool().await else {
+        return Err(DeleteError::History(HistoryError::NotFound));
+    };
+    let directory = match resumable_session(Some(&handle.pool), &id).await {
+        Ok(Some(directory)) => directory,
         Ok(None) => return Err(DeleteError::History(HistoryError::NotFound)),
-        Err(()) => return Err(DeleteError::History(HistoryError::Unavailable)),
+        Err(()) => {
+            state.invalidate_history_pool(&handle).await;
+            return Err(DeleteError::History(HistoryError::Unavailable));
+        }
+    };
+    if external_opencode_directories(state.owned_process_ids())
+        .await
+        .contains(&canonical_identity(&directory))
+    {
+        return Err(DeleteError::History(HistoryError::ExternalActive));
     }
     let result = command_output_with_timeout(
         tokio::process::Command::new("opencode").args(["--pure", "session", "delete", &id]),
@@ -283,7 +319,13 @@ fn presence_for(
     }
 }
 
-fn external_opencode_directories(owned: &HashSet<u32>) -> HashSet<String> {
+async fn external_opencode_directories(owned: HashSet<u32>) -> HashSet<String> {
+    tokio::task::spawn_blocking(move || scan_external_opencode_directories(&owned))
+        .await
+        .unwrap_or_default()
+}
+
+fn scan_external_opencode_directories(owned: &HashSet<u32>) -> HashSet<String> {
     let Ok(entries) = fs::read_dir("/proc") else {
         return HashSet::new();
     };
@@ -336,7 +378,10 @@ fn canonical_identity(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryRow, Presence, next_fork_title, presence_for, unique_unclaimed_session};
+    use super::{
+        HistoryRow, Presence, canonical_identity, next_fork_title, presence_for,
+        unique_unclaimed_session,
+    };
     use std::collections::HashSet;
 
     fn row() -> HistoryRow {
@@ -369,6 +414,16 @@ mod tests {
         assert_eq!(
             next_fork_title("Original (fork #x)"),
             "Original (fork #x) (fork #1)"
+        );
+    }
+
+    #[test]
+    fn external_directory_evidence_is_strong_without_recency() {
+        let external = HashSet::from(["/tmp".into()]);
+        assert!(external.contains(&canonical_identity(&row().directory)));
+        assert_eq!(
+            presence_for(&row(), &HashSet::new(), &external, 1_000_000),
+            Presence::Inactive
         );
     }
 
