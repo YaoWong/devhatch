@@ -1,4 +1,5 @@
-import { LoaderCircle, Menu, PanelLeftClose, Plus, Square } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, Menu, PanelLeftClose, Square } from "lucide-react";
+import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import type { WorkspaceMode } from "../types/app";
 import type { WebAppOperation } from "../types/web-apps";
 
@@ -7,8 +8,10 @@ export function AppHeader({
   label,
   subtitle,
   onToggleNavigation,
-  onNewTerminal,
-  newTerminalBusy,
+  terminalCapacity,
+  terminalThumbnailsHidden,
+  onTerminalCapacityChange,
+  onToggleTerminalThumbnails,
   webAppRunning,
   webAppOperation,
   onStopWebApp,
@@ -17,12 +20,15 @@ export function AppHeader({
   label: string;
   subtitle: string;
   onToggleNavigation: () => void;
-  onNewTerminal: () => void;
-  newTerminalBusy: boolean;
+  terminalCapacity: TerminalWorkspaceCapacity;
+  terminalThumbnailsHidden: boolean;
+  onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onToggleTerminalThumbnails: () => void;
   webAppRunning: boolean;
   webAppOperation: WebAppOperation | null;
   onStopWebApp: () => void;
 }) {
+  const thumbnailsLabel = terminalThumbnailsHidden ? "Show terminal thumbnails" : "Hide terminal thumbnails";
   return (
     <header className="topbar">
       <button className="icon-button menu-button" aria-label="Toggle navigation" onClick={onToggleNavigation}>
@@ -34,10 +40,12 @@ export function AppHeader({
         <span>{subtitle}</span>
       </div>
       {mode === "terminal" && (
-        <div className="top-actions">
-          <button className="secondary-button" disabled={newTerminalBusy} onClick={onNewTerminal}>
-            <Plus />
-            <span>New terminal</span>
+        <div className="top-actions terminal-top-actions">
+          <div className="terminal-capacity-control" role="group" aria-label="Stage capacity">
+            {([1, 2, 3] as const).map((value) => <button key={value} type="button" aria-label={`Capacity ${value}`} aria-pressed={terminalCapacity === value} onClick={() => onTerminalCapacityChange(value)}>{value}</button>)}
+          </div>
+          <button className="icon-button" type="button" aria-label={thumbnailsLabel} aria-pressed={!terminalThumbnailsHidden} title={thumbnailsLabel} onClick={onToggleTerminalThumbnails}>
+            {terminalThumbnailsHidden ? <EyeOff /> : <Eye />}
           </button>
         </div>
       )}

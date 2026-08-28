@@ -32,7 +32,5 @@ export function getModeSubtitle({
       ? `${displayPath(activeAgentSession.cwd, homePaths?.home, homePaths?.resolvedHome)} · ${activeAgentSession.agentName}`
       : (selectedAgent?.name ?? "No agent selected");
   }
-  return selectedWorkspace
-    ? displayPath(selectedWorkspace, homePaths?.home, homePaths?.resolvedHome)
-    : "No workspace selected";
+  return selectedWorkspace || "No workspace selected";
 }

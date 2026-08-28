@@ -9,6 +9,8 @@ impl Skillink {
             "database: ok".into(),
         ];
         let git = Command::new("git")
+            .env_remove("DEVHATCH_ADMIN_PASSWORD")
+            .env_remove("DEVHATCH_ADMIN_PASSWORD_FILE")
             .arg("--version")
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

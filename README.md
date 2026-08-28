@@ -16,6 +16,8 @@ npm run dev
 
 DevHatch listens on `127.0.0.1:4173`. On first start, the server prints a one-time setup token. Open the UI, enter that token, and create an administrator password of at least 12 characters.
 
+Set `DEVHATCH_ADMIN_PASSWORD_FILE` to the path of a file containing only the administrator password as UTF-8 text, optionally followed by exactly one LF or CRLF. On Unix, DevHatch opens the file without following symlinks, then requires that the opened object is a regular file owned by the server's effective user with no group or other permission bits (`0600` or stricter). The file is limited to 1026 bytes; after removing the optional line ending, it must contain no other CR, LF, or NUL bytes, and authentication requires a 12–1024-byte password. This initializes credentials only on the first start; existing credentials are never overwritten. The environment variable contains only the file path, and DevHatch removes both `DEVHATCH_ADMIN_PASSWORD_FILE` and the unsupported legacy `DEVHATCH_ADMIN_PASSWORD` from child-process environments.
+
 ## Checks
 
 ```sh

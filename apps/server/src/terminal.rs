@@ -10,6 +10,7 @@ use portable_pty::CommandBuilder;
 use serde::Deserialize;
 
 use crate::{
+    api::ApiError,
     filesystem::{default_cwd, home_dir, path_string, validated_directory},
     session::{Session, SessionKind, SessionSpawn, dimension, socket},
     state::AppState,
@@ -20,10 +21,12 @@ const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
 
 #[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CreateRequest {
     pub(crate) cwd: Option<serde_json::Value>,
     pub(crate) cols: Option<serde_json::Value>,
     pub(crate) rows: Option<serde_json::Value>,
+    pub(crate) workspace_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -89,14 +92,9 @@ pub async fn create(
         Ok(value) => value,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_CWD"),
     };
+    let workspace_id = request.workspace_id.clone();
     let _lifecycle = state.terminal_workspace_lifecycle().lock().await;
-    if terminal_workspace::ensure(state.pool(), &cwd)
-        .await
-        .is_err()
-    {
-        return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR");
-    }
-    let session = match spawn_with_cwd(state.clone(), request, cwd.into()) {
+    let session = match spawn_with_cwd(state.clone(), request, cwd.clone().into()) {
         Ok(session) => session,
         Err(error) => {
             return (
@@ -109,9 +107,30 @@ pub async fn create(
                 .into_response();
         }
     };
+    let terminal_workspace = terminal_workspace::attach_terminal(
+        state.pool(),
+        workspace_id.as_deref(),
+        session.id(),
+        &cwd,
+    )
+    .await;
+    let terminal_workspace = match terminal_workspace {
+        Ok(Some(workspace)) => workspace,
+        Ok(None) => {
+            cleanup_failed_spawn(&state, &session);
+            return error(StatusCode::NOT_FOUND, "TERMINAL_WORKSPACE_NOT_FOUND");
+        }
+        Err(_) => {
+            cleanup_failed_spawn(&state, &session);
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR");
+        }
+    };
     (
         StatusCode::CREATED,
-        Json(serde_json::json!({ "terminal": session.view() })),
+        Json(serde_json::json!({
+            "terminal": session.view(),
+            "terminalWorkspace": terminal_workspace
+        })),
     )
         .into_response()
 }
@@ -138,7 +157,23 @@ pub async fn rename(
 }
 
 pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    remove_session(&state, &id, SessionKind::Terminal, "TERMINAL_NOT_FOUND")
+    let _lifecycle = state.terminal_workspace_lifecycle().lock().await;
+    let Some(session) = state.session(&id, SessionKind::Terminal) else {
+        return error(StatusCode::NOT_FOUND, "TERMINAL_NOT_FOUND");
+    };
+    let terminal_workspace = match terminal_workspace::remove_terminal(state.pool(), &id).await {
+        Ok(workspace) => workspace,
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+    };
+    let Some(removed) = state.remove_session(&id, SessionKind::Terminal) else {
+        return error(StatusCode::NOT_FOUND, "TERMINAL_NOT_FOUND");
+    };
+    if !Arc::ptr_eq(&session, &removed) {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "SESSION_REGISTRY_ERROR");
+    }
+    removed.mark_deleting();
+    removed.terminate();
+    Json(serde_json::json!({ "terminalWorkspace": terminal_workspace })).into_response()
 }
 
 pub async fn socket(
@@ -188,11 +223,18 @@ pub(crate) fn spawn_with_cwd(
 
 pub(crate) fn configure_environment(command: &mut CommandBuilder, cwd: &std::path::Path) {
     command.cwd(cwd);
+    command.env_remove(crate::process::ADMIN_PASSWORD_ENV);
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     if npm_default_editor() {
         command.env_remove("EDITOR");
     }
+}
+
+fn cleanup_failed_spawn(state: &AppState, session: &Arc<Session>) {
+    state.remove_session(session.id(), SessionKind::Terminal);
+    session.mark_deleting();
+    session.terminate();
 }
 
 pub(crate) fn remove_session(
@@ -228,5 +270,5 @@ fn resolve_shell() -> String {
 }
 
 pub(crate) fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": code }))).into_response()
+    ApiError::new(status, code.to_string()).into_response()
 }

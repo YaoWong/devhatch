@@ -135,12 +135,8 @@ impl AppState {
         self.sessions.views(kind)
     }
 
-    pub(crate) fn terminal_cwds(&self) -> HashSet<String> {
-        self.sessions.terminal_cwds()
-    }
-
-    pub(crate) fn has_terminal_cwd(&self, cwd: &str) -> bool {
-        self.sessions.has_terminal_cwd(cwd)
+    pub(crate) fn terminal_ids(&self) -> HashSet<String> {
+        self.sessions.ids(SessionKind::Terminal)
     }
 
     pub(crate) fn contains_session(&self, session: &Arc<Session>) -> bool {

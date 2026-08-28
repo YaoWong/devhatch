@@ -1,20 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError } from "../../api/client";
 import {
   createTerminal,
-  createTerminalWorkspace,
-  deleteRemoteSession,
+  createTerminalLaunchPath,
+  deleteTerminalLaunchPath,
+  deleteTerminalSession,
   deleteTerminalWorkspace,
   renameRemoteSession,
-  terminals,
+  terminalLaunchPaths,
   terminalWorkspaces,
+  terminals,
+  updateTerminalLaunchPath,
   updateTerminalWorkspace,
 } from "../../api/terminals";
 import type { DeleteTarget } from "../../types/app";
-import type { TerminalInfo, TerminalWorkspace } from "../../types/terminals";
+import type { TerminalInfo, TerminalLaunchPath, TerminalWorkspace } from "../../types/terminals";
 import { logicalPath } from "../../shared/lib/utils";
+import { getOrCreateInFlightPromise, mergeDeletedTerminal, mergeTerminalSession, mergeWorkspaceMembers, WorkspaceMutationQueue } from "./workspaceMutationQueue";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
+
+function normalizeSessionPath(session: TerminalInfo, paths: HomePaths) {
+  return { ...session, cwd: logicalPath(session.cwd, paths?.home, paths?.resolvedHome) };
+}
+
+function normalizeLaunchPathValue(path: TerminalLaunchPath, paths: HomePaths) {
+  return { ...path, path: logicalPath(path.path, paths?.home, paths?.resolvedHome) };
+}
 
 export function useTerminalWorkspace(
   homePaths: HomePaths,
@@ -24,244 +35,295 @@ export function useTerminalWorkspace(
   bumpFocus: () => void,
 ) {
   const [sessions, setSessions] = useState<TerminalInfo[]>([]);
+  const [launchPaths, setLaunchPaths] = useState<TerminalLaunchPath[]>([]);
   const [workspaces, setWorkspaces] = useState<TerminalWorkspace[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const sessionsRef = useRef<TerminalInfo[]>([]);
-  const workspaceGeneration = useRef(0);
+  const workspacesRef = useRef<TerminalWorkspace[]>([]);
+  const authoritativeWorkspacesRef = useRef<TerminalWorkspace[]>([]);
+  const selectedWorkspaceIdRef = useRef<string | null>(null);
   const launchRef = useRef(false);
+  const deletingPromisesRef = useRef(new Map<string, Promise<boolean>>());
+  const workspaceMutationsRef = useRef(new WorkspaceMutationQueue());
 
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  useEffect(() => { workspacesRef.current = workspaces; }, [workspaces]);
+  useEffect(() => { selectedWorkspaceIdRef.current = selectedWorkspaceId; }, [selectedWorkspaceId]);
 
-  const normalizeWorkspace = useCallback(
-    (workspace: TerminalWorkspace): TerminalWorkspace => ({
-      ...workspace,
-      path: logicalPath(workspace.path, homePaths?.home, homePaths?.resolvedHome),
-    }),
-    [homePaths],
-  );
+  const normalizeSession = useCallback((session: TerminalInfo, paths = homePaths) => normalizeSessionPath(session, paths), [homePaths]);
+  const normalizeLaunchPath = useCallback((path: TerminalLaunchPath, paths = homePaths) => normalizeLaunchPathValue(path, paths), [homePaths]);
+  const mutateWorkspace = useCallback(<T,>(id: string, task: () => Promise<T>) => workspaceMutationsRef.current.run(id, task), []);
+  const mutateLatestWorkspace = useCallback(<T,>(id: string, task: (workspace: TerminalWorkspace) => Promise<T>) => (
+    workspaceMutationsRef.current.runLatest(
+      id,
+      () => authoritativeWorkspacesRef.current.find((workspace) => workspace.id === id),
+      async (workspace) => {
+        if (!workspace) throw new Error("Workspace no longer exists");
+        return task(workspace);
+      },
+    )
+  ), []);
 
-  const refreshWorkspaces = useCallback(async () => {
-    const generation = ++workspaceGeneration.current;
-    const data = await terminalWorkspaces();
-    const next = data.terminalWorkspaces.map(normalizeWorkspace);
-    if (workspaceGeneration.current !== generation) return null;
+  const applyWorkspaces = useCallback((next: TerminalWorkspace[], preferred?: string | null, authoritative = false) => {
+    workspacesRef.current = next;
+    if (authoritative) authoritativeWorkspacesRef.current = next;
     setWorkspaces(next);
-    setSelectedWorkspace((current) =>
-      current && next.some((workspace) => workspace.path === current) ? current : (next[0]?.path ?? null),
+    setSelectedWorkspaceId((current) => {
+      const candidate = preferred === undefined ? current : preferred;
+      const selected = candidate && next.some((workspace) => workspace.id === candidate) ? candidate : (next[0]?.id ?? null);
+      selectedWorkspaceIdRef.current = selected;
+      return selected;
+    });
+  }, []);
+
+  const applyAuthoritativeWorkspace = useCallback((workspace: TerminalWorkspace) => {
+    authoritativeWorkspacesRef.current = [
+      ...authoritativeWorkspacesRef.current.filter((item) => item.id !== workspace.id),
+      workspace,
+    ];
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    const mutationSnapshot = workspaceMutationsRef.current.snapshot();
+    await workspaceMutationsRef.current.settle();
+    const [terminalData, pathData, workspaceData] = await Promise.all([terminals(), terminalLaunchPaths(), terminalWorkspaces()]);
+    const paths = { home: terminalData.home, resolvedHome: terminalData.resolvedHome };
+    setHomePaths(paths);
+    const nextSessions = terminalData.terminals.map((session) => normalizeSession(session, paths));
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+    setLaunchPaths(pathData.terminalLaunchPaths.map((path) => normalizeLaunchPath(path, paths)));
+    const unchanged = workspaceData.terminalWorkspaces.filter(
+      (workspace) => !workspaceMutationsRef.current.changedSince(mutationSnapshot, workspace.id),
     );
-    return next;
-  }, [normalizeWorkspace]);
+    const changed = workspacesRef.current.filter(
+      (workspace) => workspaceMutationsRef.current.changedSince(mutationSnapshot, workspace.id),
+    );
+    authoritativeWorkspacesRef.current = [
+      ...unchanged,
+      ...authoritativeWorkspacesRef.current.filter(
+        (workspace) => workspaceMutationsRef.current.changedSince(mutationSnapshot, workspace.id),
+      ),
+    ];
+    applyWorkspaces([...unchanged, ...changed]);
+  }, [applyWorkspaces, normalizeLaunchPath, normalizeSession, setHomePaths]);
+
+  const initialize = useCallback((data: Awaited<ReturnType<typeof terminals>>) => {
+    const paths = { home: data.home, resolvedHome: data.resolvedHome };
+    const next = data.terminals.map((session) => normalizeSessionPath(session, paths));
+    setHomePaths(paths);
+    sessionsRef.current = next;
+    setSessions(next);
+  }, [setHomePaths]);
+
+  const initializeLaunchPaths = useCallback((data: Awaited<ReturnType<typeof terminalLaunchPaths>>, paths: HomePaths) => {
+    setLaunchPaths(data.terminalLaunchPaths.map((path) => normalizeLaunchPathValue(path, paths)));
+  }, []);
+
+  const initializeWorkspaces = useCallback((data: Awaited<ReturnType<typeof terminalWorkspaces>>) => {
+    applyWorkspaces(data.terminalWorkspaces, undefined, true);
+  }, [applyWorkspaces]);
 
   useEffect(() => {
-    setWorkspaces((current) => current.map(normalizeWorkspace));
-    setSessions((current) =>
-      current.map((session) => ({
-        ...session,
-        cwd: logicalPath(session.cwd, homePaths?.home, homePaths?.resolvedHome),
-      })),
-    );
-    setSelectedWorkspace((current) =>
-      current ? logicalPath(current, homePaths?.home, homePaths?.resolvedHome) : current,
-    );
-  }, [homePaths, normalizeWorkspace]);
+    setSessions((current) => current.map((session) => normalizeSession(session)));
+    setLaunchPaths((current) => current.map((path) => normalizeLaunchPath(path)));
+  }, [normalizeLaunchPath, normalizeSession]);
 
-  const initialize = useCallback(
-    (data: Awaited<ReturnType<typeof terminals>>) => {
-      const paths = { home: data.home, resolvedHome: data.resolvedHome };
-      const normalized = data.terminals.map((session) => ({
-        ...session,
-        cwd: logicalPath(session.cwd, paths.home, paths.resolvedHome),
-      }));
-      setHomePaths(paths);
-      setSessions(normalized);
-      setActiveId(normalized[0]?.id ?? null);
-    },
-    [setHomePaths],
+  const selectedWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
+    [selectedWorkspaceId, workspaces],
   );
-
-  const initializeWorkspaces = useCallback(
-    (data: Awaited<ReturnType<typeof terminalWorkspaces>>, paths: HomePaths) => {
-      workspaceGeneration.current += 1;
-      const next = data.terminalWorkspaces.map((workspace) => ({
-        ...workspace,
-        path: logicalPath(workspace.path, paths?.home, paths?.resolvedHome),
-      }));
-      setWorkspaces(next);
-      setSelectedWorkspace((current) => current ?? next[0]?.path ?? null);
-    },
-    [],
-  );
-
-  const addTerminal = useCallback(
-    async (cwd?: string) => {
-      if (launchRef.current) return false;
-      launchRef.current = true;
-      setLaunching(true);
-      workspaceGeneration.current += 1;
-      try {
-        const { terminal } = await createTerminal(cwd);
-        const normalized = {
-          ...terminal,
-          cwd: logicalPath(terminal.cwd, homePaths?.home, homePaths?.resolvedHome),
-        };
-        setSessions((current) => [...current, normalized]);
-        await refreshWorkspaces();
-        setSelectedWorkspace(normalized.cwd);
-        setActiveId(normalized.id);
-        closeSidebar();
-        bumpFocus();
-        return true;
-      } catch (reason) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
-        return false;
-      } finally {
-        launchRef.current = false;
-        setLaunching(false);
-      }
-    },
-    [bumpFocus, closeSidebar, homePaths, refreshWorkspaces, reportError],
-  );
-
-  const chooseWorkspace = useCallback(
-    async (path: string) => {
-      workspaceGeneration.current += 1;
-      try {
-        const { terminalWorkspace } = await createTerminalWorkspace(path);
-        const normalized = normalizeWorkspace(terminalWorkspace);
-        await refreshWorkspaces();
-        setSelectedWorkspace(normalized.path);
-        setActiveId(sessionsRef.current.find((session) => session.cwd === normalized.path)?.id ?? null);
-        return true;
-      } catch (reason) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
-        return false;
-      }
-    },
-    [normalizeWorkspace, refreshWorkspaces, reportError],
-  );
-
-  const activateWorkspace = useCallback(
-    (path: string) => {
-      setSelectedWorkspace(path);
-      setActiveId(sessionsRef.current.find((session) => session.cwd === path)?.id ?? null);
-      closeSidebar();
-    },
-    [closeSidebar],
-  );
-
-  const pinWorkspace = useCallback(
-    async (workspace: TerminalWorkspace) => {
-      workspaceGeneration.current += 1;
-      try {
-        await updateTerminalWorkspace(workspace.id, !workspace.pinned);
-        await refreshWorkspaces();
-        setSelectedWorkspace(workspace.path);
-      } catch (reason) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
-      }
-    },
-    [refreshWorkspaces, reportError],
-  );
-
-  const removeWorkspace = useCallback(
-    async (workspace: TerminalWorkspace) => {
-      workspaceGeneration.current += 1;
-      try {
-        const index = workspaces.findIndex((item) => item.id === workspace.id);
-        await deleteTerminalWorkspace(workspace.id);
-        const next = await refreshWorkspaces();
-        if (!next) return true;
-        if (selectedWorkspace === workspace.path) {
-          const selected = next[Math.min(index, next.length - 1)] ?? next[0];
-          setSelectedWorkspace(selected?.path ?? null);
-          setActiveId(selected ? (sessionsRef.current.find((session) => session.cwd === selected.path)?.id ?? null) : null);
-        }
-        return true;
-      } catch (reason) {
-        await Promise.allSettled([terminals(), terminalWorkspaces()]).then(([terminalResult, workspaceResult]) => {
-          if (terminalResult.status === "fulfilled") initialize(terminalResult.value);
-          if (workspaceResult.status === "fulfilled") initializeWorkspaces(workspaceResult.value, homePaths);
-        });
-        reportError(
-          reason instanceof ApiError && reason.status === 409 && reason.code === "WORKSPACE_HAS_TERMINALS"
-            ? "Close all terminals in this workspace before removing it."
-            : reason instanceof Error
-              ? reason.message
-              : String(reason),
-        );
-        return false;
-      }
-    },
-    [homePaths, initialize, initializeWorkspaces, refreshWorkspaces, reportError, selectedWorkspace, workspaces],
-  );
-
-  const activateSession = useCallback(
-    (id: string) => {
-      setActiveId(id);
-      bumpFocus();
-    },
-    [bumpFocus],
-  );
-
-  const renameSession = useCallback(
-    async (session: TerminalInfo) => {
-      const name = window.prompt("Session name", session.name)?.trim();
-      if (!name || name === session.name) return;
-      try {
-        const result = await renameRemoteSession("/api/terminals", session.id, name);
-        const updated = Object.values(result)[0];
-        const normalized = {
-          ...updated,
-          cwd: logicalPath(updated.cwd, homePaths?.home, homePaths?.resolvedHome),
-        };
-        setSessions((current) => current.map((item) => (item.id === normalized.id ? normalized : item)));
-      } catch (reason) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
-      }
-    },
-    [homePaths, reportError],
-  );
-
-  const deleteSession = useCallback(
-    async (target: DeleteTarget) => {
-      await deleteRemoteSession("/api/terminals", target.id);
-      const next = sessionsRef.current.filter((item) => item.id !== target.id);
-      sessionsRef.current = next;
-      setSessions(next);
-      setActiveId((active) =>
-        active === target.id ? (next.find((item) => item.cwd === selectedWorkspace)?.id ?? null) : active,
-      );
-    },
-    [selectedWorkspace],
-  );
-
-  const visibleSessions = useMemo(
-    () => sessions.filter((session) => session.cwd === selectedWorkspace),
-    [selectedWorkspace, sessions],
-  );
+  const visibleSessions = useMemo(() => {
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+    return (selectedWorkspace?.members ?? []).flatMap((member) => {
+      const session = byId.get(member.terminalId);
+      return session ? [session] : [];
+    });
+  }, [selectedWorkspace, sessions]);
+  const activeId = selectedWorkspace?.activeTerminalId ?? null;
   const activeSession = visibleSessions.find((session) => session.id === activeId) ?? null;
 
+  const addTerminal = useCallback(async (cwd?: string, forceNewWorkspace = false) => {
+    if (launchRef.current) return null;
+    launchRef.current = true;
+    setLaunching(true);
+    const selectedBeforeLaunch = selectedWorkspaceIdRef.current;
+    const selectedAtStart = forceNewWorkspace ? null : selectedBeforeLaunch;
+    const mutationKey = selectedAtStart ?? `new:${Date.now()}`;
+    const mutation = mutateWorkspace(mutationKey, async () => {
+      const result = await createTerminal(cwd, selectedAtStart ?? undefined);
+      applyAuthoritativeWorkspace(result.terminalWorkspace);
+      return result;
+    });
+    try {
+      const { terminal, terminalWorkspace } = await mutation.result;
+      const normalized = normalizeSession(terminal);
+      sessionsRef.current = mergeTerminalSession(sessionsRef.current, normalized);
+      setSessions(sessionsRef.current);
+      const latest = workspaceMutationsRef.current.isLatest(mutationKey, mutation.generation);
+      const preferred = selectedWorkspaceIdRef.current === selectedBeforeLaunch ? terminalWorkspace.id : undefined;
+      const nextWorkspaces = latest
+        ? [...workspacesRef.current.filter((item) => item.id !== terminalWorkspace.id), terminalWorkspace]
+        : mergeWorkspaceMembers(workspacesRef.current, terminalWorkspace);
+      applyWorkspaces(nextWorkspaces, preferred);
+      void terminalLaunchPaths().then((data) => initializeLaunchPaths(data, homePaths)).catch(() => undefined);
+      closeSidebar();
+      bumpFocus();
+      return normalized;
+    } catch (reason) {
+      if (workspaceMutationsRef.current.isLatest(mutationKey, mutation.generation)) {
+        reportError(reason instanceof Error ? reason.message : String(reason));
+        void refreshAll().catch(() => undefined);
+      }
+      return null;
+    } finally {
+      launchRef.current = false;
+      setLaunching(false);
+    }
+  }, [applyAuthoritativeWorkspace, applyWorkspaces, bumpFocus, closeSidebar, homePaths, initializeLaunchPaths, mutateWorkspace, normalizeSession, refreshAll, reportError]);
+
+  const chooseLaunchPath = useCallback(async (path: string) => {
+    try {
+      const { terminalLaunchPath } = await createTerminalLaunchPath(path);
+      const normalized = normalizeLaunchPath(terminalLaunchPath);
+      setLaunchPaths((current) => [normalized, ...current.filter((item) => item.id !== normalized.id)]);
+      return true;
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    }
+  }, [normalizeLaunchPath, reportError]);
+
+  const activateWorkspace = useCallback((id: string) => {
+    selectedWorkspaceIdRef.current = id;
+    setSelectedWorkspaceId(id);
+    closeSidebar();
+  }, [closeSidebar]);
+
+  const activateSession = useCallback(async (id: string) => {
+    const workspace = workspacesRef.current.find((item) => item.id === selectedWorkspaceIdRef.current);
+    if (!workspace) return;
+    if (workspace.activeTerminalId === id) { bumpFocus(); return; }
+    const optimistic = { ...workspace, activeTerminalId: id };
+    applyWorkspaces(workspacesRef.current.map((item) => item.id === workspace.id ? optimistic : item), workspace.id);
+    bumpFocus();
+    const mutation = mutateLatestWorkspace(workspace.id, async (latest) => {
+      const saved = await updateTerminalWorkspace(latest.id, { activeTerminalId: id });
+      applyAuthoritativeWorkspace(saved.terminalWorkspace);
+      return saved;
+    });
+    try {
+      const saved = await mutation.result;
+      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return;
+      applyWorkspaces(workspacesRef.current.map((item) => item.id === workspace.id ? saved.terminalWorkspace : item));
+    } catch (reason) {
+      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return;
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      void refreshAll().catch(() => undefined);
+    }
+  }, [applyAuthoritativeWorkspace, applyWorkspaces, bumpFocus, mutateLatestWorkspace, refreshAll, reportError]);
+
+  const renameWorkspace = useCallback(async (workspace: TerminalWorkspace) => {
+    const name = window.prompt("Workspace name", workspace.name ?? "")?.trim();
+    if (name === undefined || name === (workspace.name ?? "")) return;
+    const mutation = mutateWorkspace(workspace.id, async () => {
+      const saved = await updateTerminalWorkspace(workspace.id, { name: name || null });
+      applyAuthoritativeWorkspace(saved.terminalWorkspace);
+      return saved;
+    });
+    try {
+      const saved = await mutation.result;
+      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return;
+      applyWorkspaces(workspacesRef.current.map((item) => item.id === workspace.id ? saved.terminalWorkspace : item));
+    } catch (reason) {
+      if (workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) reportError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }, [applyAuthoritativeWorkspace, applyWorkspaces, mutateWorkspace, reportError]);
+
+  const removeWorkspace = useCallback(async (workspace: TerminalWorkspace) => {
+    const mutation = mutateWorkspace(workspace.id, async () => {
+      await deleteTerminalWorkspace(workspace.id);
+      authoritativeWorkspacesRef.current = authoritativeWorkspacesRef.current.filter((item) => item.id !== workspace.id);
+      return terminalWorkspaces();
+    });
+    try {
+      const refreshed = await mutation.result;
+      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return true;
+      applyWorkspaces(refreshed.terminalWorkspaces, undefined, true);
+      return true;
+    } catch (reason) {
+      if (workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    }
+  }, [applyWorkspaces, mutateWorkspace, reportError]);
+
+  const pinLaunchPath = useCallback(async (path: TerminalLaunchPath) => {
+    try {
+      const saved = await updateTerminalLaunchPath(path.id, { pinned: !path.pinned });
+      setLaunchPaths((current) => current.map((item) => item.id === path.id ? normalizeLaunchPath(saved.terminalLaunchPath) : item));
+    } catch (reason) { reportError(reason instanceof Error ? reason.message : String(reason)); }
+  }, [normalizeLaunchPath, reportError]);
+
+  const renameLaunchPath = useCallback(async (path: TerminalLaunchPath, alias: string) => {
+    try {
+      const saved = await updateTerminalLaunchPath(path.id, { alias: alias.trim() || null });
+      setLaunchPaths((current) => current.map((item) => item.id === path.id ? normalizeLaunchPath(saved.terminalLaunchPath) : item));
+      return true;
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    }
+  }, [normalizeLaunchPath, reportError]);
+
+  const removeLaunchPath = useCallback(async (path: TerminalLaunchPath) => {
+    try {
+      await deleteTerminalLaunchPath(path.id);
+      setLaunchPaths((current) => current.filter((item) => item.id !== path.id));
+      return true;
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    }
+  }, [reportError]);
+
+  const renameSession = useCallback(async (session: TerminalInfo) => {
+    const name = window.prompt("Session name", session.name)?.trim();
+    if (!name || name === session.name) return;
+    try {
+      const result = await renameRemoteSession("/api/terminals", session.id, name);
+      const updated = normalizeSession(Object.values(result)[0] as TerminalInfo);
+      setSessions((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (reason) { reportError(reason instanceof Error ? reason.message : String(reason)); }
+  }, [normalizeSession, reportError]);
+
+  const deleteSession = useCallback((target: DeleteTarget): Promise<boolean> => (
+    getOrCreateInFlightPromise(deletingPromisesRef.current, target.id, async () => {
+      const workspaceId = workspacesRef.current.find((workspace) => workspace.members.some((member) => member.terminalId === target.id))?.id;
+      const mutation = mutateWorkspace(workspaceId ?? `terminal:${target.id}`, async () => {
+        const result = await deleteTerminalSession(target.id);
+        if (result.terminalWorkspace) applyAuthoritativeWorkspace(result.terminalWorkspace);
+        else if (workspaceId) authoritativeWorkspacesRef.current = authoritativeWorkspacesRef.current.filter((item) => item.id !== workspaceId);
+        return result;
+      });
+      try {
+        const { terminalWorkspace } = await mutation.result;
+        sessionsRef.current = sessionsRef.current.filter((item) => item.id !== target.id);
+        setSessions(sessionsRef.current);
+        const next = mergeDeletedTerminal(workspacesRef.current, target.id, workspaceId, terminalWorkspace);
+        applyWorkspaces(next);
+        return true;
+      } catch (reason) {
+        await refreshAll().catch(() => undefined);
+        throw reason;
+      }
+    })
+  ), [applyAuthoritativeWorkspace, applyWorkspaces, mutateWorkspace, refreshAll]);
+
   return {
-    sessions,
-    workspaces,
-    selectedWorkspace,
-    activeId,
-    activeSession,
-    visibleSessions,
-    launching,
-    initialize,
-    initializeWorkspaces,
-    addTerminal,
-    chooseWorkspace,
-    activateWorkspace,
-    pinWorkspace,
-    removeWorkspace,
-    activateSession,
-    renameSession,
-    deleteSession,
+    sessions, launchPaths, workspaces, selectedWorkspaceId, selectedWorkspace, activeId, activeSession,
+    visibleSessions, launching, initialize, initializeLaunchPaths, initializeWorkspaces, addTerminal,
+    chooseLaunchPath, activateWorkspace, activateSession, renameWorkspace,
+    removeWorkspace, pinLaunchPath, renameLaunchPath, removeLaunchPath, renameSession, deleteSession,
   };
 }

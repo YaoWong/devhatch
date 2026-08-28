@@ -12,7 +12,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     agent, auth, filesystem, history, launch_config, launch_path, settings, skillink,
-    state::AppState, terminal, terminal_workspace, web_app,
+    state::AppState, terminal, terminal_launch_path, terminal_workspace, web_app,
 };
 
 pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
@@ -90,6 +90,14 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
         .route(
             "/api/agent-launch-paths/{id}/touch",
             axum::routing::post(launch_path::touch),
+        )
+        .route(
+            "/api/terminal-launch-paths",
+            get(terminal_launch_path::list).post(terminal_launch_path::create),
+        )
+        .route(
+            "/api/terminal-launch-paths/{id}",
+            patch(terminal_launch_path::update).delete(terminal_launch_path::remove),
         )
         .route(
             "/api/terminal-workspaces",

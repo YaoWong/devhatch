@@ -7,6 +7,7 @@ import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { TerminalWorkspace } from "../features/terminals/TerminalWorkspace";
 import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
@@ -21,6 +22,8 @@ type AppWorkspaceContentProps = {
   busy: boolean;
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
+  terminalCapacity: TerminalWorkspaceCapacity;
+  terminalThumbnailsHidden: boolean;
   error: string | null;
   skillsSection: SkillsSection;
   settingsSection: SettingsSection;
@@ -46,6 +49,8 @@ export function AppWorkspaceContent({
   busy,
   phases,
   focusVersion,
+  terminalCapacity,
+  terminalThumbnailsHidden,
   error,
   skillsSection,
   settingsSection,
@@ -69,11 +74,11 @@ export function AppWorkspaceContent({
         launching={terminal.launching}
         sessions={terminal.sessions}
         visibleSessions={terminal.visibleSessions}
-        activeId={terminal.activeId}
-        activeSession={terminal.activeSession}
-        selectedWorkspace={terminal.selectedWorkspace}
+        workspace={terminal.selectedWorkspace}
         phases={phases}
         focusVersion={focusVersion}
+        capacity={terminalCapacity}
+        thumbnailsHidden={terminalThumbnailsHidden}
         error={error}
         onActivate={terminal.activateSession}
         onRename={terminal.renameSession}

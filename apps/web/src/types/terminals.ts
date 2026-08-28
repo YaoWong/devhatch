@@ -11,11 +11,25 @@ export type TerminalInfo = {
   exitCode: number | null;
 };
 
-export type TerminalWorkspace = {
+export type TerminalLaunchPath = {
   id: string;
   path: string;
+  alias: string | null;
   pinned: boolean;
   lastUsedAt: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type TerminalWorkspaceMember = {
+  terminalId: string;
+};
+
+export type TerminalWorkspace = {
+  id: string;
+  name: string | null;
+  activeTerminalId: string;
+  members: TerminalWorkspaceMember[];
   createdAt: number;
   updatedAt: number;
 };

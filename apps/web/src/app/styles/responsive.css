@@ -1,5 +1,6 @@
 @media (prefers-reduced-motion: reduce) {
-  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog, .terminal-window, .terminal-thumbnail, .terminal-capacity-control button { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 1ms !important; }
 }
 
 @media (max-width: 920px) {
@@ -76,8 +77,21 @@
   .webapp-detail-grid { grid-template-columns: 1fr; }
   .webapp-actions { flex-wrap: wrap; }
   .settings-section { grid-template-columns: 1fr; gap: 14px; }
-  .terminal-workspace { grid-template-rows: 48px minmax(0, 1fr) 38px; }
+  .terminal-workspace { grid-template-rows: minmax(0, 1fr) 38px; }
   .terminal-surface { padding: 8px 10px; }
+  .terminal-thumbnail-stack { inset: 6px 6px auto; width: auto; height: 62px; max-height: none; flex-direction: row; gap: 6px; overflow-x: auto; overflow-y: hidden; transform: none; }
+  .terminal-thumbnail { width: 92px; min-width: 92px; height: 56px; aspect-ratio: auto; }
+  .terminal-thumbnail-caption { height: 17px; font-size: 7px; }
+  .terminal-card-grid, .terminal-card-grid.count-1, .terminal-card-grid.count-2, .terminal-card-grid.count-3 { position: relative; display: block; height: calc(100% - 12px); margin: 6px; padding: 0; }
+  .terminal-card-grid.with-thumbnails, .terminal-card-grid.count-1.with-thumbnails, .terminal-card-grid.count-2.with-thumbnails, .terminal-card-grid.count-3.with-thumbnails { height: calc(100% - 74px); margin-top: 68px; }
+  .terminal-card-grid.count-2 .terminal-window[data-slot="0"], .terminal-card-grid.count-2 .terminal-window[data-slot="1"] { transform: none; }
+  .terminal-card-grid.count-3 .terminal-window[data-slot="0"] { grid-row: auto; }
+  .terminal-window, .terminal-window.shown { position: absolute; inset: 0; display: none; }
+  .terminal-window.thumbnail-source { position: absolute; left: -10000px; top: 0; right: auto; bottom: auto; width: 960px; height: 600px; display: block; }
+  .terminal-window.focused { display: block; }
+  .terminal-stage-empty { inset: 0; }
+  .terminal-window-titlebar { cursor: default; }
+  .terminal-window-titlebar small { display: none; }
   .tab { min-width: 136px; }
   .statusbar { padding: 0 12px; gap: 10px; }
   .status-path, .statusbar span:last-child { display: none; }

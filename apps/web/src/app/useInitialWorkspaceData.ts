@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { agentPaths, agents, agentSessions } from "../api/agents";
-import { terminals, terminalWorkspaces } from "../api/terminals";
+import { terminalLaunchPaths, terminals, terminalWorkspaces } from "../api/terminals";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type Terminals = Awaited<ReturnType<typeof terminals>>;
+type TerminalLaunchPaths = Awaited<ReturnType<typeof terminalLaunchPaths>>;
 type TerminalWorkspaces = Awaited<ReturnType<typeof terminalWorkspaces>>;
 type Agents = Awaited<ReturnType<typeof agents>>;
 type Sessions = Awaited<ReturnType<typeof agentSessions>>;
@@ -11,6 +12,7 @@ type Paths = Awaited<ReturnType<typeof agentPaths>>;
 
 export function useInitialWorkspaceData({
   initializeTerminals,
+  initializeTerminalLaunchPaths,
   initializeTerminalWorkspaces,
   initializeAgents,
   initializeSessions,
@@ -19,7 +21,8 @@ export function useInitialWorkspaceData({
   onReady,
 }: {
   initializeTerminals: (data: Terminals) => void;
-  initializeTerminalWorkspaces: (data: TerminalWorkspaces, homePaths: HomePaths) => void;
+  initializeTerminalLaunchPaths: (data: TerminalLaunchPaths, homePaths: HomePaths) => void;
+  initializeTerminalWorkspaces: (data: TerminalWorkspaces) => void;
   initializeAgents: (data: Agents) => void;
   initializeSessions: (data: Sessions, homePaths: HomePaths) => void;
   initializePaths: (data: Paths) => void;
@@ -30,6 +33,7 @@ export function useInitialWorkspaceData({
     let cancelled = false;
     Promise.allSettled([
       terminals(),
+      terminalLaunchPaths(),
       terminalWorkspaces(),
       agents(),
       agentSessions(),
@@ -42,10 +46,11 @@ export function useInitialWorkspaceData({
           ? { home: terminalResult.value.home, resolvedHome: terminalResult.value.resolvedHome }
           : null;
       if (terminalResult.status === "fulfilled") initializeTerminals(terminalResult.value);
-      if (results[1].status === "fulfilled") initializeTerminalWorkspaces(results[1].value, homePaths);
-      if (results[2].status === "fulfilled") initializeAgents(results[2].value);
-      if (results[3].status === "fulfilled") initializeSessions(results[3].value, homePaths);
-      if (results[4].status === "fulfilled") initializePaths(results[4].value);
+      if (results[1].status === "fulfilled") initializeTerminalLaunchPaths(results[1].value, homePaths);
+      if (results[2].status === "fulfilled") initializeTerminalWorkspaces(results[2].value);
+      if (results[3].status === "fulfilled") initializeAgents(results[3].value);
+      if (results[4].status === "fulfilled") initializeSessions(results[4].value, homePaths);
+      if (results[5].status === "fulfilled") initializePaths(results[5].value);
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
       if (failures.length) {
         onError(
@@ -63,6 +68,7 @@ export function useInitialWorkspaceData({
     initializeAgents,
     initializePaths,
     initializeSessions,
+    initializeTerminalLaunchPaths,
     initializeTerminalWorkspaces,
     initializeTerminals,
     onError,

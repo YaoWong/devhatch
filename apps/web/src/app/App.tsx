@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import "@xterm/xterm/css/xterm.css";
 import { AppDialogs } from "./AppDialogs";
 import { AppHeader } from "./AppHeader";
@@ -13,11 +14,30 @@ import { useTheme } from "../shared/theme/ThemeContext";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import {
+  clampTerminalWorkspaceCapacity,
+  TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY,
+  type TerminalWorkspaceCapacity,
+} from "../features/terminals/terminalWorkspaceDock";
 import { useWebApps } from "../features/web-apps/useWebApps";
 import { RailResizeHandle } from "../shared/ui/RailResizeHandle";
 import type { ConfirmAction, DeleteTarget } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 import "./styles/index.css";
+
+const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
+
+function initialTerminalCapacity(): TerminalWorkspaceCapacity {
+  try {
+    const stored = localStorage.getItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY) ?? localStorage.getItem(TERMINAL_ROWS_STORAGE_KEY) ?? "1";
+    const capacity = clampTerminalWorkspaceCapacity(Number(stored));
+    localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(capacity));
+    localStorage.removeItem(TERMINAL_ROWS_STORAGE_KEY);
+    return capacity;
+  } catch {
+    return 1;
+  }
+}
 
 function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<void>; logoutBusy: boolean; logoutError: string | null }) {
   const {
@@ -32,7 +52,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pickerPurpose, setPickerPurpose] = useState<"workspace" | "agent" | null>(null);
+  const [pickerPurpose, setPickerPurpose] = useState<"add-launch-path" | "new-terminal-workspace" | "agent" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(
     () => localStorage.getItem("devhatch-confirm-terminal-delete") === "1",
   );
@@ -42,6 +62,38 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
+  const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialTerminalCapacity);
+  const [terminalThumbnailsHidden, setTerminalThumbnailsHidden] = useState(false);
+  const terminalCapacityTransitionRef = useRef<ViewTransition | null>(null);
+  const setTerminalCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
+    const update = () => setTerminalCapacityState(value);
+    const activeTransition = terminalCapacityTransitionRef.current;
+    if (activeTransition) {
+      try { activeTransition.skipTransition(); } catch { void activeTransition.finished.catch(() => undefined); }
+      terminalCapacityTransitionRef.current = null;
+      document.documentElement.classList.remove("terminal-stage-transition");
+      flushSync(update);
+    } else {
+      const startViewTransition = document.startViewTransition?.bind(document);
+      if (!startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) update();
+      else {
+        document.documentElement.classList.add("terminal-stage-transition");
+        try {
+          const transition = startViewTransition(() => flushSync(update));
+          terminalCapacityTransitionRef.current = transition;
+          void transition.finished.catch(() => undefined).finally(() => {
+            if (terminalCapacityTransitionRef.current !== transition) return;
+            terminalCapacityTransitionRef.current = null;
+            document.documentElement.classList.remove("terminal-stage-transition");
+          });
+        } catch {
+          document.documentElement.classList.remove("terminal-stage-transition");
+          update();
+        }
+      }
+    }
+    try { localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(value)); } catch { return; }
+  }, []);
   useEffect(() => setDraftRailWidth(navigationRailWidthPx), [navigationRailWidthPx]);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
@@ -89,6 +141,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   } = agent;
   const {
     initialize: initializeTerminals,
+    initializeLaunchPaths: initializeTerminalLaunchPaths,
     initializeWorkspaces: initializeTerminalWorkspaces,
     deleteSession: deleteTerminalSession,
   } = terminal;
@@ -96,6 +149,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const markReady = useCallback(() => setBusy(false), []);
   useInitialWorkspaceData({
     initializeTerminals,
+    initializeTerminalLaunchPaths,
     initializeTerminalWorkspaces,
     initializeAgents,
     initializeSessions,
@@ -161,7 +215,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     openDesign: webApps.openDesign,
     activeAgentSession: agent.activeSession,
     selectedAgent: agent.selectedAgent,
-    selectedWorkspace: terminal.selectedWorkspace,
+    selectedWorkspace: terminal.selectedWorkspace
+      ? (terminal.selectedWorkspace.name || "Terminal Workspace")
+      : null,
     homePaths,
   });
 
@@ -182,8 +238,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         pickerPurpose={pickerPurpose}
         pickerInitialPath={
           pickerPurpose === "agent"
-            ? (agent.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
-            : (terminal.selectedWorkspace ?? undefined)
+            ? (agent.activeSession?.cwd ?? terminal.activeSession?.cwd ?? undefined)
+            : (terminal.activeSession?.cwd ?? undefined)
         }
         onClosePicker={closePicker}
         onSelectPath={(path) => {
@@ -191,8 +247,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
             void agent.choosePath(path).then((added) => {
               if (added) closePicker();
             });
+          } else if (pickerPurpose === "new-terminal-workspace") {
+            void terminal.addTerminal(path, true).then((created) => {
+              if (created) closePicker();
+            });
           } else {
-            void terminal.chooseWorkspace(path).then((added) => {
+             void terminal.chooseLaunchPath(path).then((added) => {
               if (added) setPickerPurpose(null);
             });
           }
@@ -221,7 +281,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         onSelectSkillsSection={setSkillsSection}
         settingsSection={settingsSection}
         onSelectSettingsSection={setSettingsSection}
-        onPickWorkspace={() => setPickerPurpose("workspace")}
+        onPickWorkspace={() => setPickerPurpose("add-launch-path")}
+        onNewWorkspace={() => setPickerPurpose("new-terminal-workspace")}
         onPickAgentPath={() => setPickerPurpose("agent")}
         onCloseAgentSession={(session) => requestClose(session, true)}
         onConfirm={setConfirmAction}
@@ -239,10 +300,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           label={navigation.modeMeta[navigation.workspaceMode].label}
           subtitle={modeSubtitle}
           onToggleNavigation={navigation.toggleSidebar}
-          onNewTerminal={() =>
-            void terminal.addTerminal(terminal.activeSession?.cwd ?? terminal.selectedWorkspace ?? undefined)
-          }
-          newTerminalBusy={terminal.launching}
+          terminalCapacity={terminalCapacity}
+          terminalThumbnailsHidden={terminalThumbnailsHidden}
+          onTerminalCapacityChange={setTerminalCapacity}
+          onToggleTerminalThumbnails={() => setTerminalThumbnailsHidden((hidden) => !hidden)}
           webAppRunning={Boolean(webApps.openDesign?.running)}
           webAppOperation={webApps.operation}
           onStopWebApp={() => void webApps.stop()}
@@ -256,6 +317,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           busy={busy}
           phases={phases}
           focusVersion={focusVersion}
+          terminalCapacity={terminalCapacity}
+          terminalThumbnailsHidden={terminalThumbnailsHidden}
           error={error}
           skillsSection={skillsSection}
           settingsSection={settingsSection}

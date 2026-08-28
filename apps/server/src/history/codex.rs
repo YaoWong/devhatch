@@ -424,9 +424,11 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
         code: "CODEX_UNAVAILABLE",
         message: None,
     })?;
+    let mut command = tokio::process::Command::new(executable);
+    crate::process::configure_tokio_command(&mut command);
     let output = tokio::time::timeout(
         Duration::from_secs(15),
-        tokio::process::Command::new(executable)
+        command
             .args(delete_args(&id))
             .env("CODEX_HOME", home)
             .stdout(Stdio::null())

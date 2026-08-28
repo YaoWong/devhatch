@@ -253,9 +253,10 @@ export function useAgentSessions({
   );
 
   const deleteSession = useCallback(
-    async (target: DeleteTarget) => {
+    async (target: DeleteTarget): Promise<boolean> => {
       await deleteRemoteSession("/api/agent-sessions", target.id);
       removeSession(target.id);
+      return true;
     },
     [removeSession],
   );

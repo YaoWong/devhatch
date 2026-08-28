@@ -69,7 +69,7 @@ impl Connected<IncomingStream<'_, StoppableListener>> for ClientAddr {
     }
 }
 
-pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let apps_dir = manifest_dir
         .parent()
@@ -103,11 +103,19 @@ pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let history_pool = crate::state::OpenCodeHistoryPool::new(
         crate::filesystem::home_dir().join(".local/share/opencode/opencode.db"),
     );
-    let initialized =
+    let mut initialized =
         sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM admin_credentials WHERE id = 1)")
             .fetch_one(&pool)
             .await?
             != 0;
+    if !initialized && let Some(password) = admin_password {
+        initialized = crate::auth::initialize_password(&pool, password).await?;
+        if initialized {
+            println!("Administrator credentials initialized from password file");
+        } else {
+            initialized = true;
+        }
+    }
     let setup_token = (!initialized).then(|| {
         let token = format!(
             "{}{}",

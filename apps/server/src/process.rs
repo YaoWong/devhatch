@@ -1,5 +1,8 @@
 use std::{io, process::Output, time::Duration};
 
+pub(crate) const ADMIN_PASSWORD_ENV: &str = "DEVHATCH_ADMIN_PASSWORD";
+pub(crate) const ADMIN_PASSWORD_FILE_ENV: &str = "DEVHATCH_ADMIN_PASSWORD_FILE";
+
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
@@ -80,11 +83,15 @@ fn process_group(pid: u32) -> Option<u32> {
 }
 
 pub(crate) fn configure_std_command(command: &mut std::process::Command) {
+    command.env_remove(ADMIN_PASSWORD_ENV);
+    command.env_remove(ADMIN_PASSWORD_FILE_ENV);
     #[cfg(unix)]
     command.process_group(0);
 }
 
 pub(crate) fn configure_tokio_command(command: &mut tokio::process::Command) {
+    command.env_remove(ADMIN_PASSWORD_ENV);
+    command.env_remove(ADMIN_PASSWORD_FILE_ENV);
     #[cfg(unix)]
     command.process_group(0);
     command.kill_on_drop(true);
@@ -290,7 +297,10 @@ pub(crate) fn io_error(error: String) -> io::Error {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{ChildIdentity, command_output, configure_std_command, signal_owned};
+    use super::{
+        ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_FILE_ENV, ChildIdentity, command_output,
+        configure_std_command, signal_owned,
+    };
     use std::{process::Command, time::Duration};
 
     #[tokio::test]
@@ -321,6 +331,35 @@ mod tests {
         assert!(output.status.success());
         assert_eq!(output.stdout, b"stdout");
         assert_eq!(output.stderr, b"stderr");
+    }
+
+    #[tokio::test]
+    async fn command_output_removes_admin_password_environment() {
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg("printf '%s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\"")
+            .env(ADMIN_PASSWORD_ENV, "secret")
+            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/path");
+        let output = command_output(&mut command, Duration::from_secs(2), 1024)
+            .await
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"unset unset");
+    }
+
+    #[test]
+    fn configured_std_command_removes_admin_password_environment() {
+        let mut command = Command::new("/bin/sh");
+        command
+            .arg("-c")
+            .arg("printf '%s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\"")
+            .env(ADMIN_PASSWORD_ENV, "secret")
+            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/path");
+        configure_std_command(&mut command);
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"unset unset");
     }
 
     #[test]

@@ -76,7 +76,8 @@ export function AgentWorkspace({
             key={session.id}
             session={session}
             socketBase="/api/agent-sessions"
-            active={visible && session.id === activeId}
+            visible={visible && session.id === activeId}
+            focused={visible && session.id === activeId}
             focusVersion={focusVersion}
             onPhaseChange={onPhaseChange}
             onRemoved={onRemoved}

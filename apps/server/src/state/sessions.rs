@@ -153,6 +153,17 @@ impl SessionRegistry {
             .collect()
     }
 
+    pub(crate) fn ids(&self, kind: SessionKind) -> HashSet<String> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| session.kind() == kind)
+            .map(|session| session.id().to_string())
+            .collect()
+    }
+
+    #[cfg(test)]
     pub(crate) fn terminal_cwds(&self) -> HashSet<String> {
         self.sessions
             .read()
@@ -161,16 +172,6 @@ impl SessionRegistry {
             .filter(|session| session.kind() == SessionKind::Terminal)
             .map(|session| session.correlation_details().0)
             .collect()
-    }
-
-    pub(crate) fn has_terminal_cwd(&self, cwd: &str) -> bool {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
-            .values()
-            .any(|session| {
-                session.kind() == SessionKind::Terminal && session.correlation_details().0 == cwd
-            })
     }
 
     pub(crate) fn contains(&self, session: &Arc<Session>) -> bool {

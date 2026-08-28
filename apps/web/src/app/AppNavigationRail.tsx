@@ -26,6 +26,7 @@ type AppNavigationRailProps = {
   settingsSection: SettingsSection;
   onSelectSettingsSection: Dispatch<SetStateAction<SettingsSection>>;
   onPickWorkspace: () => void;
+  onNewWorkspace: () => void;
   onPickAgentPath: () => void;
   onCloseAgentSession: (session: TerminalInfo) => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
@@ -44,6 +45,7 @@ export function AppNavigationRail({
   settingsSection,
   onSelectSettingsSection,
   onPickWorkspace,
+  onNewWorkspace,
   onPickAgentPath,
   onCloseAgentSession,
   onConfirm,
@@ -63,14 +65,21 @@ export function AppNavigationRail({
       terminalContent={
         <WorkspaceList
           workspaces={terminal.workspaces}
-          sessions={terminal.sessions}
-          selectedWorkspace={terminal.selectedWorkspace}
+          launchPaths={terminal.launchPaths}
+          selectedWorkspaceId={terminal.selectedWorkspaceId}
           homePaths={homePaths}
-          onSelect={terminal.activateWorkspace}
-          onPin={(workspace) => void terminal.pinWorkspace(workspace)}
-          onDelete={terminal.removeWorkspace}
+          launching={terminal.launching}
+          onSelectWorkspace={terminal.activateWorkspace}
+          onRenameWorkspace={(workspace) => void terminal.renameWorkspace(workspace)}
+          onDeleteWorkspace={terminal.removeWorkspace}
+          onNewWorkspace={onNewWorkspace}
+          onLaunch={(path) => void terminal.addTerminal(path)}
+          onForceNewWorkspace={(path) => void terminal.addTerminal(path, true)}
+          onPinPath={(path) => void terminal.pinLaunchPath(path)}
+          onRenamePath={terminal.renameLaunchPath}
+          onDeletePath={terminal.removeLaunchPath}
           onConfirm={onConfirm}
-          onAdd={onPickWorkspace}
+          onAddPath={onPickWorkspace}
         />
       }
       agentContent={

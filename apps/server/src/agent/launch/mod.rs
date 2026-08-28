@@ -38,15 +38,12 @@ pub(super) fn available(kind: AgentKind) -> bool {
 pub(super) async fn installed_version(kind: AgentKind) -> Option<String> {
     let executable_name = kind.as_str();
     let executable = executable_path(executable_name)?;
-    let output = tokio::time::timeout(
-        Duration::from_secs(2),
-        tokio::process::Command::new(executable)
-            .arg("--version")
-            .output(),
-    )
-    .await
-    .ok()?
-    .ok()?;
+    let mut command = tokio::process::Command::new(executable);
+    crate::process::configure_tokio_command(&mut command);
+    let output = tokio::time::timeout(Duration::from_secs(2), command.arg("--version").output())
+        .await
+        .ok()?
+        .ok()?;
     if !output.status.success() {
         return None;
     }

@@ -1,5 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
+    error::Error,
+    fmt,
     net::IpAddr,
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
@@ -54,6 +56,34 @@ pub struct LoginRequest {
 pub(crate) struct AuthIdentity {
     session_id: String,
     csrf_token: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum InitializePasswordError {
+    InvalidPassword,
+    HashFailed,
+    Database(sqlx::Error),
+}
+
+impl fmt::Display for InitializePasswordError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPassword => formatter.write_str("invalid administrator password"),
+            Self::HashFailed => formatter.write_str("administrator password hashing failed"),
+            Self::Database(error) => {
+                write!(formatter, "administrator initialization failed: {error}")
+            }
+        }
+    }
+}
+
+impl Error for InitializePasswordError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Database(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 impl AuthState {
@@ -149,33 +179,17 @@ pub async fn setup(
         return error(StatusCode::FORBIDDEN, "INVALID_SETUP_TOKEN");
     }
     let password = request.password;
-    let permit = match ARGON2_JOBS.clone().acquire_owned().await {
-        Ok(permit) => permit,
-        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_HASH_FAILED"),
-    };
-    let password_hash = match tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        password_hash(&password)
-    })
-    .await
-    {
-        Ok(Some(hash)) => hash,
-        Ok(None) => return error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD"),
-        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_HASH_FAILED"),
-    };
-    let now = clock::now() as i64;
-    let result = sqlx::query(
-        "INSERT INTO admin_credentials (id, password_hash, created_at, updated_at) VALUES (1, ?, ?, ?)",
-    )
-    .bind(password_hash)
-    .bind(now)
-    .bind(now)
-    .execute(state.pool())
-    .await;
-    if result.is_err() {
-        return error(StatusCode::CONFLICT, "ALREADY_INITIALIZED");
+    match initialize_password(state.pool(), password).await {
+        Ok(true) => create_session_response(&state).await,
+        Ok(false) => error(StatusCode::CONFLICT, "ALREADY_INITIALIZED"),
+        Err(InitializePasswordError::InvalidPassword) => {
+            error(StatusCode::BAD_REQUEST, "INVALID_PASSWORD")
+        }
+        Err(InitializePasswordError::HashFailed) => {
+            error(StatusCode::INTERNAL_SERVER_ERROR, "PASSWORD_HASH_FAILED")
+        }
+        Err(InitializePasswordError::Database(_)) => database_error(),
     }
-    create_session_response(&state).await
 }
 
 pub async fn login(
@@ -284,6 +298,44 @@ async fn initialized(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
             .await?
             != 0,
     )
+}
+
+pub(crate) async fn initialize_password(
+    pool: &SqlitePool,
+    password: String,
+) -> Result<bool, InitializePasswordError> {
+    if initialized(pool)
+        .await
+        .map_err(InitializePasswordError::Database)?
+    {
+        return Ok(false);
+    }
+    if !(12..=1024).contains(&password.len()) {
+        return Err(InitializePasswordError::InvalidPassword);
+    }
+    let permit = ARGON2_JOBS
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| InitializePasswordError::HashFailed)?;
+    let password_hash = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        password_hash(&password)
+    })
+    .await
+    .map_err(|_| InitializePasswordError::HashFailed)?
+    .ok_or(InitializePasswordError::HashFailed)?;
+    let now = clock::now() as i64;
+    let result = sqlx::query(
+        "INSERT INTO admin_credentials (id, password_hash, created_at, updated_at) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+    )
+    .bind(password_hash)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(InitializePasswordError::Database)?;
+    Ok(result.rows_affected() == 1)
 }
 
 async fn create_session_response(state: &AppState) -> Response {
@@ -428,9 +480,9 @@ pub(crate) fn with_no_store(mut response: Response) -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthIdentity, AuthState, LOGIN_LIMIT, LOGIN_WINDOW_MS, authenticate, constant_time_eq,
-        hash_token, logout_response, password_hash, status_response, validate_identity,
-        verify_password,
+        AuthIdentity, AuthState, InitializePasswordError, LOGIN_LIMIT, LOGIN_WINDOW_MS,
+        authenticate, constant_time_eq, hash_token, initialize_password, logout_response,
+        password_hash, status_response, validate_identity, verify_password,
     };
     use axum::{
         body::to_bytes,
@@ -476,6 +528,57 @@ mod tests {
         let hash = password_hash("a sufficiently long password").unwrap();
         assert!(verify_password(&hash, "a sufficiently long password"));
         assert!(!verify_password(&hash, "a different password"));
+    }
+
+    #[tokio::test]
+    async fn initializes_password_once() {
+        let pool = pool().await;
+        assert!(
+            initialize_password(&pool, "first administrator password".into())
+                .await
+                .unwrap()
+        );
+        let hash = sqlx::query_scalar::<_, String>(
+            "SELECT password_hash FROM admin_credentials WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(verify_password(&hash, "first administrator password"));
+    }
+
+    #[tokio::test]
+    async fn existing_password_is_not_overwritten() {
+        let pool = pool().await;
+        initialize_password(&pool, "first administrator password".into())
+            .await
+            .unwrap();
+        assert!(
+            !initialize_password(&pool, "replacement administrator password".into())
+                .await
+                .unwrap()
+        );
+        let hash = sqlx::query_scalar::<_, String>(
+            "SELECT password_hash FROM admin_credentials WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(verify_password(&hash, "first administrator password"));
+        assert!(!verify_password(
+            &hash,
+            "replacement administrator password"
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_initial_password() {
+        let pool = pool().await;
+        assert!(matches!(
+            initialize_password(&pool, "too short".into()).await,
+            Err(InitializePasswordError::InvalidPassword)
+        ));
+        assert!(!super::initialized(&pool).await.unwrap());
     }
 
     #[test]

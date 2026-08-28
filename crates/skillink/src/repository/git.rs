@@ -154,6 +154,8 @@ fn remaining(deadline: tokio::time::Instant) -> Result<Duration> {
 }
 
 async fn run_git_command(command: &mut Command, duration: Duration) -> Result<Output> {
+    command.env_remove("DEVHATCH_ADMIN_PASSWORD");
+    command.env_remove("DEVHATCH_ADMIN_PASSWORD_FILE");
     #[cfg(unix)]
     command.process_group(0);
     command

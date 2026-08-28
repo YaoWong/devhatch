@@ -5,6 +5,11 @@
 .breadcrumb strong { font-size: 14px; line-height: 1.2; }
 .breadcrumb span { max-width: min(55vw, 720px); margin-top: 3px; overflow: hidden; color: var(--color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .top-actions { margin-left: auto; }
+.terminal-top-actions { display: flex; align-items: center; gap: 8px; }
+.terminal-capacity-control { display: flex; padding: 3px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); }
+.terminal-capacity-control button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 99px; background: transparent; color: var(--color-text-muted); font: 650 10px/1 "SF Mono", monospace; cursor: pointer; transition: color 160ms ease, background-color 160ms ease; }
+.terminal-capacity-control button:hover { color: var(--color-text); background: var(--color-canvas); }
+.terminal-capacity-control button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-solid); }
 .secondary-button, .icon-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); cursor: pointer; }
 .secondary-button { padding: 0 13px; font-size: 11px; font-weight: 600; }
 .secondary-button:hover, .icon-button:hover { background: var(--color-canvas); }
@@ -18,6 +23,6 @@
 .sidebar-hidden .menu-button .menu-icon-open { opacity: 1; transform: scale(1) rotate(0); }
 .sidebar-hidden .menu-button .menu-icon-hide { opacity: 0; transform: scale(.72) rotate(8deg); }
 
-.terminal-workspace { min-height: 0; display: grid; grid-template-rows: 48px minmax(0, 1fr) 38px; }
+.terminal-workspace { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 38px; }
 .terminal-workspace.workspace-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; visibility: hidden; pointer-events: none; }
 .settings-workspace { min-height: 0; overflow: auto; background: var(--color-canvas); }

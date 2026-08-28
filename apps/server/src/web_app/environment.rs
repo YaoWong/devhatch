@@ -68,7 +68,9 @@ pub(super) fn node24_path() -> Option<PathBuf> {
         PathBuf::from("/opt/homebrew/opt/node@24/bin/node"),
     ]);
     candidates.filter(|path| path.is_file()).find(|path| {
-        std::process::Command::new(path)
+        let mut command = std::process::Command::new(path);
+        crate::process::configure_std_command(&mut command);
+        command
             .arg("--version")
             .output()
             .ok()

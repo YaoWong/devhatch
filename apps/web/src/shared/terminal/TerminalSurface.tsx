@@ -8,6 +8,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import type { ThemeId } from "../../types/settings";
 import { SocketConnection } from "./socketConnection";
+import { terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 
 const terminalThemes: Record<ThemeId, ITheme> = {
   default: { background: "#ffffff", foreground: "#1d1d1f", cursor: "#0071e3", selectionBackground: "#cce4ff", black: "#1d1d1f", red: "#d70015", green: "#16803c", yellow: "#9a6700", blue: "#0066cc", magenta: "#8944ab", cyan: "#007c91", white: "#f5f5f7", brightBlack: "#6e6e73", brightRed: "#ff3b30", brightGreen: "#34c759", brightYellow: "#ffcc00", brightBlue: "#0a84ff", brightMagenta: "#bf5af2", brightCyan: "#64d2ff", brightWhite: "#ffffff" },
@@ -21,55 +22,89 @@ const socketProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
 export function TerminalSurface({
   session,
-  active,
+  visible,
+  rendered = visible,
+  focused,
   focusVersion,
   socketBase,
+  className,
+  onFocus,
   onPhaseChange,
   onRemoved,
   onUpstreamSessionChange,
+  thumbnailEnabled = false,
+  thumbnailIntervalMs = 500,
+  onThumbnail,
   onError,
 }: {
   session: TerminalInfo;
-  active: boolean;
+  visible: boolean;
+  rendered?: boolean;
+  focused: boolean;
   focusVersion: number;
   socketBase: string;
+  className?: string;
+  onFocus?: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
+  thumbnailEnabled?: boolean;
+  thumbnailIntervalMs?: number;
+  onThumbnail?: (id: string, blob: Blob) => void;
   onError: (message: string) => void;
 }) {
   const { themeId } = useTheme();
   const initialThemeRef = useRef(themeId);
+  const themeIdRef = useRef(themeId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const activateRef = useRef<(() => void) | null>(null);
   const activationFrameRef = useRef<number | null>(null);
-  const activeRef = useRef(active);
+  const visibleRef = useRef(visible);
+  const focusedRef = useRef(focused);
+  visibleRef.current = visible;
+  focusedRef.current = focused;
   const onRemovedRef = useRef(onRemoved);
   const onUpstreamSessionChangeRef = useRef(onUpstreamSessionChange);
+  const thumbnailEnabledRef = useRef(thumbnailEnabled);
+  const thumbnailIntervalMsRef = useRef(thumbnailIntervalMs);
+  const onThumbnailRef = useRef(onThumbnail);
+  const requestThumbnailRef = useRef<(() => void) | null>(null);
+  const thumbnailGenerationRef = useRef(0);
   useEffect(() => {
     onRemovedRef.current = onRemoved;
     onUpstreamSessionChangeRef.current = onUpstreamSessionChange;
   }, [onRemoved, onUpstreamSessionChange]);
   useEffect(() => {
-    activeRef.current = active;
+    thumbnailIntervalMsRef.current = thumbnailIntervalMs;
+  }, [thumbnailIntervalMs]);
+  useEffect(() => {
+    thumbnailEnabledRef.current = thumbnailEnabled;
+    onThumbnailRef.current = onThumbnail;
+    thumbnailGenerationRef.current += 1;
+    if (thumbnailEnabled && onThumbnail) requestThumbnailRef.current?.();
+  }, [thumbnailEnabled, onThumbnail]);
+  useEffect(() => {
     if (activationFrameRef.current !== null) cancelAnimationFrame(activationFrameRef.current);
     activationFrameRef.current = null;
-    if (active) {
+    if (visible) {
       activationFrameRef.current = requestAnimationFrame(() => {
         activationFrameRef.current = null;
         activateRef.current?.();
       });
-    } else terminalRef.current?.blur();
+    }
+    if (!focused) terminalRef.current?.blur();
     return () => {
       if (activationFrameRef.current !== null) cancelAnimationFrame(activationFrameRef.current);
       activationFrameRef.current = null;
     };
-  }, [active, focusVersion]);
+  }, [visible, focused, focusVersion]);
   useEffect(() => {
+    themeIdRef.current = themeId;
     const terminal = terminalRef.current;
     if (terminal) terminal.options.theme = terminalThemes[themeId];
+    requestThumbnailRef.current?.();
   }, [themeId]);
   useEffect(() => {
     const container = containerRef.current;
@@ -80,6 +115,8 @@ export function TerminalSurface({
     let inputBuffer = "";
     let resizeFrame: number | null = null;
     let focusFrame: number | null = null;
+    let thumbnailTimer: number | null = null;
+    let lastThumbnailAt = 0;
     let lastResize = "";
     const connection = new SocketConnection(
       (callback, delay) => window.setTimeout(callback, delay),
@@ -105,7 +142,7 @@ export function TerminalSurface({
       terminal.loadAddon(fit);
       terminal.open(container);
       try {
-        terminal.loadAddon(new WebglAddon());
+        terminal.loadAddon(onThumbnailRef.current ? new WebglAddon(true) : new WebglAddon());
       } catch {
         terminal.refresh(0, terminal.rows - 1);
       }
@@ -115,8 +152,49 @@ export function TerminalSurface({
       return;
     }
     terminalRef.current = terminal;
+    const emitThumbnail = () => {
+      thumbnailTimer = null;
+      const callback = onThumbnailRef.current;
+      if (disposed || !thumbnailEnabledRef.current || !callback) return;
+      const screen = container.querySelector<HTMLElement>(".xterm-screen");
+      if (!screen) return;
+      const layers = Array.from(screen.querySelectorAll<HTMLCanvasElement>("canvas")).filter((canvas) => canvas.width > 0 && canvas.height > 0);
+      if (!layers.length) return;
+      const screenRect = screen.getBoundingClientRect();
+      if (screenRect.width <= 0 || screenRect.height <= 0) return;
+      const canvas = document.createElement("canvas");
+      canvas.width = terminalThumbnailSize.width;
+      canvas.height = terminalThumbnailSize.height;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.fillStyle = terminalThemes[themeIdRef.current].background ?? "#000";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      try {
+        for (const layer of layers) {
+          const bounds = terminalThumbnailBounds(screenRect, layer.getBoundingClientRect());
+          context.drawImage(layer, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+      } catch {
+        return;
+      }
+      const generation = ++thumbnailGenerationRef.current;
+      canvas.toBlob((blob) => {
+        if (!blob || disposed || !thumbnailEnabledRef.current || generation !== thumbnailGenerationRef.current) return;
+        onThumbnailRef.current?.(session.id, blob);
+      }, "image/png");
+    };
+    const scheduleThumbnail = () => {
+      if (disposed || !thumbnailEnabledRef.current || !onThumbnailRef.current || thumbnailTimer !== null) return;
+      const delay = Math.max(0, thumbnailIntervalMsRef.current - (performance.now() - lastThumbnailAt));
+      thumbnailTimer = window.setTimeout(() => {
+        lastThumbnailAt = performance.now();
+        emitThumbnail();
+      }, delay);
+    };
+    requestThumbnailRef.current = scheduleThumbnail;
+    const render = terminal.onRender(scheduleThumbnail);
     const sendResize = () => {
-      if (!activeRef.current) return;
+      if (!visibleRef.current) return;
       try {
         fit.fit();
       } catch {
@@ -130,7 +208,7 @@ export function TerminalSurface({
       }
     };
     const scheduleResize = () => {
-      if (disposed || resizeFrame !== null) return;
+      if (disposed || !visibleRef.current || resizeFrame !== null) return;
       resizeFrame = requestAnimationFrame(() => {
         resizeFrame = null;
         sendResize();
@@ -138,7 +216,7 @@ export function TerminalSurface({
     };
     activateRef.current = () => {
       sendResize();
-      terminal.focus();
+      if (focusedRef.current) terminal.focus();
     };
     const connect = () => {
       if (disposed) return;
@@ -163,6 +241,7 @@ export function TerminalSurface({
           };
           if (message.type === "ready") {
             sendResize();
+            scheduleThumbnail();
             if (message.terminal?.upstreamSessionId) {
               onUpstreamSessionChangeRef.current?.(
                 session.id,
@@ -180,7 +259,8 @@ export function TerminalSurface({
           }
           if (message.type === "snapshot" && connection.snapshot(generation)) {
             terminal.reset();
-            if (message.data) terminal.write(message.data);
+            if (message.data) terminal.write(message.data, scheduleThumbnail);
+            else scheduleThumbnail();
             protocolReady = true;
             onPhaseChange(session.id, "connected");
             sendResize();
@@ -188,7 +268,7 @@ export function TerminalSurface({
               socket.send(JSON.stringify({ type: "input", data: inputBuffer }));
               inputBuffer = "";
             }
-            if (activeRef.current) {
+            if (focusedRef.current) {
               if (focusFrame !== null) cancelAnimationFrame(focusFrame);
               focusFrame = requestAnimationFrame(() => {
                 focusFrame = null;
@@ -196,7 +276,7 @@ export function TerminalSurface({
               });
             }
           }
-          if (message.type === "output" && message.data) terminal.write(message.data);
+          if (message.type === "output" && message.data) terminal.write(message.data, scheduleThumbnail);
           if (message.type === "exit" || message.type === "processExited") {
             onPhaseChange(session.id, "exited");
             expectedClose = true;
@@ -231,10 +311,10 @@ export function TerminalSurface({
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
     void document.fonts.ready.then(() => {
-      if (!disposed && activeRef.current) scheduleResize();
+      if (!disposed && visibleRef.current) scheduleResize();
     });
     connect();
-    if (activeRef.current) {
+    if (visibleRef.current) {
       focusFrame = requestAnimationFrame(() => {
         focusFrame = null;
         if (!disposed) activateRef.current?.();
@@ -245,15 +325,25 @@ export function TerminalSurface({
       connection.stop();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+      if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
+      thumbnailGenerationRef.current += 1;
       observer.disconnect();
       input.dispose();
+      render.dispose();
       const socket = socketRef.current;
       socketRef.current = null;
       socket?.close(1000, "surface closed");
       terminal.dispose();
       terminalRef.current = null;
       activateRef.current = null;
+      requestThumbnailRef.current = null;
     };
   }, [session.id, socketBase, onPhaseChange, onError]);
-  return <div ref={containerRef} className={`terminal-surface ${active ? "active" : ""}`} />;
+  return (
+    <div
+      ref={containerRef}
+      className={`terminal-surface ${rendered ? "active" : ""} ${focused ? "focused" : ""} ${className ?? ""}`}
+      onPointerDown={onFocus}
+    />
+  );
 }
