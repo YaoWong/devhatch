@@ -2,6 +2,7 @@
 name = "devhatch-server"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 
 [dependencies]
 argon2 = "0.5"
@@ -22,3 +23,6 @@ tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-t
 tower-http = { version = "0.6", features = ["fs"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -125,7 +125,18 @@ pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
         setup_token.as_deref(),
         secure_cookie,
     ));
-    let app = crate::router::build(state.clone(), apps_dir);
+    let web_dist = resolve_web_dist(
+        env::var_os("DEVHATCH_WEB_DIST").as_deref().map(Path::new),
+        env::current_exe().ok().as_deref().and_then(Path::parent),
+        env::current_dir().ok().as_deref(),
+        &workspace_root.join("apps/web/dist"),
+    );
+    if web_dist.is_none() {
+        eprintln!(
+            "No DevHatch web distribution containing index.html was found; static web fallback is disabled"
+        );
+    }
+    let app = crate::router::build(state.clone(), web_dist);
     let bind_host = env::var("DEVHATCH_BIND").unwrap_or_else(|_| HOST.to_string());
     let address = format!("{bind_host}:{PORT}");
     let listener = TcpListener::bind(&address).await?;
@@ -160,6 +171,29 @@ pub(crate) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?;
     Ok(())
+}
+
+fn resolve_web_dist(
+    configured: Option<&Path>,
+    executable_dir: Option<&Path>,
+    current_dir: Option<&Path>,
+    development_dist: &Path,
+) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(configured) = configured {
+        candidates.push(configured.to_path_buf());
+    }
+    if let Some(executable_dir) = executable_dir {
+        candidates.push(executable_dir.join("web/dist"));
+        candidates.push(executable_dir.join("dist"));
+    }
+    if let Some(current_dir) = current_dir {
+        candidates.push(current_dir.join("apps/web/dist"));
+    }
+    candidates.push(development_dist.to_path_buf());
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.join("index.html").is_file())
 }
 
 fn validated_public_origin() -> Result<Option<url::Url>, Box<dyn std::error::Error>> {
@@ -252,7 +286,7 @@ async fn shutdown_signal() {
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 
-    use super::{prepare_data_dir, secure_database_files};
+    use super::{prepare_data_dir, resolve_web_dist, secure_database_files};
 
     #[tokio::test]
     async fn stop_acknowledgement_precedes_cleanup_signal() {
@@ -268,6 +302,38 @@ mod tests {
         assert!(!task.is_finished());
         stopped.send(()).unwrap();
         assert!(task.await.unwrap());
+    }
+
+    #[test]
+    fn resolves_web_dist_in_priority_order_and_requires_index() {
+        let root = tempfile::tempdir().unwrap();
+        let configured = root.path().join("configured");
+        let executable = root.path().join("bin");
+        let current = root.path().join("current");
+        let development = root.path().join("development");
+        let candidates = [
+            configured.clone(),
+            executable.join("web/dist"),
+            executable.join("dist"),
+            current.join("apps/web/dist"),
+            development.clone(),
+        ];
+        for candidate in &candidates {
+            std::fs::create_dir_all(candidate).unwrap();
+        }
+        let resolve = || {
+            resolve_web_dist(
+                Some(&configured),
+                Some(&executable),
+                Some(&current),
+                &development,
+            )
+        };
+        assert_eq!(resolve(), None);
+        for expected in candidates.iter().rev() {
+            std::fs::write(expected.join("index.html"), "").unwrap();
+            assert_eq!(resolve().as_deref(), Some(expected.as_path()));
+        }
     }
 
     #[test]

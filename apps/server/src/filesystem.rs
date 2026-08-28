@@ -115,6 +115,58 @@ pub fn validated_directory(value: &str) -> Result<String, &'static str> {
         .map_err(|_| "INVALID_LAUNCH_PATH")
 }
 
+pub fn validated_import_directory(value: &Path) -> io::Result<PathBuf> {
+    let metadata = fs::symlink_metadata(value)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid import directory",
+        ));
+    }
+    let source = fs::canonicalize(value)?;
+    validate_import_source(source, &import_roots()?)
+}
+
+fn validate_import_source(source: PathBuf, roots: &[PathBuf]) -> io::Result<PathBuf> {
+    if roots
+        .iter()
+        .any(|root| source != *root && source.starts_with(root))
+    {
+        Ok(source)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "import directory is outside the authorized roots",
+        ))
+    }
+}
+
+fn import_roots() -> io::Result<Vec<PathBuf>> {
+    let configured = env::var_os("DEVHATCH_IMPORT_ROOTS");
+    let candidates = configured
+        .as_ref()
+        .map(|value| env::split_paths(value).collect::<Vec<_>>())
+        .unwrap_or_else(|| vec![home_dir()]);
+    let mut roots = Vec::new();
+    for candidate in candidates {
+        let root = fs::canonicalize(candidate)?;
+        if root.parent().is_none() || !root.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid import root",
+            ));
+        }
+        roots.push(root);
+    }
+    if roots.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no import roots configured",
+        ));
+    }
+    Ok(roots)
+}
+
 pub fn path_string(path: impl AsRef<Path>) -> String {
     path.as_ref().to_string_lossy().into_owned()
 }
@@ -132,11 +184,26 @@ fn errno_name(code: i32) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_path, validated_directory};
+    use super::{resolve_path, validate_import_source, validated_directory};
+    use tempfile::TempDir;
 
     #[test]
     fn resolves_relative_paths_and_rejects_invalid_directories() {
         assert!(resolve_path("relative").unwrap().is_absolute());
         assert!(validated_directory("/definitely/not/a/devhatch/path").is_err());
+    }
+
+    #[test]
+    fn import_source_must_be_below_an_authorized_root() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let source = root.join("skill");
+        std::fs::create_dir(&source).unwrap();
+        assert_eq!(
+            validate_import_source(source.clone(), std::slice::from_ref(&root)).unwrap(),
+            source
+        );
+        assert!(validate_import_source(root.clone(), std::slice::from_ref(&root)).is_err());
+        assert!(validate_import_source(temp.path().join("outside"), &[source]).is_err());
     }
 }

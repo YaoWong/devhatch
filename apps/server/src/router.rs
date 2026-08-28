@@ -1,4 +1,4 @@
-use std::{env, path::Path, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
@@ -15,7 +15,7 @@ use crate::{
     state::AppState, terminal, terminal_workspace, web_app,
 };
 
-pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
+pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
     let protected = Router::new()
         .route("/api/health", get(terminal::health))
         .route("/api/auth/verify", get(auth::verify))
@@ -144,13 +144,9 @@ pub(crate) fn build(state: Arc<AppState>, apps_dir: &Path) -> Router {
         .route("/api/{*path}", axum::routing::any(api_not_found))
         .layer(middleware::from_fn(require_trusted_request))
         .with_state(state);
-    let dist = env::var_os("DEVHATCH_WEB_DIST")
-        .map(Into::into)
-        .unwrap_or_else(|| apps_dir.join("web/dist"));
-    if dist.exists() {
-        api.fallback_service(
-            ServeDir::new(&dist).not_found_service(ServeFile::new(dist.join("index.html"))),
-        )
+    if let Some(dist) = web_dist {
+        let index = dist.join("index.html");
+        api.fallback_service(ServeDir::new(&dist).not_found_service(ServeFile::new(index)))
     } else {
         api
     }

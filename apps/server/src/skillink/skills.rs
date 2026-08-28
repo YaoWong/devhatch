@@ -66,9 +66,13 @@ pub(crate) async fn import_skill(
         Ok(request) => request,
         Err(_) => return invalid_request(),
     };
+    let source = match crate::filesystem::validated_import_directory(&request.source) {
+        Ok(source) => source,
+        Err(_) => return invalid_request(),
+    };
     match state
         .skillink()
-        .import_skill(&request.source, request.slug.as_deref())
+        .import_skill(&source, request.slug.as_deref())
         .await
     {
         Ok(skill) => (

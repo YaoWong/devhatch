@@ -208,32 +208,56 @@ pub(crate) async fn command_output(
     let mut guard = ProcessGuard::new(identity);
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let stdout_task = tokio::spawn(read_limited(stdout, output_limit));
-    let stderr_task = tokio::spawn(read_limited(stderr, output_limit));
-    let status = match tokio::time::timeout(duration, child.wait()).await {
-        Ok(result) => result.map_err(|error| error.to_string())?,
-        Err(_) => {
-            #[cfg(unix)]
-            if let Some(identity) = identity {
-                let _ = signal_owned(identity, libc::SIGTERM);
-                tokio::time::sleep(Duration::from_millis(250)).await;
-                if child.try_wait().ok().flatten().is_none() {
-                    let _ = signal_owned(identity, libc::SIGKILL);
-                }
-            }
-            let _ = child.kill().await;
-            let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
-            return Err("Command timed out".into());
-        }
+    let mut stdout_task = tokio::spawn(read_limited(stdout, output_limit));
+    let mut stderr_task = tokio::spawn(read_limited(stderr, output_limit));
+    let completion = async {
+        let status = child.wait().await.map_err(|error| error.to_string())?;
+        let stdout = (&mut stdout_task)
+            .await
+            .map_err(|error| error.to_string())??;
+        let stderr = (&mut stderr_task)
+            .await
+            .map_err(|error| error.to_string())??;
+        Ok::<_, String>(Output {
+            status,
+            stdout,
+            stderr,
+        })
     };
-    guard.disarm();
-    let stdout = stdout_task.await.map_err(|error| error.to_string())??;
-    let stderr = stderr_task.await.map_err(|error| error.to_string())??;
-    Ok(Output {
-        status,
-        stdout,
-        stderr,
-    })
+    match tokio::time::timeout(duration, completion).await {
+        Ok(Ok(output)) => {
+            guard.disarm();
+            Ok(output)
+        }
+        Ok(Err(error)) => {
+            cleanup_failed_command(&mut child, identity, &mut stdout_task, &mut stderr_task).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_failed_command(&mut child, identity, &mut stdout_task, &mut stderr_task).await;
+            Err("Command timed out".into())
+        }
+    }
+}
+
+async fn cleanup_failed_command(
+    child: &mut tokio::process::Child,
+    identity: Option<ChildIdentity>,
+    stdout_task: &mut tokio::task::JoinHandle<Result<Vec<u8>, String>>,
+    stderr_task: &mut tokio::task::JoinHandle<Result<Vec<u8>, String>>,
+) {
+    stdout_task.abort();
+    stderr_task.abort();
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
+    #[cfg(unix)]
+    if let Some(identity) = identity {
+        let _ = signal_owned_child(identity, libc::SIGTERM);
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let _ = signal_owned_child(identity, libc::SIGKILL);
+    }
+    let _ = child.start_kill();
+    let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
 }
 
 async fn read_limited<R>(reader: Option<R>, limit: usize) -> Result<Vec<u8>, String>
@@ -266,8 +290,38 @@ pub(crate) fn io_error(error: String) -> io::Error {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{ChildIdentity, configure_std_command, signal_owned};
+    use super::{ChildIdentity, command_output, configure_std_command, signal_owned};
     use std::{process::Command, time::Duration};
+
+    #[tokio::test]
+    async fn command_output_times_out_while_draining_inherited_stdout() {
+        let root = tempfile::tempdir().unwrap();
+        let child_pid_path = root.path().join("child.pid");
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command.arg("-c").arg(format!(
+            "sleep 300 & echo $! > '{}'; exit 0",
+            child_pid_path.display()
+        ));
+        let started = tokio::time::Instant::now();
+        let result = command_output(&mut command, Duration::from_millis(100), 1024).await;
+        assert_eq!(result.unwrap_err(), "Command timed out");
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let child_pid = wait_for_pid(&child_pid_path);
+        wait_until_gone(child_pid);
+        assert!(!std::path::Path::new(&format!("/proc/{child_pid}")).exists());
+    }
+
+    #[tokio::test]
+    async fn command_output_returns_normal_output() {
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command.arg("-c").arg("printf stdout; printf stderr >&2");
+        let output = command_output(&mut command, Duration::from_secs(2), 1024)
+            .await
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"stdout");
+        assert_eq!(output.stderr, b"stderr");
+    }
 
     #[test]
     fn signal_owned_kills_process_tree() {

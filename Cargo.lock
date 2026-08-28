@@ -373,6 +373,7 @@ dependencies = [
  "sha2",
  "skillink",
  "sqlx",
+ "tempfile",
  "tokio",
  "tower-http",
  "url",
@@ -1667,6 +1668,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "dirs",
+ "libc",
  "serde",
  "serde_json",
  "serde_yaml",

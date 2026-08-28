@@ -31,33 +31,50 @@ impl Skillink {
     }
 
     pub async fn import_skill(&self, source: &Path, slug: Option<&str>) -> Result<Skill> {
-        if !source.join("SKILL.md").is_file() {
-            return Err(Error::MissingManifest);
+        let manifest = source.join("SKILL.md");
+        let manifest_metadata = match fs::symlink_metadata(&manifest) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::MissingManifest);
+            }
+            Err(error) => return Err(error.into()),
+        };
+        if manifest_metadata.file_type().is_symlink() || !manifest_metadata.is_file() {
+            return Err(Error::UnsafeEntry(manifest.display().to_string()));
         }
-        let metadata = parse_permissive(&source.join("SKILL.md"))?;
-        if let (Some(requested), Some(manifest)) = (slug, metadata.0.as_deref())
-            && requested != manifest
-        {
-            return Err(Error::Manifest {
-                path: source.join("SKILL.md").display().to_string(),
-                message: "name must match the imported skill slug".into(),
-            });
-        }
-        let slug = slug
-            .map(str::to_owned)
-            .or(metadata.0)
-            .or_else(|| {
-                source
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(str::to_owned)
-            })
-            .ok_or_else(|| Error::InvalidSlug(source.display().to_string()))?;
-        validate_slug(&slug)?;
-        let description = metadata.1.unwrap_or_default();
-        let id = Uuid::new_v4().to_string();
         let staging = self.staging_path();
         copy_directory_safely(source, &staging)?;
+        let imported = (|| {
+            let metadata = parse_permissive(&staging.join("SKILL.md"))?;
+            if let (Some(requested), Some(manifest)) = (slug, metadata.0.as_deref())
+                && requested != manifest
+            {
+                return Err(Error::Manifest {
+                    path: source.join("SKILL.md").display().to_string(),
+                    message: "name must match the imported skill slug".into(),
+                });
+            }
+            let slug = slug
+                .map(str::to_owned)
+                .or(metadata.0)
+                .or_else(|| {
+                    source
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned)
+                })
+                .ok_or_else(|| Error::InvalidSlug(source.display().to_string()))?;
+            validate_slug(&slug)?;
+            Ok((slug, metadata.1.unwrap_or_default()))
+        })();
+        let (slug, description) = match imported {
+            Ok(imported) => imported,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(error);
+            }
+        };
+        let id = Uuid::new_v4().to_string();
         let destination = self.root().join("custom").join(&id);
         publish_directory(&staging, &destination)?;
         if let Err(error) = self.insert_custom_skill(&id, &slug, &description).await {
