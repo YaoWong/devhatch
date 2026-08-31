@@ -1,4 +1,4 @@
-export const terminalThumbnailSize = { width: 240, height: 150 } as const;
+export const terminalThumbnailSize = { width: 320, height: 200 } as const;
 
 export function terminalThumbnailBounds(
   screen: { left: number; top: number; width: number; height: number },

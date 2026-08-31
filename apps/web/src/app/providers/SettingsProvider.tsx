@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { getSettings, updateSettings } from "../../api/settings";
 import { ThemeContext } from "../../shared/theme/ThemeContext";
 import { applyTheme, cachedTheme, isThemeId } from "../../shared/theme/themes";
-import type { ThemeId } from "../../types/settings";
+import type { LayoutMode, ThemeId } from "../../types/settings";
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const initialTheme = useRef(cachedTheme()).current;
   const [themeId, setThemeId] = useState<ThemeId | null>(null);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("canvas");
   const [agentLaunchPathsMaxHeightPx, setAgentLaunchPathsMaxHeightPxState] = useState(286);
   const [navigationRailWidthPx, setNavigationRailWidthPxState] = useState(288);
   const [saving, setSaving] = useState(false);
@@ -15,6 +16,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const confirmedRef = useRef<ThemeId>(initialTheme);
   const desiredRef = useRef<ThemeId>(initialTheme);
   const savingRef = useRef(false);
+  const confirmedLayoutRef = useRef<LayoutMode>("canvas");
+  const desiredLayoutRef = useRef<LayoutMode>("canvas");
+  const layoutSavingRef = useRef(false);
   const confirmedHeightRef = useRef(286);
   const desiredHeightRef = useRef(286);
   const heightSavingRef = useRef(false);
@@ -51,7 +55,31 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
     }
     savingRef.current = false;
-    if (mountedRef.current) setSaving(false);
+    if (mountedRef.current && !layoutSavingRef.current) setSaving(false);
+  }, []);
+
+  const flushLayout = useCallback(async () => {
+    if (layoutSavingRef.current) return;
+    layoutSavingRef.current = true;
+    if (mountedRef.current) setSaving(true);
+    while (desiredLayoutRef.current !== confirmedLayoutRef.current) {
+      const requested = desiredLayoutRef.current;
+      try {
+        const settings = await updateSettings({ layoutMode: requested });
+        confirmedLayoutRef.current = settings.layoutMode === "classic" ? "classic" : "canvas";
+        if (mountedRef.current && desiredLayoutRef.current === requested) {
+          setLayoutMode(confirmedLayoutRef.current);
+        }
+      } catch (reason) {
+        if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+        if (desiredLayoutRef.current === requested) {
+          desiredLayoutRef.current = confirmedLayoutRef.current;
+          if (mountedRef.current) setLayoutMode(confirmedLayoutRef.current);
+        }
+      }
+    }
+    layoutSavingRef.current = false;
+    if (mountedRef.current && !savingRef.current) setSaving(false);
   }, []);
 
   const flushAgentLaunchPathsMaxHeight = useCallback(async () => {
@@ -162,6 +190,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         const next = isThemeId(settings.theme) ? settings.theme : "default";
         confirmedRef.current = next;
         desiredRef.current = next;
+        const nextLayout = settings.layoutMode === "classic" ? "classic" : "canvas";
+        confirmedLayoutRef.current = nextLayout;
+        desiredLayoutRef.current = nextLayout;
+        setLayoutMode(nextLayout);
         const height =
           Number.isInteger(settings.agentLaunchPathsMaxHeightPx) &&
           settings.agentLaunchPathsMaxHeightPx >= 160 &&
@@ -214,16 +246,25 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     void flush();
   }, [flush]);
 
+  const selectLayoutMode = useCallback((next: LayoutMode) => {
+    desiredLayoutRef.current = next;
+    setLayoutMode(next);
+    setError(null);
+    void flushLayout();
+  }, [flushLayout]);
+
   if (themeId === null) return null;
   return (
     <ThemeContext
       value={{
         themeId,
+        layoutMode,
         agentLaunchPathsMaxHeightPx,
         navigationRailWidthPx,
         saving,
         error,
         selectTheme,
+        selectLayoutMode,
         setAgentLaunchPathsMaxHeightPx,
         setNavigationRailWidthPx,
       }}

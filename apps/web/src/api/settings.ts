@@ -7,7 +7,7 @@ export function getSettings() {
 }
 
 export function updateSettings(
-  patch: Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx">>,
+  patch: Partial<Pick<AppSettings, "theme" | "layoutMode" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx">>,
 ) {
   return requestJson<{ settings: AppSettings }>(
     "/api/settings",

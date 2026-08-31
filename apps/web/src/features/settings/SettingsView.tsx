@@ -1,9 +1,10 @@
-import { LogOut, Palette, SlidersHorizontal } from "lucide-react";
+import type { LayoutMode } from "../../types/settings";
+import { LogOut, Palette } from "lucide-react";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { themes } from "../../shared/theme/themes";
 
-export type SettingsSection = "appearance" | "sessions" | "account";
+export type SettingsSection = "appearance" | "account";
 
 export function SettingsRailPage({
   section,
@@ -14,7 +15,6 @@ export function SettingsRailPage({
 }) {
   const items = [
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "sessions", label: "Sessions", icon: SlidersHorizontal },
     { id: "account", label: "Account", icon: LogOut },
   ] as const;
   return (
@@ -39,32 +39,41 @@ export function SettingsRailPage({
 }
 
 export function SettingsView({
+  layoutMode: viewLayoutMode,
   section,
-  confirmDelete,
-  onConfirmDeleteChange,
+  onSelectSection,
   onLogout,
   logoutBusy,
   logoutError,
 }: {
+  layoutMode: LayoutMode;
   section: SettingsSection;
-  confirmDelete: boolean;
-  onConfirmDeleteChange: (enabled: boolean) => void;
+  onSelectSection: (section: SettingsSection) => void;
   onLogout: () => Promise<void>;
   logoutBusy: boolean;
   logoutError: string | null;
 }) {
   const {
     themeId,
-    agentLaunchPathsMaxHeightPx,
+    layoutMode,
     navigationRailWidthPx,
     saving,
     error,
     selectTheme,
-    setAgentLaunchPathsMaxHeightPx,
+    selectLayoutMode,
     setNavigationRailWidthPx,
   } = useTheme();
   return (
     <div className="settings-workspace">
+      {viewLayoutMode === "canvas" && (
+        <nav className="settings-canvas-tabs" aria-label="Settings sections">
+          {(["appearance", "account"] as const).map((item) => (
+            <button key={item} type="button" aria-current={section === item ? "page" : undefined} onClick={() => onSelectSection(item)}>
+              {item === "appearance" ? "Appearance" : "Account"}
+            </button>
+          ))}
+        </nav>
+      )}
       <div className="settings-content">
         {section === "appearance" && <section className="settings-section">
           <div className="settings-section-title">
@@ -72,6 +81,26 @@ export function SettingsView({
             <p>Choose a theme for DevHatch and its terminals.</p>
           </div>
           <div className="settings-group settings-theme-group">
+            <div className="settings-row static settings-theme-row">
+              <Palette />
+              <span>
+                <strong>Layout</strong>
+                <small>Canvas uses a full workspace with an overlay sidebar. Classic keeps the original framed layout.</small>
+              </span>
+              <CustomSelect
+                label="Layout"
+                value={layoutMode}
+                options={[
+                  { id: "canvas", name: "Canvas", description: "Full workspace with overlay navigation" },
+                  { id: "classic", name: "Classic", description: "Original framed workspace" },
+                ] as const}
+                disabled={saving}
+                compact
+                renderTrigger={(layout) => <span className="select-copy"><strong>{layout?.name}</strong><small>{layout?.description}</small></span>}
+                renderOption={(layout) => <span className="select-copy"><strong>{layout.name}</strong><small>{layout.description}</small></span>}
+                onChange={selectLayoutMode}
+              />
+            </div>
             <div className="settings-row static settings-theme-row">
               <Palette />
               <span>
@@ -89,17 +118,9 @@ export function SettingsView({
                 onChange={selectTheme}
               />
             </div>
-          </div>
-        </section>}
-        {section === "sessions" && <section className="settings-section">
-          <div className="settings-section-title">
-            <h2>Sessions</h2>
-            <p>Control terminal and agent session behavior.</p>
-          </div>
-          <div className="settings-group">
             <label className="settings-row settings-range-row">
               <span>
-                <strong>Navigation sidebar width</strong>
+                <strong>Sidebar width</strong>
                 <small>Set the desktop navigation sidebar width.</small>
                 {error && <small className="settings-error" role="alert">{error}</small>}
               </span>
@@ -110,41 +131,11 @@ export function SettingsView({
                   max="480"
                   step="8"
                   value={navigationRailWidthPx}
-                  aria-label="Navigation sidebar width"
+                  aria-label="Sidebar width"
                   onChange={(event) => setNavigationRailWidthPx(event.target.valueAsNumber)}
                 />
                 <output>{navigationRailWidthPx}px</output>
               </span>
-            </label>
-            <label className="settings-row settings-range-row">
-              <span>
-                <strong>Launch Paths maximum height</strong>
-                <small>Limit Launch Paths so Sessions can use the remaining navigation height.</small>
-              </span>
-              <span className="settings-range-control">
-                <input
-                  type="range"
-                  min="160"
-                  max="480"
-                  step="8"
-                  value={agentLaunchPathsMaxHeightPx}
-                  aria-label="Launch Paths maximum height"
-                  onChange={(event) => setAgentLaunchPathsMaxHeightPx(event.target.valueAsNumber)}
-                />
-                <output>{agentLaunchPathsMaxHeightPx}px</output>
-              </span>
-            </label>
-            <label className="settings-row">
-              <span>
-                <strong>Confirm before closing live sessions</strong>
-                <small>Ask before stopping a process and closing its live tab. OpenCode history is preserved.</small>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={confirmDelete}
-                onChange={(event) => onConfirmDeleteChange(event.target.checked)}
-              />
             </label>
           </div>
         </section>}

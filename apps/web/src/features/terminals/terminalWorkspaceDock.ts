@@ -1,6 +1,6 @@
 export const TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-terminal-workspace-capacity";
 
-export type TerminalWorkspaceCapacity = 1 | 2 | 3;
+export type TerminalWorkspaceCapacity = 1 | 2 | 3 | 4;
 
 export type TerminalWorkspaceDockState = {
   stagedIds: string[];
@@ -18,7 +18,7 @@ export function terminalViewTransitionName(id: string) {
 
 export function clampTerminalWorkspaceCapacity(value: number): TerminalWorkspaceCapacity {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(3, Math.max(1, Math.round(value))) as TerminalWorkspaceCapacity;
+  return Math.min(4, Math.max(1, Math.round(value))) as TerminalWorkspaceCapacity;
 }
 
 function trimStaged(stagedIds: string[], capacity: number, activeId: string | null) {

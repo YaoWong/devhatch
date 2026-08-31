@@ -11,7 +11,7 @@ export function WorkspacePicker({
   onSelect,
 }: {
   initialPath?: string;
-  purpose: "add-launch-path" | "new-terminal-workspace" | "agent";
+  purpose: "add-launch-path" | "agent";
   onClose: () => void;
   onSelect: (path: string) => void;
 }) {
@@ -72,8 +72,8 @@ export function WorkspacePicker({
       ...parts.map((name, index) => ({ name, path: `/${parts.slice(0, index + 1).join("/")}` })),
     ];
   }, [listing]);
-  const title = purpose === "new-terminal-workspace" ? "New Workspace" : purpose === "agent" ? "Add Agent Launch Path" : "Add Launch Path";
-  const confirmLabel = purpose === "new-terminal-workspace" ? "Create Workspace" : "Add Launch Path";
+  const title = purpose === "agent" ? "Add Agent Launch Path" : "Add Launch Path";
+  const confirmLabel = "Add Launch Path";
   return (
     <div
       className="picker-backdrop"
@@ -95,7 +95,7 @@ export function WorkspacePicker({
           </div>
           <div>
             <h2 id="folder-picker-title">{title}</h2>
-            <p>{purpose === "new-terminal-workspace" ? "Choose a folder for the first terminal" : "Choose a folder on this machine"}</p>
+            <p>Choose a folder on this machine</p>
           </div>
           <button className="picker-close" aria-label="Close" onClick={onClose}>
             <X />

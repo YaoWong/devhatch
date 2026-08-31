@@ -1,5 +1,10 @@
-import { ArrowLeft, Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
-import type { RefObject } from "react";
+import { ArrowLeft, Bot, Globe2, LoaderCircle, Pin, PinOff, Settings, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
+import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls";
+import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
+import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
+import type { FocusEventHandler, MouseEventHandler, RefObject } from "react";
+import type { WebAppOperation } from "../../types/web-apps";
+import type { LayoutMode } from "../../types/settings";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 import { Brand } from "../../shared/branding/Branding";
 
@@ -18,11 +23,42 @@ export function NavigationRail({
   pageRefs,
   titleRefs,
   onNavigate,
+  terminalSettingsOpen,
+  terminalSettingsToggleRef,
+  terminalSettingsPanelRef,
+  terminalCapacity,
+  terminalLayoutCount,
+  terminalLayoutPreset,
+  terminalThumbnailsAutoHide,
+  terminalThumbnailSide,
+  terminalLaunchPathsHeight,
+  confirmTerminalClose,
+  onToggleTerminalSettings,
+  onCloseTerminalSettings,
+  onTerminalCapacityChange,
+  onTerminalLayoutPresetChange,
+  onToggleTerminalThumbnailAutoHide,
+  onTerminalThumbnailSideChange,
+  onTerminalLaunchPathsHeightChange,
+  onConfirmTerminalCloseChange,
   terminalContent,
   agentContent,
   skillsContent,
   webAppContent,
   settingsContent,
+  layoutMode,
+  canvasPinned,
+  railInteractive,
+  railId,
+  railRef,
+  webAppRunning,
+  webAppOperation,
+  onCanvasPinnedChange,
+  onCanvasEnter,
+  onCanvasLeave,
+  onCanvasFocus,
+  onCanvasBlur,
+  onStopWebApp,
 }: {
   railPage: RailPage;
   railMotion: RailMotion;
@@ -33,19 +69,67 @@ export function NavigationRail({
   modeRefs: ModeRefs;
   pageRefs: PageRefs;
   titleRefs: TitleRefs;
-  onNavigate: (page: RailPage, motion: Exclude<RailMotion, null>) => void;
+  onNavigate: (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn?: boolean) => void;
+  terminalSettingsOpen: boolean;
+  terminalSettingsToggleRef: RefObject<HTMLButtonElement | null>;
+  terminalSettingsPanelRef: RefObject<HTMLDivElement | null>;
+  terminalCapacity: TerminalWorkspaceCapacity;
+  terminalLayoutCount: TerminalLayoutCount | null;
+  terminalLayoutPreset: TerminalLayoutPreset | null;
+  terminalThumbnailsAutoHide: boolean;
+  terminalThumbnailSide: "left" | "right";
+  terminalLaunchPathsHeight: number;
+  confirmTerminalClose: boolean;
+  onToggleTerminalSettings: () => void;
+  onCloseTerminalSettings: () => void;
+  onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onToggleTerminalThumbnailAutoHide: () => void;
+  onTerminalThumbnailSideChange: (side: "left" | "right") => void;
+  onTerminalLaunchPathsHeightChange: (height: number) => void;
+  onConfirmTerminalCloseChange: (enabled: boolean) => void;
   terminalContent: React.ReactNode;
   agentContent: React.ReactNode;
   skillsContent: React.ReactNode;
   webAppContent: React.ReactNode;
   settingsContent: React.ReactNode;
+  layoutMode: LayoutMode;
+  canvasPinned: boolean;
+  railInteractive: boolean;
+  railId: string;
+  railRef: RefObject<HTMLElement | null>;
+  webAppRunning: boolean;
+  webAppOperation: WebAppOperation | null;
+  onCanvasPinnedChange: () => void;
+  onCanvasEnter: MouseEventHandler<HTMLElement>;
+  onCanvasLeave: MouseEventHandler<HTMLElement>;
+  onCanvasFocus: FocusEventHandler<HTMLElement>;
+  onCanvasBlur: FocusEventHandler<HTMLElement>;
+  onStopWebApp: () => void;
 }) {
   const pageClass = (page: DetailMode) =>
     `rail-page ${railPage === page ? "active" : ""} ` +
     `${railMotion === "forward" ? "forward-enter" : ""} ` +
     `${railMotion === "return" ? "return-exit" : ""}`;
   return (
-    <aside className="rail">
+    <aside
+      ref={railRef}
+      id={railId}
+      className="rail"
+      tabIndex={-1}
+      inert={!railInteractive ? true : undefined}
+      onMouseEnter={onCanvasEnter}
+      onMouseLeave={onCanvasLeave}
+      onFocus={onCanvasFocus}
+      onBlur={onCanvasBlur}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && terminalSettingsOpen) {
+          event.preventDefault();
+          event.stopPropagation();
+          onCloseTerminalSettings();
+        }
+      }}
+    >
       <Brand />
       <div className="rail-pages">
         <section
@@ -83,14 +167,16 @@ export function NavigationRail({
               active={workspaceMode === "webapp"}
               onNavigate={onNavigate}
             />
-            <ModeButton
-              mode="settings"
-              modeRefs={modeRefs}
-              active={workspaceMode === "settings"}
-              onNavigate={onNavigate}
-            />
+            {layoutMode === "classic" && (
+              <ModeButton
+                mode="settings"
+                modeRefs={modeRefs}
+                active={workspaceMode === "settings"}
+                onNavigate={onNavigate}
+              />
+            )}
           </nav>
-          <div className="mode-footer">⌘ 1–5</div>
+          {layoutMode === "classic" && <footer className="mode-footer">⌘ 1–5</footer>}
         </section>
         <DetailPage
           mode="terminal"
@@ -143,6 +229,61 @@ export function NavigationRail({
           {settingsContent}
         </DetailPage>
       </div>
+      {layoutMode === "canvas" && workspaceMode === "webapp" && webAppRunning && (
+        <div className="canvas-mode-actions">
+          <button className="secondary-button canvas-stop-button" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
+            {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
+            <span>{webAppOperation === "stop" ? "Stopping…" : "Stop Web App"}</span>
+          </button>
+        </div>
+      )}
+      {layoutMode === "canvas" && terminalSettingsOpen && railPage === "terminal" && workspaceMode === "terminal" && (
+        <div ref={terminalSettingsPanelRef} id="canvas-terminal-settings" className="canvas-terminal-settings" role="group" aria-label="Terminal settings">
+          <TerminalSettingsControls
+            capacity={terminalCapacity}
+            layoutCount={terminalLayoutCount}
+            layoutPreset={terminalLayoutPreset}
+            thumbnailsAutoHide={terminalThumbnailsAutoHide}
+            thumbnailSide={terminalThumbnailSide}
+            launchPathsHeight={terminalLaunchPathsHeight}
+            confirmClose={confirmTerminalClose}
+            onCapacityChange={onTerminalCapacityChange}
+            onLayoutPresetChange={onTerminalLayoutPresetChange}
+            onToggleThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
+            onThumbnailSideChange={onTerminalThumbnailSideChange}
+            onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
+            onConfirmCloseChange={onConfirmTerminalCloseChange}
+          />
+        </div>
+      )}
+      {layoutMode === "canvas" && (
+        <footer className="canvas-rail-footer">
+          {railPage === "terminal" && workspaceMode === "terminal" && (
+            <button
+              ref={terminalSettingsToggleRef}
+              className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
+              type="button"
+              aria-expanded={terminalSettingsOpen}
+              aria-controls="canvas-terminal-settings"
+              onClick={onToggleTerminalSettings}
+            >
+              <SlidersHorizontal />
+              <span>Terminal settings</span>
+            </button>
+          )}
+          <button
+            className="canvas-auto-hide"
+            type="button"
+            aria-label="Auto-hide navigation"
+            aria-pressed={!canvasPinned}
+            title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`}
+            onClick={onCanvasPinnedChange}
+          >
+            {canvasPinned ? <Pin /> : <PinOff />}
+            <span className="sr-only">Auto-hide navigation</span>
+          </button>
+        </footer>
+      )}
     </aside>
   );
 }
@@ -197,7 +338,7 @@ function DetailPage({
   railMotion: RailMotion;
   pageRefs: PageRefs;
   titleRefs: TitleRefs;
-  onNavigate: (page: "modes", motion: "return") => void;
+  onNavigate: (page: "modes", motion: "return", showSettingsOnReturn?: boolean) => void;
   children: React.ReactNode;
 }) {
   const meta = {
@@ -216,7 +357,7 @@ function DetailPage({
       className={className}
     >
       <div className="rail-page-title">
-        <button className="rail-back" aria-label="Back to modes" onClick={() => onNavigate("modes", "return")}>
+        <button className="rail-back" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
           <ArrowLeft />
         </button>
         <span

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { minimizeTerminal, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, stageTerminal, terminalViewTransitionName } from "./terminalWorkspaceDock";
+import { clampTerminalWorkspaceCapacity, minimizeTerminal, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, stageTerminal, terminalViewTransitionName } from "./terminalWorkspaceDock";
 
 const state = (stagedIds: string[], minimizedIds: string[] = []) => ({ stagedIds, minimizedIds });
 
@@ -14,6 +14,12 @@ describe("terminal workspace dock", () => {
 
   it("appends a restored terminal", () => {
     expect(stageTerminal(state(["a"]), "b", "a", 2)).toEqual(state(["a", "b"]));
+  });
+
+  it("supports four staged terminals", () => {
+    expect(clampTerminalWorkspaceCapacity(4)).toBe(4);
+    expect(clampTerminalWorkspaceCapacity(8)).toBe(4);
+    expect(stageTerminal(state(["a", "b", "c"]), "d", "a", 4)).toEqual(state(["a", "b", "c", "d"]));
   });
 
   it("does not reorder an already staged terminal when activated", () => {

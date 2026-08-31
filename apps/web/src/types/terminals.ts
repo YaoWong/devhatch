@@ -28,7 +28,7 @@ export type TerminalWorkspaceMember = {
 export type TerminalWorkspace = {
   id: string;
   name: string | null;
-  activeTerminalId: string;
+  activeTerminalId: string | null;
   members: TerminalWorkspaceMember[];
   createdAt: number;
   updatedAt: number;

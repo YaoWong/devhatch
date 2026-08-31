@@ -149,7 +149,7 @@ describe("WorkspaceMutationQueue", () => {
     await activation.result;
   });
 
-  it("removes a workspace when its last terminal is deleted", () => {
+  it("retains a workspace when its last terminal is deleted", () => {
     const workspace = {
       id: "workspace",
       name: null,
@@ -158,6 +158,11 @@ describe("WorkspaceMutationQueue", () => {
       createdAt: 1,
       updatedAt: 1,
     };
-    expect(mergeDeletedTerminal([workspace], "a", workspace.id, null)).toEqual([]);
+    const returned = { ...workspace, activeTerminalId: null, members: [], updatedAt: 2 };
+    expect(mergeDeletedTerminal([workspace], "a", workspace.id, returned)).toEqual([{
+      ...workspace,
+      activeTerminalId: null,
+      members: [],
+    }]);
   });
 });

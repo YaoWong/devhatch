@@ -1,16 +1,21 @@
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useRef, type FocusEventHandler, type KeyboardEvent, type PointerEvent, type Ref } from "react";
 
 type Props = {
   value: number;
   hidden: boolean;
+  handleRef?: Ref<HTMLDivElement>;
   onPreview: (value: number) => void;
   onCommit: (value: number) => void;
   onResizingChange: (resizing: boolean) => void;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
+  onFocus?: FocusEventHandler<HTMLDivElement>;
+  onBlur?: FocusEventHandler<HTMLDivElement>;
 };
 
 const clamp = (value: number) => Math.min(480, Math.max(240, Math.round(value)));
 
-export function RailResizeHandle({ value, hidden, onPreview, onCommit, onResizingChange }: Props) {
+export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit, onResizingChange, onPointerEnter, onPointerLeave, onFocus, onBlur }: Props) {
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -45,6 +50,7 @@ export function RailResizeHandle({ value, hidden, onPreview, onCommit, onResizin
 
   return (
     <div
+      ref={handleRef}
       className="rail-resize-handle"
       role="separator"
       aria-label="Resize navigation sidebar"
@@ -55,6 +61,10 @@ export function RailResizeHandle({ value, hidden, onPreview, onCommit, onResizin
       aria-valuenow={value}
       aria-valuetext={`${value} pixels`}
       tabIndex={hidden ? -1 : 0}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
       onKeyDown={handleKeyDown}
       onPointerDown={(event) => {
         if (hidden || event.button !== 0 || !window.matchMedia("(min-width: 921px)").matches) return;

@@ -35,6 +35,7 @@ export function TerminalSurface({
   thumbnailEnabled = false,
   thumbnailIntervalMs = 500,
   onThumbnail,
+  onTransitionPrepareAvailable,
   onError,
 }: {
   session: TerminalInfo;
@@ -51,6 +52,7 @@ export function TerminalSurface({
   thumbnailEnabled?: boolean;
   thumbnailIntervalMs?: number;
   onThumbnail?: (id: string, blob: Blob) => void;
+  onTransitionPrepareAvailable?: (id: string, prepare: () => Promise<Blob | null>) => void;
   onError: (message: string) => void;
 }) {
   const { themeId } = useTheme();
@@ -70,12 +72,14 @@ export function TerminalSurface({
   const thumbnailEnabledRef = useRef(thumbnailEnabled);
   const thumbnailIntervalMsRef = useRef(thumbnailIntervalMs);
   const onThumbnailRef = useRef(onThumbnail);
+  const onTransitionPrepareAvailableRef = useRef(onTransitionPrepareAvailable);
   const requestThumbnailRef = useRef<(() => void) | null>(null);
   const thumbnailGenerationRef = useRef(0);
   useEffect(() => {
     onRemovedRef.current = onRemoved;
     onUpstreamSessionChangeRef.current = onUpstreamSessionChange;
-  }, [onRemoved, onUpstreamSessionChange]);
+    onTransitionPrepareAvailableRef.current = onTransitionPrepareAvailable;
+  }, [onRemoved, onUpstreamSessionChange, onTransitionPrepareAvailable]);
   useEffect(() => {
     thumbnailIntervalMsRef.current = thumbnailIntervalMs;
   }, [thumbnailIntervalMs]);
@@ -118,6 +122,7 @@ export function TerminalSurface({
     let thumbnailTimer: number | null = null;
     let lastThumbnailAt = 0;
     let lastResize = "";
+    let snapshotDimensions: { cols: number; rows: number } | null = null;
     const connection = new SocketConnection(
       (callback, delay) => window.setTimeout(callback, delay),
       (handle) => window.clearTimeout(handle as number),
@@ -152,21 +157,26 @@ export function TerminalSurface({
       return;
     }
     terminalRef.current = terminal;
-    const emitThumbnail = () => {
-      thumbnailTimer = null;
-      const callback = onThumbnailRef.current;
-      if (disposed || !thumbnailEnabledRef.current || !callback) return;
+    const captureThumbnail = () => new Promise<Blob | null>((resolve) => {
       const screen = container.querySelector<HTMLElement>(".xterm-screen");
-      if (!screen) return;
+      if (!screen) {
+        resolve(null);
+        return;
+      }
       const layers = Array.from(screen.querySelectorAll<HTMLCanvasElement>("canvas")).filter((canvas) => canvas.width > 0 && canvas.height > 0);
-      if (!layers.length) return;
       const screenRect = screen.getBoundingClientRect();
-      if (screenRect.width <= 0 || screenRect.height <= 0) return;
+      if (!layers.length || screenRect.width <= 0 || screenRect.height <= 0) {
+        resolve(null);
+        return;
+      }
       const canvas = document.createElement("canvas");
       canvas.width = terminalThumbnailSize.width;
       canvas.height = terminalThumbnailSize.height;
       const context = canvas.getContext("2d");
-      if (!context) return;
+      if (!context) {
+        resolve(null);
+        return;
+      }
       context.fillStyle = terminalThemes[themeIdRef.current].background ?? "#000";
       context.fillRect(0, 0, canvas.width, canvas.height);
       try {
@@ -175,18 +185,39 @@ export function TerminalSurface({
           context.drawImage(layer, bounds.x, bounds.y, bounds.width, bounds.height);
         }
       } catch {
+        resolve(null);
         return;
       }
+      canvas.toBlob(resolve, "image/png");
+    });
+    const prepareTransition = () => {
+      if (visibleRef.current) {
+        try {
+          fit.fit();
+          terminal.refresh(0, terminal.rows - 1);
+        } catch {
+          return Promise.resolve(null);
+        }
+      }
+      return captureThumbnail();
+    };
+    onTransitionPrepareAvailableRef.current?.(session.id, prepareTransition);
+    const emitThumbnail = () => {
+      thumbnailTimer = null;
+      const callback = onThumbnailRef.current;
+      if (disposed || !thumbnailEnabledRef.current || !callback) return;
       const generation = ++thumbnailGenerationRef.current;
-      canvas.toBlob((blob) => {
+      void captureThumbnail().then((blob) => {
         if (!blob || disposed || !thumbnailEnabledRef.current || generation !== thumbnailGenerationRef.current) return;
         onThumbnailRef.current?.(session.id, blob);
-      }, "image/png");
+      });
     };
     const scheduleThumbnail = () => {
       if (disposed || !thumbnailEnabledRef.current || !onThumbnailRef.current || thumbnailTimer !== null) return;
       const delay = Math.max(0, thumbnailIntervalMsRef.current - (performance.now() - lastThumbnailAt));
       thumbnailTimer = window.setTimeout(() => {
+        thumbnailTimer = null;
+        if (disposed || !thumbnailEnabledRef.current || !onThumbnailRef.current) return;
         lastThumbnailAt = performance.now();
         emitThumbnail();
       }, delay);
@@ -224,6 +255,7 @@ export function TerminalSurface({
       if (!started) return;
       const { generation, phase } = started;
       protocolReady = false;
+      snapshotDimensions = null;
       expectedClose = false;
       lastResize = "";
       onPhaseChange(session.id, phase);
@@ -237,10 +269,12 @@ export function TerminalSurface({
             data?: string;
             upstreamSessionId?: string;
             cwd?: string;
-            terminal?: { upstreamSessionId?: string; cwd?: string };
+            terminal?: { upstreamSessionId?: string; cwd?: string; cols?: number; rows?: number };
           };
           if (message.type === "ready") {
-            sendResize();
+            const cols = message.terminal?.cols;
+            const rows = message.terminal?.rows;
+            snapshotDimensions = typeof cols === "number" && typeof rows === "number" ? { cols, rows } : null;
             scheduleThumbnail();
             if (message.terminal?.upstreamSessionId) {
               onUpstreamSessionChangeRef.current?.(
@@ -259,22 +293,29 @@ export function TerminalSurface({
           }
           if (message.type === "snapshot" && connection.snapshot(generation)) {
             terminal.reset();
-            if (message.data) terminal.write(message.data, scheduleThumbnail);
-            else scheduleThumbnail();
-            protocolReady = true;
-            onPhaseChange(session.id, "connected");
-            sendResize();
-            if (inputBuffer) {
-              socket.send(JSON.stringify({ type: "input", data: inputBuffer }));
-              inputBuffer = "";
-            }
-            if (focusedRef.current) {
-              if (focusFrame !== null) cancelAnimationFrame(focusFrame);
-              focusFrame = requestAnimationFrame(() => {
-                focusFrame = null;
-                if (!disposed && socketRef.current === socket) terminal.focus();
-              });
-            }
+            const dimensions = snapshotDimensions;
+            snapshotDimensions = null;
+            if (dimensions) terminal.resize(dimensions.cols, dimensions.rows);
+            const finishSnapshot = () => {
+              if (disposed || socketRef.current !== socket) return;
+              protocolReady = true;
+              onPhaseChange(session.id, "connected");
+              sendResize();
+              scheduleThumbnail();
+              if (inputBuffer) {
+                socket.send(JSON.stringify({ type: "input", data: inputBuffer }));
+                inputBuffer = "";
+              }
+              if (focusedRef.current) {
+                if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+                focusFrame = requestAnimationFrame(() => {
+                  focusFrame = null;
+                  if (!disposed && socketRef.current === socket) terminal.focus();
+                });
+              }
+            };
+            if (message.data) terminal.write(message.data, finishSnapshot);
+            else finishSnapshot();
           }
           if (message.type === "output" && message.data) terminal.write(message.data, scheduleThumbnail);
           if (message.type === "exit" || message.type === "processExited") {
@@ -337,6 +378,7 @@ export function TerminalSurface({
       terminalRef.current = null;
       activateRef.current = null;
       requestThumbnailRef.current = null;
+      onTransitionPrepareAvailableRef.current?.(session.id, () => Promise.resolve(null));
     };
   }, [session.id, socketBase, onPhaseChange, onError]);
   return (

@@ -16,7 +16,7 @@ use crate::{api::ApiError, clock::now, session::SessionKind, state::AppState};
 struct WorkspaceRow {
     id: String,
     name: Option<String>,
-    active_terminal_id: String,
+    active_terminal_id: Option<String>,
     created_at: i64,
     updated_at: i64,
 }
@@ -32,7 +32,7 @@ pub(crate) struct TerminalWorkspaceMember {
 pub(crate) struct TerminalWorkspace {
     id: String,
     name: Option<String>,
-    active_terminal_id: String,
+    active_terminal_id: Option<String>,
     members: Vec<TerminalWorkspaceMember>,
     created_at: i64,
     updated_at: i64,
@@ -83,7 +83,7 @@ pub async fn create(
         Ok(name) => name,
         Err(code) => return error(StatusCode::BAD_REQUEST, code),
     };
-    if request.terminal_ids.is_empty() || has_duplicates(&request.terminal_ids) {
+    if has_duplicates(&request.terminal_ids) {
         return error(StatusCode::BAD_REQUEST, "INVALID_TERMINAL_IDS");
     }
     let terminal_ids = request.terminal_ids;
@@ -94,7 +94,7 @@ pub async fn create(
     {
         return error(StatusCode::BAD_REQUEST, "TERMINAL_NOT_LIVE");
     }
-    match create_workspace(state.pool(), name, &terminal_ids, &terminal_ids[0]).await {
+    match create_workspace(state.pool(), name, &terminal_ids).await {
         Ok(workspace) => (
             StatusCode::CREATED,
             Json(serde_json::json!({ "terminalWorkspace": workspace })),
@@ -291,17 +291,10 @@ pub(crate) async fn remove_terminal(
         .bind(&workspace_id)
         .fetch_optional(&mut *transaction)
         .await?;
-    let Some(fallback) = fallback else {
-        sqlx::query("DELETE FROM terminal_workspaces WHERE id = ?")
-            .bind(workspace_id)
-            .execute(&mut *transaction)
-            .await?;
-        transaction.commit().await?;
-        return Ok(None);
-    };
-    sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = CASE WHEN active_terminal_id = ? THEN ? ELSE active_terminal_id END, updated_at = MAX(?, updated_at + 1) WHERE id = ?")
+    sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = CASE WHEN active_terminal_id = ? OR ? IS NULL THEN ? ELSE active_terminal_id END, updated_at = MAX(?, updated_at + 1) WHERE id = ?")
         .bind(terminal_id)
-        .bind(fallback)
+        .bind(&fallback)
+        .bind(&fallback)
         .bind(now() as i64)
         .bind(&workspace_id)
         .execute(&mut *transaction)
@@ -314,7 +307,6 @@ async fn create_workspace(
     pool: &SqlitePool,
     name: Option<String>,
     terminal_ids: &[String],
-    active_terminal_id: &str,
 ) -> Result<TerminalWorkspace, sqlx::Error> {
     let id = Uuid::new_v4().to_string();
     let timestamp = now() as i64;
@@ -322,7 +314,7 @@ async fn create_workspace(
     sqlx::query("INSERT INTO terminal_workspaces (id, name, active_terminal_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
         .bind(&id)
         .bind(name)
-        .bind(active_terminal_id)
+        .bind(terminal_ids.first())
         .bind(timestamp)
         .bind(timestamp)
         .execute(&mut *transaction)
@@ -383,7 +375,8 @@ async fn reconcile(pool: &SqlitePool, live: &HashSet<String>) -> Result<(), sqlx
                 .execute(&mut *transaction)
                 .await?;
         } else {
-            sqlx::query("DELETE FROM terminal_workspaces WHERE id = ?")
+            sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = NULL, updated_at = MAX(?, updated_at + 1) WHERE id = ?")
+                .bind(now() as i64)
                 .bind(workspace_id)
                 .execute(&mut *transaction)
                 .await?;
@@ -538,7 +531,7 @@ mod tests {
     #[tokio::test]
     async fn creates_in_stable_member_order_and_enforces_global_membership() {
         let pool = pool().await;
-        let workspace = create_workspace(&pool, Some("one".into()), &members(&["b", "a"]), "b")
+        let workspace = create_workspace(&pool, Some("one".into()), &members(&["b", "a"]))
             .await
             .unwrap();
         assert_eq!(
@@ -549,7 +542,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["b", "a"]
         );
-        assert_eq!(workspace.active_terminal_id, "b");
+        assert_eq!(workspace.active_terminal_id.as_deref(), Some("b"));
         let attached = attach_terminal(&pool, Some(&workspace.id), "c", "/tmp")
             .await
             .unwrap()
@@ -563,8 +556,11 @@ mod tests {
             ["b", "a", "c"]
         );
         assert!(attached.updated_at > workspace.updated_at);
+        let empty = create_workspace(&pool, None, &[]).await.unwrap();
+        assert!(empty.members.is_empty());
+        assert_eq!(empty.active_terminal_id, None);
         assert!(
-            create_workspace(&pool, None, &members(&["a"]), "a")
+            create_workspace(&pool, None, &members(&["a"]))
                 .await
                 .is_err()
         );
@@ -573,14 +569,10 @@ mod tests {
     #[tokio::test]
     async fn disband_rehomes_only_live_members_as_singletons() {
         let pool = pool().await;
-        let workspace = create_workspace(
-            &pool,
-            Some("group".into()),
-            &members(&["a", "b", "gone"]),
-            "a",
-        )
-        .await
-        .unwrap();
+        let workspace =
+            create_workspace(&pool, Some("group".into()), &members(&["a", "b", "gone"]))
+                .await
+                .unwrap();
         let singletons = disband(
             &pool,
             &workspace.id,
@@ -602,7 +594,7 @@ mod tests {
     #[tokio::test]
     async fn attach_terminal_rolls_back_membership_when_launch_path_touch_fails() {
         let pool = pool().await;
-        let workspace = create_workspace(&pool, None, &members(&["a"]), "a")
+        let workspace = create_workspace(&pool, None, &members(&["a"]))
             .await
             .unwrap();
         sqlx::query("DROP TABLE terminal_launch_paths")
@@ -620,24 +612,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn terminal_removal_falls_back_then_dissolves_workspace() {
+    async fn terminal_removal_falls_back_then_retains_empty_workspace() {
         let pool = pool().await;
-        let workspace = create_workspace(&pool, None, &members(&["a", "b"]), "a")
+        let workspace = create_workspace(&pool, None, &members(&["a", "b"]))
             .await
             .unwrap();
         let remaining = remove_terminal(&pool, "a").await.unwrap().unwrap();
-        assert_eq!(remaining.active_terminal_id, "b");
-        assert!(remove_terminal(&pool, "b").await.unwrap().is_none());
-        assert!(find(&pool, &workspace.id).await.unwrap().is_none());
+        assert_eq!(remaining.active_terminal_id.as_deref(), Some("b"));
+        let empty = remove_terminal(&pool, "b").await.unwrap().unwrap();
+        assert_eq!(empty.id, workspace.id);
+        assert!(empty.members.is_empty());
+        assert_eq!(empty.active_terminal_id, None);
+        assert!(find(&pool, &workspace.id).await.unwrap().is_some());
     }
 
     #[tokio::test]
-    async fn reconciliation_removes_stale_members_and_empty_workspaces() {
+    async fn reconciliation_removes_stale_members_and_retains_empty_workspaces() {
         let pool = pool().await;
-        let first = create_workspace(&pool, None, &members(&["live", "stale"]), "stale")
+        let first = create_workspace(&pool, None, &members(&["stale", "live"]))
             .await
             .unwrap();
-        let second = create_workspace(&pool, None, &members(&["gone"]), "gone")
+        let second = create_workspace(&pool, None, &members(&["gone"]))
             .await
             .unwrap();
         reconcile(&pool, &HashSet::from(["live".to_string()]))
@@ -645,7 +640,9 @@ mod tests {
             .unwrap();
         let first = find(&pool, &first.id).await.unwrap().unwrap();
         assert_eq!(first.members.len(), 1);
-        assert_eq!(first.active_terminal_id, "live");
-        assert!(find(&pool, &second.id).await.unwrap().is_none());
+        assert_eq!(first.active_terminal_id.as_deref(), Some("live"));
+        let second = find(&pool, &second.id).await.unwrap().unwrap();
+        assert!(second.members.is_empty());
+        assert_eq!(second.active_terminal_id, None);
     }
 }

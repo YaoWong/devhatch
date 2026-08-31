@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
+import type { LayoutMode } from "../../types/settings";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 
-export function useNavigation(bumpFocus: () => void) {
+export function useNavigation(bumpFocus: () => void, initialLayoutMode: LayoutMode) {
   const [railPage, setRailPage] = useState<RailPage>("modes");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("terminal");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => initialLayoutMode === "canvas" ? "settings" : "terminal");
   const [railMotion, setRailMotion] = useState<RailMotion>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(() => localStorage.getItem("devhatch-sidebar-hidden") === "1");
@@ -43,7 +44,7 @@ export function useNavigation(bumpFocus: () => void) {
   );
 
   const animateRail = useCallback(
-    (page: RailPage, motion: Exclude<RailMotion, null>) => {
+    (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn = false) => {
       const detailMode: DetailMode = page === "modes" ? (railPage === "modes" ? workspaceMode : railPage) : page;
       const source = modeRefs.current[detailMode];
       const detail = titleRefs.current[detailMode];
@@ -82,6 +83,8 @@ export function useNavigation(bumpFocus: () => void) {
       if (motion === "forward" && page !== "modes") {
         setWorkspaceMode(page);
         if (page === "terminal" || page === "agent") bumpFocus();
+      } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
+        setWorkspaceMode("settings");
       }
       requestAnimationFrame(() => {
         const themeStyle = getComputedStyle(document.documentElement);
@@ -150,6 +153,21 @@ export function useNavigation(bumpFocus: () => void) {
     if (mode === "terminal" || mode === "agent") bumpFocus();
   }, [bumpFocus]);
 
+  const showGlobalSettings = useCallback(() => {
+    setWorkspaceMode("settings");
+    setRailPage("modes");
+    setRailMotion(null);
+    setSidebarOpen(false);
+  }, []);
+
+  const normalizeSettingsRail = useCallback((layoutMode: LayoutMode) => {
+    if (motionTimer.current) window.clearTimeout(motionTimer.current);
+    motionTimer.current = null;
+    setWorkspaceMode("settings");
+    setRailPage(layoutMode === "canvas" ? "modes" : "settings");
+    setRailMotion(null);
+  }, []);
+
   return {
     railPage,
     workspaceMode,
@@ -163,6 +181,8 @@ export function useNavigation(bumpFocus: () => void) {
     modeMeta,
     animateRail,
     selectMode,
+    showGlobalSettings,
+    normalizeSettingsRail,
     toggleSidebar,
     closeSidebar,
   };

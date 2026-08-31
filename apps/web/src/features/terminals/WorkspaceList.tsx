@@ -9,7 +9,7 @@ type HomePaths = { home: string; resolvedHome: string } | null;
 export function WorkspaceList({
   workspaces, launchPaths, selectedWorkspaceId, homePaths, launching,
   onSelectWorkspace, onRenameWorkspace, onDeleteWorkspace, onNewWorkspace,
-  onLaunch, onForceNewWorkspace, onPinPath, onRenamePath, onDeletePath, onConfirm, onAddPath,
+  onLaunch, onPinPath, onRenamePath, onDeletePath, onConfirm, onAddPath,
 }: {
   workspaces: TerminalWorkspace[];
   launchPaths: TerminalLaunchPath[];
@@ -21,7 +21,6 @@ export function WorkspaceList({
   onDeleteWorkspace: (workspace: TerminalWorkspace) => Promise<boolean>;
   onNewWorkspace: () => void;
   onLaunch: (path: string) => void;
-  onForceNewWorkspace: (path: string) => void;
   onPinPath: (path: TerminalLaunchPath) => void;
   onRenamePath: (path: TerminalLaunchPath, alias: string) => Promise<boolean>;
   onDeletePath: (path: TerminalLaunchPath) => Promise<boolean>;
@@ -71,12 +70,11 @@ export function WorkspaceList({
         <div className="path-section-head"><p className="menu-label">Launch Paths</p><div className="path-head-actions"><button className={`path-mode-toggle ${pathDisplay}`} role="switch" aria-checked={pathDisplay === "full"} onClick={() => updateDisplay(pathDisplay === "folder" ? "full" : "folder")}><span className="path-mode-label">{pathDisplay === "folder" ? "Full path" : "Folder"}</span><span className="path-mode-knob" /></button><button className="mini-action" onClick={onAddPath}><Plus />Add</button></div></div>
         <div className="agent-path-list">
           {visiblePaths.length ? visiblePaths.map((path) => (
-            <div key={path.id} className="agent-path-row"><Folder /><button className="path-main" title={path.path} disabled={launching} onClick={() => onLaunch(path.path)}><span><strong>{pathDisplay === "folder" ? path.alias || workspaceName(path.path) : path.path}</strong>{pathDisplay === "folder" && <small>{displayPath(path.path, homePaths?.home, homePaths?.resolvedHome)}</small>}</span></button><span className="path-actions"><button className={path.pinned ? "pinned" : ""} aria-label={path.pinned ? "Unpin path" : "Pin path"} onClick={() => onPinPath(path)}><Pin /></button><button aria-label="Launch path" disabled={launching} onClick={() => onLaunch(path.path)}><Play /></button><button aria-label="Rename alias" onClick={() => { setRenamePath(path); setRenameAlias(path.alias ?? ""); }}><Pencil /></button><button aria-label="Delete path" onClick={() => onConfirm({ title: "Delete launch path?", description: "This only removes the saved launch path. Running terminals and files are unchanged.", confirmLabel: "Delete", danger: true, action: () => onDeletePath(path) })}><Trash2 /></button></span>
+            <div key={path.id} className="agent-path-row"><Folder /><div className="path-main" title={path.path}><span><strong>{pathDisplay === "folder" ? path.alias || workspaceName(path.path) : path.path}</strong>{pathDisplay === "folder" && <small>{displayPath(path.path, homePaths?.home, homePaths?.resolvedHome)}</small>}</span></div><span className="path-actions"><button className={path.pinned ? "pinned" : ""} aria-label={path.pinned ? "Unpin path" : "Pin path"} onClick={() => onPinPath(path)}><Pin /></button><button aria-label="Launch path" disabled={launching} onClick={() => onLaunch(path.path)}><Play /></button><button aria-label="Rename alias" onClick={() => { setRenamePath(path); setRenameAlias(path.alias ?? ""); }}><Pencil /></button><button aria-label="Delete path" onClick={() => onConfirm({ title: "Delete launch path?", description: "This only removes the saved launch path. Running terminals and files are unchanged.", confirmLabel: "Delete", danger: true, action: () => onDeletePath(path) })}><Trash2 /></button></span>
             </div>
           )) : <div className="quiet-message">Choose a directory to launch your first terminal.</div>}
         </div>
         {launchPaths.length > 24 && <div className="path-pagination"><button aria-label="Previous page" disabled={page === 1} onClick={() => setPage(page - 1)}><ChevronLeft /></button><span>{page} / {pageCount}</span><button aria-label="Next page" disabled={page === pageCount} onClick={() => setPage(page + 1)}><ChevronRight /></button></div>}
-        {!!visiblePaths.length && <button className="terminal-new-from-path" disabled={launching} onClick={() => onForceNewWorkspace(visiblePaths[0].path)}>New workspace from {visiblePaths[0].alias || workspaceName(visiblePaths[0].path)}</button>}
       </div>
     </>
   );

@@ -48,11 +48,10 @@ export function mergeDeletedTerminal(
   return current.flatMap((workspace) => {
     if (workspace.id !== returned.id) return [workspace];
     const members = workspace.members.filter((member) => member.terminalId !== terminalId);
-    if (members.length === 0) return [];
     const memberIds = new Set(members.map((member) => member.terminalId));
-    const activeTerminalId = workspace.activeTerminalId !== terminalId && memberIds.has(workspace.activeTerminalId)
+    const activeTerminalId = workspace.activeTerminalId !== terminalId && workspace.activeTerminalId !== null && memberIds.has(workspace.activeTerminalId)
       ? workspace.activeTerminalId
-      : memberIds.has(returned.activeTerminalId) ? returned.activeTerminalId : members[0].terminalId;
+      : returned.activeTerminalId !== null && memberIds.has(returned.activeTerminalId) ? returned.activeTerminalId : (members[0]?.terminalId ?? null);
     return [{ ...workspace, activeTerminalId, members }];
   });
 }

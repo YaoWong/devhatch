@@ -1,4 +1,6 @@
-import { Eye, EyeOff, LoaderCircle, Menu, PanelLeftClose, Square } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, Menu, PanelLeftClose, SlidersHorizontal, Square } from "lucide-react";
+import { TerminalSettingsControls } from "../features/terminals/TerminalSettingsControls";
+import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import type { WorkspaceMode } from "../types/app";
 import type { WebAppOperation } from "../types/web-apps";
@@ -9,9 +11,20 @@ export function AppHeader({
   subtitle,
   onToggleNavigation,
   terminalCapacity,
+  terminalLayoutCount,
+  terminalLayoutPreset,
   terminalThumbnailsHidden,
+  terminalThumbnailsAutoHide,
+  terminalThumbnailSide,
+  terminalLaunchPathsHeight,
+  confirmTerminalClose,
   onTerminalCapacityChange,
+  onTerminalLayoutPresetChange,
   onToggleTerminalThumbnails,
+  onToggleTerminalThumbnailAutoHide,
+  onTerminalThumbnailSideChange,
+  onTerminalLaunchPathsHeightChange,
+  onConfirmTerminalCloseChange,
   webAppRunning,
   webAppOperation,
   onStopWebApp,
@@ -21,9 +34,20 @@ export function AppHeader({
   subtitle: string;
   onToggleNavigation: () => void;
   terminalCapacity: TerminalWorkspaceCapacity;
+  terminalLayoutCount: TerminalLayoutCount | null;
+  terminalLayoutPreset: TerminalLayoutPreset | null;
   terminalThumbnailsHidden: boolean;
+  terminalThumbnailsAutoHide: boolean;
+  terminalThumbnailSide: "left" | "right";
+  terminalLaunchPathsHeight: number;
+  confirmTerminalClose: boolean;
   onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onToggleTerminalThumbnails: () => void;
+  onToggleTerminalThumbnailAutoHide: () => void;
+  onTerminalThumbnailSideChange: (side: "left" | "right") => void;
+  onTerminalLaunchPathsHeightChange: (height: number) => void;
+  onConfirmTerminalCloseChange: (enabled: boolean) => void;
   webAppRunning: boolean;
   webAppOperation: WebAppOperation | null;
   onStopWebApp: () => void;
@@ -41,12 +65,29 @@ export function AppHeader({
       </div>
       {mode === "terminal" && (
         <div className="top-actions terminal-top-actions">
-          <div className="terminal-capacity-control" role="group" aria-label="Stage capacity">
-            {([1, 2, 3] as const).map((value) => <button key={value} type="button" aria-label={`Capacity ${value}`} aria-pressed={terminalCapacity === value} onClick={() => onTerminalCapacityChange(value)}>{value}</button>)}
-          </div>
           <button className="icon-button" type="button" aria-label={thumbnailsLabel} aria-pressed={!terminalThumbnailsHidden} title={thumbnailsLabel} onClick={onToggleTerminalThumbnails}>
             {terminalThumbnailsHidden ? <EyeOff /> : <Eye />}
           </button>
+          <details className="classic-terminal-settings">
+            <summary className="icon-button" aria-label="Terminal settings" title="Terminal settings"><SlidersHorizontal /></summary>
+            <div className="classic-terminal-settings-panel" role="group" aria-label="Terminal settings">
+              <TerminalSettingsControls
+                capacity={terminalCapacity}
+                layoutCount={terminalLayoutCount}
+                layoutPreset={terminalLayoutPreset}
+                thumbnailsAutoHide={terminalThumbnailsAutoHide}
+                thumbnailSide={terminalThumbnailSide}
+                launchPathsHeight={terminalLaunchPathsHeight}
+                confirmClose={confirmTerminalClose}
+                onCapacityChange={onTerminalCapacityChange}
+                onLayoutPresetChange={onTerminalLayoutPresetChange}
+                onToggleThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
+                onThumbnailSideChange={onTerminalThumbnailSideChange}
+                onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
+                onConfirmCloseChange={onConfirmTerminalCloseChange}
+              />
+            </div>
+          </details>
         </div>
       )}
       {mode === "webapp" && webAppRunning && (

@@ -16,7 +16,7 @@ export function AppDialogs({
   onCancelDelete,
   onConfirmDelete,
 }: {
-  pickerPurpose: "add-launch-path" | "new-terminal-workspace" | "agent" | null;
+  pickerPurpose: "add-launch-path" | "agent" | null;
   pickerInitialPath?: string;
   onClosePicker: () => void;
   onSelectPath: (path: string) => void;

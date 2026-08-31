@@ -1,4 +1,7 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
+import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
+import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
+import type { LayoutMode } from "../types/settings";
 import type { ConfirmAction } from "../types/app";
 import type { TerminalInfo } from "../types/terminals";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
@@ -29,7 +32,32 @@ type AppNavigationRailProps = {
   onNewWorkspace: () => void;
   onPickAgentPath: () => void;
   onCloseAgentSession: (session: TerminalInfo) => void;
+  onSessionSelected: () => void;
+  terminalCapacity: TerminalWorkspaceCapacity;
+  terminalLayoutCount: TerminalLayoutCount | null;
+  terminalLayoutPreset: TerminalLayoutPreset | null;
+  terminalThumbnailsAutoHide: boolean;
+  terminalThumbnailSide: "left" | "right";
+  terminalLaunchPathsHeight: number;
+  confirmTerminalClose: boolean;
+  onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onToggleTerminalThumbnailAutoHide: () => void;
+  onTerminalThumbnailSideChange: (side: "left" | "right") => void;
+  onTerminalLaunchPathsHeightChange: (height: number) => void;
+  onConfirmTerminalCloseChange: (enabled: boolean) => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
+  layoutMode: LayoutMode;
+  canvasPinned: boolean;
+  railInteractive: boolean;
+  railId: string;
+  railRef: RefObject<HTMLElement | null>;
+  onCanvasPinnedChange: () => void;
+  onCanvasEnter: MouseEventHandler<HTMLElement>;
+  onCanvasLeave: MouseEventHandler<HTMLElement>;
+  onCanvasFocus: FocusEventHandler<HTMLElement>;
+  onCanvasBlur: FocusEventHandler<HTMLElement>;
+  onStopWebApp: () => void;
 };
 
 export function AppNavigationRail({
@@ -48,8 +76,62 @@ export function AppNavigationRail({
   onNewWorkspace,
   onPickAgentPath,
   onCloseAgentSession,
+  onSessionSelected,
+  terminalCapacity,
+  terminalLayoutCount,
+  terminalLayoutPreset,
+  terminalThumbnailsAutoHide,
+  terminalThumbnailSide,
+  terminalLaunchPathsHeight,
+  confirmTerminalClose,
+  onTerminalCapacityChange,
+  onTerminalLayoutPresetChange,
+  onToggleTerminalThumbnailAutoHide,
+  onTerminalThumbnailSideChange,
+  onTerminalLaunchPathsHeightChange,
+  onConfirmTerminalCloseChange,
   onConfirm,
+  layoutMode,
+  canvasPinned,
+  railInteractive,
+  railId,
+  railRef,
+  onCanvasPinnedChange,
+  onCanvasEnter,
+  onCanvasLeave,
+  onCanvasFocus,
+  onCanvasBlur,
+  onStopWebApp,
 }: AppNavigationRailProps) {
+  const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false);
+  const terminalSettingsToggleRef = useRef<HTMLButtonElement | null>(null);
+  const terminalSettingsPanelRef = useRef<HTMLDivElement | null>(null);
+  const closeTerminalSettings = useCallback((restoreFocus: boolean) => {
+    setTerminalSettingsOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => terminalSettingsToggleRef.current?.focus());
+  }, []);
+  useEffect(() => {
+    if (
+      terminalSettingsOpen &&
+      (layoutMode !== "canvas" || navigation.workspaceMode !== "terminal" || navigation.railPage !== "terminal")
+    ) {
+      closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
+    }
+  }, [closeTerminalSettings, layoutMode, navigation.railPage, navigation.workspaceMode, terminalSettingsOpen]);
+  useEffect(() => {
+    if (!terminalSettingsOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || terminalSettingsPanelRef.current?.contains(target) || terminalSettingsToggleRef.current?.contains(target)) return;
+      closeTerminalSettings(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [closeTerminalSettings, terminalSettingsOpen]);
+  const sessionSelected = () => {
+    closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
+    onSessionSelected();
+  };
   return (
     <NavigationRail
       railPage={navigation.railPage}
@@ -62,6 +144,24 @@ export function AppNavigationRail({
       pageRefs={navigation.pageRefs}
       titleRefs={navigation.titleRefs}
       onNavigate={navigation.animateRail}
+      terminalSettingsOpen={terminalSettingsOpen}
+      terminalSettingsToggleRef={terminalSettingsToggleRef}
+      terminalSettingsPanelRef={terminalSettingsPanelRef}
+       terminalCapacity={terminalCapacity}
+       terminalLayoutCount={terminalLayoutCount}
+       terminalLayoutPreset={terminalLayoutPreset}
+       terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
+      terminalThumbnailSide={terminalThumbnailSide}
+      terminalLaunchPathsHeight={terminalLaunchPathsHeight}
+      confirmTerminalClose={confirmTerminalClose}
+      onToggleTerminalSettings={() => setTerminalSettingsOpen((open) => !open)}
+      onCloseTerminalSettings={() => closeTerminalSettings(true)}
+       onTerminalCapacityChange={onTerminalCapacityChange}
+       onTerminalLayoutPresetChange={onTerminalLayoutPresetChange}
+       onToggleTerminalThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
+      onTerminalThumbnailSideChange={onTerminalThumbnailSideChange}
+      onTerminalLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
+      onConfirmTerminalCloseChange={onConfirmTerminalCloseChange}
       terminalContent={
         <WorkspaceList
           workspaces={terminal.workspaces}
@@ -69,12 +169,14 @@ export function AppNavigationRail({
           selectedWorkspaceId={terminal.selectedWorkspaceId}
           homePaths={homePaths}
           launching={terminal.launching}
-          onSelectWorkspace={terminal.activateWorkspace}
+          onSelectWorkspace={(id) => {
+            terminal.activateWorkspace(id);
+            sessionSelected();
+          }}
           onRenameWorkspace={(workspace) => void terminal.renameWorkspace(workspace)}
           onDeleteWorkspace={terminal.removeWorkspace}
           onNewWorkspace={onNewWorkspace}
           onLaunch={(path) => void terminal.addTerminal(path)}
-          onForceNewWorkspace={(path) => void terminal.addTerminal(path, true)}
           onPinPath={(path) => void terminal.pinLaunchPath(path)}
           onRenamePath={terminal.renameLaunchPath}
           onDeletePath={terminal.removeLaunchPath}
@@ -123,8 +225,15 @@ export function AppNavigationRail({
           onRenamePath={agent.renamePath}
           onDeletePath={agent.deletePath}
           onSearch={agent.setSearch}
-          onActivateSession={agent.activateSession}
-          onResume={(id) => agent.launch({ upstreamSessionId: id })}
+          onActivateSession={(id) => {
+            agent.activateSession(id);
+            sessionSelected();
+          }}
+          onResume={async (id) => {
+            const resumed = await agent.launch({ upstreamSessionId: id });
+            if (resumed) sessionSelected();
+            return resumed;
+          }}
           onDeleteLive={onCloseAgentSession}
           onConfirm={onConfirm}
           onDeleteHistory={agent.deleteHistorySession}
@@ -142,6 +251,19 @@ export function AppNavigationRail({
           onConfirm={onConfirm}
         />
       }
+      layoutMode={layoutMode}
+      canvasPinned={canvasPinned}
+      railInteractive={railInteractive}
+      railId={railId}
+      railRef={railRef}
+      webAppRunning={Boolean(webApps.openDesign?.running)}
+      webAppOperation={webApps.operation}
+      onCanvasPinnedChange={onCanvasPinnedChange}
+      onCanvasEnter={onCanvasEnter}
+      onCanvasLeave={onCanvasLeave}
+      onCanvasFocus={onCanvasFocus}
+      onCanvasBlur={onCanvasBlur}
+      onStopWebApp={onStopWebApp}
     />
   );
 }

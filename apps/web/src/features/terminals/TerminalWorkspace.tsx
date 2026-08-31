@@ -1,6 +1,7 @@
-import { Minus, Pencil, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronRight, Minus, Pencil, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
+import type { LayoutMode } from "../../types/settings";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { Statusbar } from "../../shared/terminal/Statusbar";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
@@ -12,6 +13,16 @@ import {
   type TerminalWorkspaceCapacity,
   type TerminalWorkspaceDockState,
 } from "./terminalWorkspaceDock";
+import {
+  clampTerminalLayoutCut,
+  defaultTerminalLayoutPreset,
+  defaultTerminalLayoutRatios,
+  terminalLayoutKey,
+  terminalLayoutWeights,
+  type TerminalLayoutCount,
+  type TerminalLayoutPreset,
+  type TerminalWorkspaceLayoutPreferences,
+} from "./terminalWorkspaceLayout";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -25,11 +36,55 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
+type TerminalGridStyle = CSSProperties & Record<`--${string}`, string>;
+type SplitDescriptor = {
+  axis: "x" | "y";
+  ratioIndex: number;
+  cutIndex: number;
+  ratioIndices: number[];
+  paneCount: number;
+  className: string;
+};
+
+function terminalLayoutDescriptors(count: TerminalLayoutCount, preset: TerminalLayoutPreset): SplitDescriptor[] {
+  if (count === 2) return [{ axis: preset === "rows" ? "y" : "x", ratioIndex: 0, cutIndex: 0, ratioIndices: [0], paneCount: 2, className: `split-${preset === "rows" ? "y" : "x"}-0` }];
+  if (count === 3 && (preset === "columns" || preset === "rows")) return [0, 1].map((index) => ({ axis: preset === "columns" ? "x" : "y", ratioIndex: index, cutIndex: index, ratioIndices: [0, 1], paneCount: 3, className: `split-${preset === "columns" ? "x" : "y"}-${index}` }));
+  if (count === 3) return [
+    { axis: "x", ratioIndex: 0, cutIndex: 0, ratioIndices: [0], paneCount: 2, className: "split-x-0" },
+    { axis: "y", ratioIndex: 1, cutIndex: 0, ratioIndices: [1], paneCount: 2, className: "split-y-0" },
+  ];
+  if (preset === "columns" || preset === "rows") return [0, 1, 2].map((index) => ({ axis: preset === "columns" ? "x" : "y", ratioIndex: index, cutIndex: index, ratioIndices: [0, 1, 2], paneCount: 4, className: `split-${preset === "columns" ? "x" : "y"}-${index}` }));
+  return [
+    { axis: "x", ratioIndex: 0, cutIndex: 0, ratioIndices: [0], paneCount: 2, className: "split-x-0" },
+    { axis: "y", ratioIndex: 1, cutIndex: 0, ratioIndices: [1], paneCount: 2, className: "split-y-0" },
+  ];
+}
+
+function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLayoutPreset | null, ratios: number[]): TerminalGridStyle | undefined {
+  if (!count || !preset) return undefined;
+  const style: TerminalGridStyle = {};
+  if (count === 2) {
+    const weights = terminalLayoutWeights([ratios[0] ?? 0.5]);
+    const prefix = preset === "rows" ? "r" : "p";
+    weights.forEach((weight, index) => { style[`--${prefix}${index}`] = `${weight}fr`; });
+    return style;
+  }
+  if (count === 3 && preset !== "columns" && preset !== "rows" || count === 4 && preset === "grid") {
+    terminalLayoutWeights([ratios[0] ?? 0.5]).forEach((weight, index) => { style[`--p${index}`] = `${weight}fr`; });
+    terminalLayoutWeights([ratios[1] ?? 0.5]).forEach((weight, index) => { style[`--r${index}`] = `${weight}fr`; });
+    return style;
+  }
+  const prefix = preset === "rows" ? "r" : "p";
+  terminalLayoutWeights(ratios).forEach((weight, index) => { style[`--${prefix}${index}`] = `${weight}fr`; });
+  return style;
+}
+
 export function TerminalWorkspace({
-  visible, busy, launching, sessions, visibleSessions, workspace, phases, focusVersion, capacity, thumbnailsHidden, error,
-  onActivate, onRename, onClose, onCreate, onPhaseChange, onError, onDismissError,
+  visible, layoutMode, busy, launching, sessions, visibleSessions, workspace, phases, focusVersion, capacity, thumbnailsHidden, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  onActivate, onRename, onClose, onCreate, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onError, onDismissError,
 }: {
   visible: boolean;
+  layoutMode: LayoutMode;
   busy: boolean;
   launching: boolean;
   sessions: TerminalInfo[];
@@ -39,23 +94,39 @@ export function TerminalWorkspace({
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
   thumbnailsHidden: boolean;
+  thumbnailsAutoHide: boolean;
+  thumbnailSide: "left" | "right";
+  workspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   onActivate: (id: string) => void;
-  onRename: (session: TerminalInfo) => void;
+  onRename: (session: TerminalInfo, name: string) => Promise<boolean>;
   onClose: (session: TerminalInfo) => void;
   onCreate: (cwd?: string) => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
+  onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
+  onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
   const cardRefs = useRef(new Map<string, HTMLElement>());
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const thumbnailRefs = useRef(new Map<string, HTMLButtonElement>());
   const thumbnailCacheRef = useRef(new Map<string, Blob>());
   const thumbnailUrlRef = useRef(new Map<string, string>());
   const thumbnailImageRefs = useRef(new Map<string, HTMLImageElement>());
   const thumbnailImageRefCallbacks = useRef(new Map<string, (node: HTMLImageElement | null) => void>());
-  const stageTransitionRef = useRef<{ transition: ViewTransition; generation: number; applyUpdate: () => void } | null>(null);
+  const transitionPrepareRefs = useRef(new Map<string, () => Promise<Blob | null>>());
+  const thumbnailDockRef = useRef<HTMLDivElement | null>(null);
+  const thumbnailCollapseTimerRef = useRef<number | null>(null);
+  const [thumbnailDockExpanded, setThumbnailDockExpanded] = useState(!thumbnailsAutoHide);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const renameSavingRef = useRef(false);
+  const renameCancelledRef = useRef(false);
+  const stageTransitionRef = useRef<{ transition: ViewTransition; generation: number; applyUpdate: () => void; clearCaption: () => void } | null>(null);
   const stageTransitionGenerationRef = useRef(0);
+  const stageTransitionRequestRef = useRef(0);
   const isMobile = useMediaQuery("(max-width: 640px)");
   const effectiveCapacity = isMobile ? 1 : capacity;
   const [workspaceStates, setWorkspaceStates] = useState<Map<string, TerminalWorkspaceDockState>>(() => new Map());
@@ -95,9 +166,17 @@ export function TerminalWorkspace({
   const latestContextRef = useRef({ workspaceId, memberIds, activeId, effectiveCapacity, currentState });
   latestContextRef.current = { workspaceId, memberIds, activeId, effectiveCapacity, currentState };
   const staged = new Set(currentState.stagedIds);
+  const layoutCount = currentState.stagedIds.length >= 2 && currentState.stagedIds.length <= 4 ? currentState.stagedIds.length as TerminalLayoutCount : null;
+  const workspaceLayout = workspaceId ? workspaceLayouts[workspaceId] : undefined;
+  const layoutPreset = layoutCount ? workspaceLayout?.presets[layoutCount] ?? defaultTerminalLayoutPreset(layoutCount) : null;
+  const layoutRatios = layoutCount && layoutPreset ? workspaceLayout?.ratios[terminalLayoutKey(layoutCount, layoutPreset)] ?? defaultTerminalLayoutRatios(layoutCount, layoutPreset) : [];
+  const layoutClassName = layoutCount && layoutPreset ? `layout-${layoutCount}-${layoutPreset}` : "";
+  const layoutStyle = terminalGridStyle(layoutCount, layoutPreset, layoutRatios);
   const activeSession = visibleSessions.find((session) => session.id === activeId) ?? null;
   const thumbnailSessions = visibleSessions.filter((session) => !staged.has(session.id));
-  const thumbnailsVisible = !thumbnailsHidden && thumbnailSessions.length > 0;
+  const hasThumbnailDock = !thumbnailsHidden && thumbnailSessions.length > 0;
+  const thumbnailDockOpen = hasThumbnailDock && (!thumbnailsAutoHide || thumbnailDockExpanded);
+  const thumbnailsReserveSpace = hasThumbnailDock && !thumbnailsAutoHide;
   const thumbnailTabStopId = thumbnailSessions[0]?.id;
   const orderedSessions = [
     ...visibleSessions,
@@ -105,12 +184,109 @@ export function TerminalWorkspace({
   ];
 
   useEffect(() => () => {
+    if (thumbnailCollapseTimerRef.current !== null) window.clearTimeout(thumbnailCollapseTimerRef.current);
     for (const url of thumbnailUrlRef.current.values()) URL.revokeObjectURL(url);
     thumbnailCacheRef.current.clear();
     thumbnailUrlRef.current.clear();
     thumbnailImageRefs.current.clear();
     thumbnailImageRefCallbacks.current.clear();
   }, []);
+
+  useEffect(() => onLayoutCountChange(layoutCount), [layoutCount, onLayoutCountChange]);
+
+  const updateWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
+    onWorkspaceLayoutChange(workspaceId, update);
+  }, [onWorkspaceLayoutChange]);
+  const updateLayoutRatio = (descriptor: SplitDescriptor, value: number) => {
+    if (!workspaceId || !layoutCount || !layoutPreset) return;
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const size = descriptor.axis === "x" ? rect.width : rect.height;
+    const minimumPixels = descriptor.axis === "x" ? 180 : 110;
+    const minimum = Math.min(minimumPixels / Math.max(1, size - (descriptor.paneCount - 1) * 12), 1 / descriptor.paneCount);
+    const axisCuts = descriptor.ratioIndices.map((index) => layoutRatios[index]);
+    const next = [...layoutRatios];
+    next[descriptor.ratioIndex] = clampTerminalLayoutCut(axisCuts, descriptor.cutIndex, value, minimum);
+    const key = terminalLayoutKey(layoutCount, layoutPreset);
+    updateWorkspaceLayout(workspaceId, (current) => ({ ...current, ratios: { ...current.ratios, [key]: next } }));
+  };
+  const resizeLayoutByPointer = (event: ReactPointerEvent<HTMLDivElement>, descriptor: SplitDescriptor) => {
+    if (event.button !== 0) return;
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("dragging");
+    const move = (pointerEvent: PointerEvent) => {
+      const rect = gridRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const size = descriptor.axis === "x" ? rect.width : rect.height;
+      const point = descriptor.axis === "x" ? pointerEvent.clientX - rect.left : pointerEvent.clientY - rect.top;
+      const usable = Math.max(1, size - (descriptor.paneCount - 1) * 12);
+      updateLayoutRatio(descriptor, (point - (descriptor.cutIndex + 0.5) * 12) / usable);
+    };
+    const finish = (pointerEvent: PointerEvent) => {
+      move(pointerEvent);
+      handle.classList.remove("dragging");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", cancel);
+      if (handle.hasPointerCapture(pointerEvent.pointerId)) handle.releasePointerCapture(pointerEvent.pointerId);
+    };
+    const cancel = (pointerEvent: PointerEvent) => {
+      handle.classList.remove("dragging");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", cancel);
+      if (handle.hasPointerCapture(pointerEvent.pointerId)) handle.releasePointerCapture(pointerEvent.pointerId);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", cancel);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const resizeLayoutByKey = (event: KeyboardEvent<HTMLDivElement>, descriptor: SplitDescriptor) => {
+    const decrement = descriptor.axis === "x" ? "ArrowLeft" : "ArrowUp";
+    const increment = descriptor.axis === "x" ? "ArrowRight" : "ArrowDown";
+    if (event.key !== decrement && event.key !== increment && event.key !== "Home" && event.key !== "End") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.key === decrement || event.key === "Home" ? -1 : 1;
+    updateLayoutRatio(descriptor, event.key === "Home" ? 0 : event.key === "End" ? 1 : layoutRatios[descriptor.ratioIndex] + direction * (event.shiftKey ? 0.1 : 0.02));
+  };
+
+  const cancelThumbnailCollapse = useCallback(() => {
+    if (thumbnailCollapseTimerRef.current !== null) window.clearTimeout(thumbnailCollapseTimerRef.current);
+    thumbnailCollapseTimerRef.current = null;
+  }, []);
+  const cacheThumbnail = useCallback((id: string, blob: Blob) => {
+    thumbnailCacheRef.current.set(id, blob);
+    const image = thumbnailImageRefs.current.get(id);
+    if (!image) return;
+    const previous = thumbnailUrlRef.current.get(id);
+    const url = URL.createObjectURL(blob);
+    thumbnailUrlRef.current.set(id, url);
+    image.src = url;
+    if (previous) URL.revokeObjectURL(previous);
+  }, []);
+  const registerTransitionPrepare = useCallback((id: string, prepare: () => Promise<Blob | null>) => {
+    transitionPrepareRefs.current.set(id, prepare);
+  }, []);
+  const expandThumbnailDock = useCallback(() => {
+    cancelThumbnailCollapse();
+    setThumbnailDockExpanded(true);
+  }, [cancelThumbnailCollapse]);
+  const scheduleThumbnailCollapse = useCallback(() => {
+    if (!thumbnailsAutoHide) return;
+    cancelThumbnailCollapse();
+    thumbnailCollapseTimerRef.current = window.setTimeout(() => {
+      thumbnailCollapseTimerRef.current = null;
+      if (!thumbnailDockRef.current?.contains(document.activeElement)) setThumbnailDockExpanded(false);
+    }, 600);
+  }, [cancelThumbnailCollapse, thumbnailsAutoHide]);
+  useEffect(() => {
+    cancelThumbnailCollapse();
+    setThumbnailDockExpanded(!thumbnailsAutoHide && !thumbnailsHidden);
+  }, [cancelThumbnailCollapse, thumbnailsAutoHide, thumbnailsHidden]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -135,10 +311,12 @@ export function TerminalWorkspace({
       return updated;
     });
   };
-  const runStageTransition = (update: () => void) => {
+  const runStageTransition = async (id: string, update: () => void, revealDock = false) => {
+    const request = ++stageTransitionRequestRef.current;
     const activeTransition = stageTransitionRef.current;
     if (activeTransition) {
       activeTransition.applyUpdate();
+      activeTransition.clearCaption();
       stageTransitionRef.current = null;
       stageTransitionGenerationRef.current += 1;
       try {
@@ -155,18 +333,35 @@ export function TerminalWorkspace({
       update();
       return;
     }
+    if (revealDock && thumbnailsAutoHide && !thumbnailDockExpanded) flushSync(() => setThumbnailDockExpanded(true));
+    const blob = await transitionPrepareRefs.current.get(id)?.();
+    if (request !== stageTransitionRequestRef.current) return;
+    if (blob) cacheThumbnail(id, blob);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (request !== stageTransitionRequestRef.current) return;
     const generation = ++stageTransitionGenerationRef.current;
+    let caption: HTMLElement | null = null;
+    const markCaption = () => {
+      caption = thumbnailRefs.current.get(id)?.querySelector<HTMLElement>(".terminal-thumbnail-caption") ?? null;
+      if (caption) caption.style.viewTransitionName = "terminal-thumbnail-caption-flight";
+    };
+    const clearCaption = () => {
+      if (caption) caption.style.viewTransitionName = "";
+      caption = null;
+    };
+    markCaption();
     let updated = false;
     const applyUpdate = () => {
       if (updated) return;
       updated = true;
       flushSync(update);
+      markCaption();
     };
     document.documentElement.classList.add("terminal-stage-transition");
     try {
       const transition = startViewTransition(applyUpdate);
-      stageTransitionRef.current = { transition, generation, applyUpdate };
-      void transition.ready.catch(() => undefined);
+      stageTransitionRef.current = { transition, generation, applyUpdate, clearCaption };
+      void transition.ready.then(clearCaption, clearCaption);
       void transition.updateCallbackDone.catch(() => undefined);
       void transition.finished.catch(() => undefined).finally(() => {
         if (stageTransitionRef.current?.generation !== generation) return;
@@ -174,6 +369,7 @@ export function TerminalWorkspace({
         document.documentElement.classList.remove("terminal-stage-transition");
       });
     } catch {
+      clearCaption();
       if (stageTransitionGenerationRef.current === generation) {
         stageTransitionRef.current = null;
         document.documentElement.classList.remove("terminal-stage-transition");
@@ -186,7 +382,7 @@ export function TerminalWorkspace({
       onActivate(id);
       return;
     }
-    runStageTransition(() => {
+    void runStageTransition(id, () => {
       updateCurrent((state) => {
         const { activeId, effectiveCapacity } = latestContextRef.current;
         return stageTerminal(state, id, activeId, effectiveCapacity);
@@ -195,24 +391,32 @@ export function TerminalWorkspace({
     });
   };
   const minimize = (id: string) => {
-    runStageTransition(() => {
+    if (renamingSessionId === id) setRenamingSessionId(null);
+    void runStageTransition(id, () => {
       const { activeId, currentState } = latestContextRef.current;
       const remaining = currentState.stagedIds.filter((item) => item !== id);
       updateCurrent((state) => minimizeTerminal(state, id));
       if (id === activeId && remaining.length) onActivate(remaining.at(-1)!);
-    });
+    }, true);
+  };
+  const saveRename = async (session: TerminalInfo) => {
+    const name = renameDraft.trim();
+    if (!name || renameSavingRef.current || renameCancelledRef.current) return;
+    if (name === session.name) {
+      setRenamingSessionId(null);
+      return;
+    }
+    renameSavingRef.current = true;
+    setRenameSaving(true);
+    const saved = await onRename(session, name);
+    renameSavingRef.current = false;
+    setRenameSaving(false);
+    if (saved) setRenamingSessionId(null);
   };
   const updateThumbnail = useCallback((id: string, blob: Blob) => {
     if (!thumbnailMemberIdsRef.current.has(id)) return;
-    thumbnailCacheRef.current.set(id, blob);
-    const image = thumbnailImageRefs.current.get(id);
-    if (!image) return;
-    const previous = thumbnailUrlRef.current.get(id);
-    const url = URL.createObjectURL(blob);
-    thumbnailUrlRef.current.set(id, url);
-    image.src = url;
-    if (previous) URL.revokeObjectURL(previous);
-  }, []);
+    cacheThumbnail(id, blob);
+  }, [cacheThumbnail]);
   const thumbnailImageRef = (id: string) => {
     const existing = thumbnailImageRefCallbacks.current.get(id);
     if (existing) return existing;
@@ -266,34 +470,43 @@ export function TerminalWorkspace({
   };
 
   return (
-    <div className={`terminal-workspace ${visible ? "" : "workspace-hidden"}`}>
+    <div className={`terminal-workspace ${layoutMode === "canvas" ? "canvas-terminal-workspace" : ""} ${visible ? "" : "workspace-hidden"}`}>
       <div className="stage terminal-stage">
-        {thumbnailsVisible && <div className="terminal-thumbnail-stack" role="listbox" aria-label="Terminals">
-          {thumbnailSessions.map((session, index) => <button
-            key={session.id}
-            ref={(node) => { if (node) thumbnailRefs.current.set(session.id, node); else thumbnailRefs.current.delete(session.id); }}
-            type="button"
-            role="option"
-            aria-selected="false"
-            tabIndex={session.id === thumbnailTabStopId ? 0 : -1}
-            aria-label={session.name}
-            className="terminal-thumbnail"
-            style={{ viewTransitionName: terminalViewTransitionName(session.id) }}
-            onClick={() => activateAndStage(session.id)}
-            onKeyDown={(event) => activateThumbnailByKey(event, index)}
-          >
-            <img
-              ref={thumbnailImageRef(session.id)}
-              alt=""
-              aria-hidden="true"
-            />
-            <span className="terminal-thumbnail-caption"><span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />{session.name}</span>
-          </button>)}
+        {hasThumbnailDock && <div
+          ref={thumbnailDockRef}
+          className={`terminal-thumbnail-dock side-${thumbnailSide} ${thumbnailsAutoHide ? "auto-hide" : ""} ${thumbnailDockOpen ? "expanded" : "collapsed"}`}
+          onPointerEnter={expandThumbnailDock}
+          onPointerLeave={scheduleThumbnailCollapse}
+          onFocus={expandThumbnailDock}
+          onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) scheduleThumbnailCollapse(); }}
+        >
+          {thumbnailsAutoHide && <button className="terminal-thumbnail-edge-trigger" type="button" aria-label="Show terminal thumbnails" aria-expanded={thumbnailDockOpen} aria-controls="terminal-thumbnail-list" onClick={expandThumbnailDock}><ChevronRight className={thumbnailSide === "right" ? "point-left" : ""} /></button>}
+          <nav id="terminal-thumbnail-list" className="terminal-thumbnail-stack" aria-label="Terminal thumbnails" aria-hidden={!thumbnailDockOpen} inert={!thumbnailDockOpen ? true : undefined}>
+            {thumbnailSessions.map((session, index) => <button
+              key={session.id}
+              ref={(node) => { if (node) thumbnailRefs.current.set(session.id, node); else thumbnailRefs.current.delete(session.id); }}
+              type="button"
+              tabIndex={session.id === thumbnailTabStopId ? 0 : -1}
+              aria-label={`${session.name}, ${phases[session.id] ?? "connecting"}`}
+              className="terminal-thumbnail"
+              style={{ viewTransitionName: terminalViewTransitionName(session.id) }}
+              onClick={() => activateAndStage(session.id)}
+              onKeyDown={(event) => activateThumbnailByKey(event, index)}
+            >
+              <img
+                ref={thumbnailImageRef(session.id)}
+                alt=""
+                aria-hidden="true"
+              />
+              <span className="terminal-thumbnail-caption"><span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />{session.name}</span>
+            </button>)}
+          </nav>
         </div>}
         {busy && <div className="empty-state">Starting DevHatch…</div>}
-        {!busy && !visibleSessions.length && <div className="empty-state"><strong>No terminal workspace selected</strong><button disabled={launching} onClick={() => onCreate()}>Create terminal</button></div>}
+        {!busy && !workspace && <div className="empty-state"><strong>No terminal workspace selected</strong><button disabled={launching} onClick={() => onCreate()}>Create terminal</button></div>}
+        {!busy && workspace && !visibleSessions.length && <div className="empty-state"><strong>No terminals in this workspace</strong><button disabled={launching} onClick={() => onCreate()}>Create terminal</button></div>}
         {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a terminal thumbnail</div>}
-        <div className={`terminal-card-grid count-${currentState.stagedIds.length} ${thumbnailsVisible ? "with-thumbnails" : ""}`} role="list" aria-label="Staged terminals">
+        <div ref={gridRef} className={`terminal-card-grid count-${currentState.stagedIds.length} ${layoutClassName} ${thumbnailsReserveSpace ? `with-thumbnails thumbnails-${thumbnailSide}` : ""}`} style={layoutStyle} role="list" aria-label="Staged terminals">
           {orderedSessions.map((session) => {
             const shown = visible && workspaceId !== null && staged.has(session.id) && memberIds.includes(session.id);
             const thumbnailSource = visible && workspaceId !== null && !staged.has(session.id) && memberIds.includes(session.id);
@@ -314,19 +527,39 @@ export function TerminalWorkspace({
               onClick={() => activateAndStage(session.id)}
               onKeyDown={(event) => activateCardByKey(event, index)}
             >
-              <header className="terminal-window-titlebar">
-                <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} /><strong>{session.name}</strong><small>{session.cwd}</small>
-                <button aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); onRename(session); }}><Pencil /></button>
+               <header className="terminal-window-titlebar">
+                 <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />
+                 {renamingSessionId === session.id ? <form className="terminal-title-rename" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void saveRename(session); }}>
+                   <input autoFocus aria-label={`Rename ${session.name}`} maxLength={120} value={renameDraft} disabled={renameSaving} onChange={(event) => setRenameDraft(event.target.value)} onFocus={(event) => event.currentTarget.select()} onBlur={() => void saveRename(session)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); renameCancelledRef.current = true; setRenamingSessionId(null); } }} />
+                 </form> : <strong>{session.name}</strong>}
+                 <small>{session.cwd}</small>
+                 <button aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); renameCancelledRef.current = false; setRenameDraft(session.name); setRenamingSessionId(session.id); }}><Pencil /></button>
                 <button aria-label={`Minimize ${session.name}`} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
                 <button aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
               </header>
-               <TerminalSurface session={session} socketBase="/api/terminals" visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={visible && workspaceId !== null && memberIds.includes(session.id)} thumbnailIntervalMs={shown ? 2000 : 500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onThumbnail={updateThumbnail} onError={onError} />
+               <TerminalSurface session={session} socketBase="/api/terminals" visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onError={onError} />
             </section>;
+           })}
+          {layoutCount && layoutPreset && !isMobile && terminalLayoutDescriptors(layoutCount, layoutPreset).map((descriptor) => {
+            const value = layoutRatios[descriptor.ratioIndex] ?? 0.5;
+            return <div
+              key={`${descriptor.axis}-${descriptor.ratioIndex}`}
+              className={`terminal-split-handle ${descriptor.className}`}
+              role="separator"
+              aria-label={`Resize terminal ${descriptor.axis === "x" ? "columns" : "rows"}`}
+              aria-orientation={descriptor.axis === "x" ? "vertical" : "horizontal"}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(value * 100)}
+              tabIndex={0}
+              onPointerDown={(event) => resizeLayoutByPointer(event, descriptor)}
+              onKeyDown={(event) => resizeLayoutByKey(event, descriptor)}
+            />;
           })}
-        </div>
+         </div>
         {error && visible && <div className="error-banner">{error}<button aria-label="Dismiss" onClick={onDismissError}><X /></button></div>}
       </div>
-      <Statusbar session={activeSession} phase={activeId ? phases[activeId] : undefined} />
+      {layoutMode === "classic" && <Statusbar session={activeSession} phase={activeId ? phases[activeId] : undefined} />}
     </div>
   );
 }

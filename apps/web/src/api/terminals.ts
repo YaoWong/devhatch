@@ -36,6 +36,14 @@ export function terminalWorkspaces() {
   );
 }
 
+export function createTerminalWorkspace() {
+  return requestJson<{ terminalWorkspace: TerminalWorkspace }>(
+    "/api/terminal-workspaces",
+    { method: "POST", ...json({ terminalIds: [] }) },
+    "Unable to create terminal workspace",
+  );
+}
+
 export function listDirectories(directory?: string) {
   const query = directory ? `?path=${encodeURIComponent(directory)}` : "";
   return requestJson<DirectoryListing>(`/api/filesystem/directories${query}`, undefined, "Unable to open this folder");

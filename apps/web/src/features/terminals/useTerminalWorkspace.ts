@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createTerminal,
   createTerminalLaunchPath,
+  createTerminalWorkspace,
   deleteTerminalLaunchPath,
   deleteTerminalSession,
   deleteTerminalWorkspace,
@@ -224,6 +225,33 @@ export function useTerminalWorkspace(
     }
   }, [applyAuthoritativeWorkspace, applyWorkspaces, bumpFocus, mutateLatestWorkspace, refreshAll, reportError]);
 
+  const createWorkspace = useCallback(async () => {
+    if (launchRef.current) return false;
+    launchRef.current = true;
+    setLaunching(true);
+    const mutationKey = `new-workspace:${Date.now()}`;
+    const mutation = mutateWorkspace(mutationKey, async () => {
+      const result = await createTerminalWorkspace();
+      applyAuthoritativeWorkspace(result.terminalWorkspace);
+      return result;
+    });
+    try {
+      const { terminalWorkspace } = await mutation.result;
+      applyWorkspaces(
+        [...workspacesRef.current.filter((item) => item.id !== terminalWorkspace.id), terminalWorkspace],
+        terminalWorkspace.id,
+      );
+      closeSidebar();
+      return true;
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    } finally {
+      launchRef.current = false;
+      setLaunching(false);
+    }
+  }, [applyAuthoritativeWorkspace, applyWorkspaces, closeSidebar, mutateWorkspace, reportError]);
+
   const renameWorkspace = useCallback(async (workspace: TerminalWorkspace) => {
     const name = window.prompt("Workspace name", workspace.name ?? "")?.trim();
     if (name === undefined || name === (workspace.name ?? "")) return;
@@ -287,14 +315,18 @@ export function useTerminalWorkspace(
     }
   }, [reportError]);
 
-  const renameSession = useCallback(async (session: TerminalInfo) => {
-    const name = window.prompt("Session name", session.name)?.trim();
-    if (!name || name === session.name) return;
+  const renameSession = useCallback(async (session: TerminalInfo, name: string) => {
+    const nextName = name.trim();
+    if (!nextName || nextName === session.name) return true;
     try {
-      const result = await renameRemoteSession("/api/terminals", session.id, name);
+      const result = await renameRemoteSession("/api/terminals", session.id, nextName);
       const updated = normalizeSession(Object.values(result)[0] as TerminalInfo);
       setSessions((current) => current.map((item) => item.id === updated.id ? updated : item));
-    } catch (reason) { reportError(reason instanceof Error ? reason.message : String(reason)); }
+      return true;
+    } catch (reason) {
+      reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
+    }
   }, [normalizeSession, reportError]);
 
   const deleteSession = useCallback((target: DeleteTarget): Promise<boolean> => (
@@ -323,7 +355,7 @@ export function useTerminalWorkspace(
   return {
     sessions, launchPaths, workspaces, selectedWorkspaceId, selectedWorkspace, activeId, activeSession,
     visibleSessions, launching, initialize, initializeLaunchPaths, initializeWorkspaces, addTerminal,
-    chooseLaunchPath, activateWorkspace, activateSession, renameWorkspace,
+    chooseLaunchPath, createWorkspace, activateWorkspace, activateSession, renameWorkspace,
     removeWorkspace, pinLaunchPath, renameLaunchPath, removeLaunchPath, renameSession, deleteSession,
   };
 }

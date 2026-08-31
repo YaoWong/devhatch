@@ -7,14 +7,17 @@ import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { TerminalWorkspace } from "../features/terminals/TerminalWorkspace";
 import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
+import type { LayoutMode } from "../types/settings";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
 type AppWorkspaceContentProps = {
   mode: WorkspaceMode;
+  layoutMode: LayoutMode;
   terminal: ReturnType<typeof useTerminalWorkspace>;
   agent: ReturnType<typeof useAgentWorkspace>;
   skills: ReturnType<typeof useSkillsWorkspace>;
@@ -24,17 +27,21 @@ type AppWorkspaceContentProps = {
   focusVersion: number;
   terminalCapacity: TerminalWorkspaceCapacity;
   terminalThumbnailsHidden: boolean;
+  terminalThumbnailsAutoHide: boolean;
+  terminalThumbnailSide: "left" | "right";
+  terminalWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   skillsSection: SkillsSection;
   settingsSection: SettingsSection;
-  confirmDelete: boolean;
+  onSelectSettingsSection: (section: SettingsSection) => void;
   onCloseSession: (session: TerminalInfo, isAgent: boolean) => void;
   onPickAgentPath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
+  onTerminalLayoutCountChange: (count: TerminalLayoutCount | null) => void;
+  onTerminalWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
-  onConfirmDeleteChange: (enabled: boolean) => void;
   onLogout: () => Promise<void>;
   logoutBusy: boolean;
   logoutError: string | null;
@@ -42,6 +49,7 @@ type AppWorkspaceContentProps = {
 
 export function AppWorkspaceContent({
   mode,
+  layoutMode,
   terminal,
   agent,
   skills,
@@ -51,17 +59,21 @@ export function AppWorkspaceContent({
   focusVersion,
   terminalCapacity,
   terminalThumbnailsHidden,
+  terminalThumbnailsAutoHide,
+  terminalThumbnailSide,
+  terminalWorkspaceLayouts,
   error,
   skillsSection,
   settingsSection,
-  confirmDelete,
+  onSelectSettingsSection,
   onCloseSession,
   onPickAgentPath,
   onPhaseChange,
+  onTerminalLayoutCountChange,
+  onTerminalWorkspaceLayoutChange,
   onError,
   onDismissError,
   onConfirm,
-  onConfirmDeleteChange,
   onLogout,
   logoutBusy,
   logoutError,
@@ -70,6 +82,7 @@ export function AppWorkspaceContent({
     <>
       <TerminalWorkspace
         visible={mode === "terminal"}
+        layoutMode={layoutMode}
         busy={busy}
         launching={terminal.launching}
         sessions={terminal.sessions}
@@ -79,12 +92,17 @@ export function AppWorkspaceContent({
         focusVersion={focusVersion}
         capacity={terminalCapacity}
         thumbnailsHidden={terminalThumbnailsHidden}
+        thumbnailsAutoHide={terminalThumbnailsAutoHide}
+        thumbnailSide={terminalThumbnailSide}
+        workspaceLayouts={terminalWorkspaceLayouts}
         error={error}
         onActivate={terminal.activateSession}
         onRename={terminal.renameSession}
         onClose={(session) => onCloseSession(session, false)}
         onCreate={(cwd) => void terminal.addTerminal(cwd)}
         onPhaseChange={onPhaseChange}
+        onLayoutCountChange={onTerminalLayoutCountChange}
+        onWorkspaceLayoutChange={onTerminalWorkspaceLayoutChange}
         onError={onError}
         onDismissError={onDismissError}
       />
@@ -132,9 +150,9 @@ export function AppWorkspaceContent({
       )}
       {mode === "settings" && (
         <SettingsView
+          layoutMode={layoutMode}
           section={settingsSection}
-          confirmDelete={confirmDelete}
-          onConfirmDeleteChange={onConfirmDeleteChange}
+          onSelectSection={onSelectSettingsSection}
           onLogout={onLogout}
           logoutBusy={logoutBusy}
           logoutError={logoutError}
