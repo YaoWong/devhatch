@@ -185,6 +185,9 @@ export function AppNavigationRail({
        agentLayoutPreset={agentLayoutPreset}
        agentThumbnailsAutoHide={agentThumbnailsAutoHide}
        agentThumbnailSide={agentThumbnailSide}
+       agents={agent.agents}
+       defaultAgentId={agent.defaultAgentId}
+       onDefaultAgentChange={agent.setDefaultAgentId}
        onAgentCapacityChange={onAgentCapacityChange}
        onAgentLayoutPresetChange={onAgentLayoutPresetChange}
        onToggleAgentThumbnailAutoHide={onToggleAgentThumbnailAutoHide}

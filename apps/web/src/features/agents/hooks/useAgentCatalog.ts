@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { agentPaths, agents as listAgents, createAgentLaunchPath, deleteAgentLaunchPath, updateAgentLaunchPath } from "../../../api/agents";
 import type { Agent, AgentLaunchPath } from "../../../types/agents";
+import { readDefaultAgentId, writeDefaultAgentId } from "../defaultAgentPreference";
 import { errorMessage } from "./shared";
 
 export function useAgentCatalog({
@@ -12,6 +13,7 @@ export function useAgentCatalog({
 }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [paths, setPaths] = useState<AgentLaunchPath[]>([]);
+  const [defaultAgentId, setDefaultAgentIdState] = useState<string | null>(() => readDefaultAgentId());
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
   const refreshGeneration = useRef(0);
@@ -27,7 +29,12 @@ export function useAgentCatalog({
 
   const initializeAgents = useCallback((data: Awaited<ReturnType<typeof listAgents>>) => {
     setAgents(data.agents);
-    setSelectedAgentId(data.agents[0]?.id ?? null);
+    const preferred = data.agents.find((agent) => agent.id === readDefaultAgentId() && agent.enabled && agent.available);
+    setSelectedAgentId(preferred?.id ?? data.agents[0]?.id ?? null);
+  }, []);
+  const setDefaultAgentId = useCallback((agentId: string) => {
+    setDefaultAgentIdState(agentId);
+    writeDefaultAgentId(agentId);
   }, []);
   const initializePaths = useCallback((data: Awaited<ReturnType<typeof agentPaths>>) => {
     refreshGeneration.current += 1;
@@ -113,9 +120,11 @@ export function useAgentCatalog({
   return {
     agents,
     paths,
+    defaultAgentId,
     selectedAgentId,
     selectedPathId,
     setPaths,
+    setDefaultAgentId,
     setSelectedAgentId,
     setSelectedPathId,
     refreshData,

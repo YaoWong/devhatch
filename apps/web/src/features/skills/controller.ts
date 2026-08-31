@@ -6,6 +6,7 @@ export type SkillsController = {
   profiles: SkillProfile[];
   selectedProfileId: string | null;
   profileDetail: SkillProfileDetail | null;
+  profileLoading: boolean;
   syncPlan: SkillSyncPlan | null;
   profileError: string | null;
   dismissProfileError: () => void;

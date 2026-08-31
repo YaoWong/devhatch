@@ -24,6 +24,7 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   const [profileDetail, setProfileDetail] = useState<SkillProfileDetail | null>(null);
   const [syncPlan, setSyncPlan] = useState<SkillSyncPlan | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const syncGeneration = useRef(0);
   const refreshGeneration = useRef(0);
@@ -74,10 +75,11 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     const generation = ++profileGeneration.current;
     if (!selectedProfileId) {
       setProfileDetail(null);
+      setProfileLoading(false);
       return;
     }
     const targetId = selectedProfileId;
-    setProfileDetail(null);
+    setProfileLoading(true);
     void getSkillProfile(targetId)
       .then(({ skillProfileDetail }) => {
         if (mounted.current && profileGeneration.current === generation && selectedProfileIdRef.current === targetId) {
@@ -87,6 +89,11 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
       .catch((reason) => {
         if (mounted.current && profileGeneration.current === generation && selectedProfileIdRef.current === targetId) {
           setProfileError(reason instanceof Error ? reason.message : String(reason));
+        }
+      })
+      .finally(() => {
+        if (mounted.current && profileGeneration.current === generation && selectedProfileIdRef.current === targetId) {
+          setProfileLoading(false);
         }
       });
   }, [selectedProfileId]);
@@ -131,6 +138,7 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     profiles,
     selectedProfileId,
     profileDetail,
+    profileLoading,
     syncPlan,
     profileError,
     dismissProfileError: () => setProfileError(null),

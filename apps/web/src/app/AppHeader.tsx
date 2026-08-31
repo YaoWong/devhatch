@@ -2,6 +2,7 @@ import { Eye, EyeOff, LoaderCircle, Menu, PanelLeftClose, SlidersHorizontal, Squ
 import { TerminalSettingsControls } from "../features/terminals/TerminalSettingsControls";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
+import type { Agent } from "../types/agents";
 import type { WorkspaceMode } from "../types/app";
 import type { WebAppOperation } from "../types/web-apps";
 
@@ -31,11 +32,14 @@ export function AppHeader({
   agentThumbnailsHidden,
   agentThumbnailsAutoHide,
   agentThumbnailSide,
+  agents,
+  defaultAgentId,
   onAgentCapacityChange,
   onAgentLayoutPresetChange,
   onToggleAgentThumbnails,
   onToggleAgentThumbnailAutoHide,
   onAgentThumbnailSideChange,
+  onDefaultAgentChange,
   webAppRunning,
   webAppOperation,
   onStopWebApp,
@@ -65,11 +69,14 @@ export function AppHeader({
   agentThumbnailsHidden: boolean;
   agentThumbnailsAutoHide: boolean;
   agentThumbnailSide: "left" | "right";
+  agents: Agent[];
+  defaultAgentId: string | null;
   onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onToggleAgentThumbnails: () => void;
   onToggleAgentThumbnailAutoHide: () => void;
   onAgentThumbnailSideChange: (side: "left" | "right") => void;
+  onDefaultAgentChange: (agentId: string) => void;
   webAppRunning: boolean;
   webAppOperation: WebAppOperation | null;
   onStopWebApp: () => void;
@@ -129,12 +136,15 @@ export function AppHeader({
                 thumbnailSide={agentThumbnailSide}
                 launchPathsHeight={terminalLaunchPathsHeight}
                 confirmClose={confirmTerminalClose}
+                agents={agents}
+                defaultAgentId={defaultAgentId}
                 onCapacityChange={onAgentCapacityChange}
                 onLayoutPresetChange={onAgentLayoutPresetChange}
                 onToggleThumbnailAutoHide={onToggleAgentThumbnailAutoHide}
                 onThumbnailSideChange={onAgentThumbnailSideChange}
                 onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
                 onConfirmCloseChange={onConfirmTerminalCloseChange}
+                onDefaultAgentChange={onDefaultAgentChange}
               />
             </div>
           </details>

@@ -1,5 +1,5 @@
 @media (prefers-reduced-motion: reduce) {
-  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog, .terminal-window, .terminal-thumbnail, .terminal-thumbnail-stack, .terminal-thumbnail-edge-trigger, .terminal-capacity-control button, .skills-section-transition, .skill-tree-children, .profile-source-tree { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog, .terminal-window, .terminal-thumbnail, .terminal-thumbnail-stack, .terminal-thumbnail-edge-trigger, .terminal-capacity-control button, .skills-section-transition, .skill-tree-children, .profile-source-tree, .profile-detail-transition, .profile-skills.loading::after { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 1ms !important; }
 }
 

@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, Plus, RotateCcw, Save, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
@@ -14,11 +14,12 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const saveRef = useRef(false);
-  useEffect(() => {
-    const next = new Set(controller.profileDetail?.skills.map((skill) => skill.id) ?? []);
+  useLayoutEffect(() => {
+    if (!controller.profileDetail || controller.profileDetail.profile.id !== controller.selectedProfileId) return;
+    const next = new Set(controller.profileDetail.skills.map((skill) => skill.id));
     setDraft(next);
     setSaved(new Set(next));
-  }, [controller.profileDetail]);
+  }, [controller.profileDetail, controller.selectedProfileId]);
   const dirty = !sameSet(draft, saved);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -52,6 +53,8 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   ]);
   const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
   const allCollapsed = visibleTreeKeys.length > 0 && visibleTreeKeys.every((key) => effectiveCollapsed.has(key));
+  const selectedProfile = controller.profiles.find((profile) => profile.id === controller.selectedProfileId);
+  const detailReady = controller.profileDetail?.profile.id === controller.selectedProfileId;
   return (
     <WorkspaceSection title="Profiles" description="Build a reusable skill set, then save all changes in one update.">
       {controller.profileError && (
@@ -75,57 +78,59 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           ))}
           {!controller.profiles.length && <Empty text="No profiles yet." />}
         </nav>
-        <div className="profile-skills">
-          <div className="profile-skills-header">
-            <span>
-              <h3>{controller.profileDetail?.profile.slug ?? "Select a profile"}</h3>
-              <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
-            </span>
-            <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
-            <div className="profile-header-actions">
-              <button className="skills-button quiet" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</button>
-              <button className="skills-primary save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</button>
+        <div className={`profile-skills ${controller.profileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading}>
+          <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
+            <div className="profile-skills-header">
+              <span>
+                <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
+                <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
+              </span>
+              <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
+              <div className="profile-header-actions">
+                <button className="skills-button quiet" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</button>
+                <button className="skills-primary save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</button>
+              </div>
             </div>
-          </div>
-          <div className="profile-tree-toolbar">
-            <TreeControls
-              allCollapsed={allCollapsed}
-              disabled={!visibleTreeKeys.length || Boolean(query.trim())}
-              onToggle={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, !allCollapsed))}
-            />
-          </div>
-          <div className="profile-tree">
-            {customSkills.length > 0 && (
-              <ProfileSourceGroup
-                title="My skills"
-                icon={<Folder />}
-                skills={customSkills}
-                namespace="custom"
-                draft={draft}
-                collapsed={effectiveCollapsed}
-                onToggleSkill={(id) => setDraft((current) => toggleSet(current, id))}
-                onToggleGroup={(key) => setCollapsed((current) => toggleSet(current, key))}
+            <div className="profile-tree-toolbar">
+              <TreeControls
+                allCollapsed={allCollapsed}
+                disabled={!visibleTreeKeys.length || Boolean(query.trim())}
+                onToggle={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, !allCollapsed))}
               />
-            )}
-            {controller.repositories.map((repository) => {
-              const skills = filtered.filter((skill) => skill.repositoryId === repository.id);
-              if (!skills.length && query.trim()) return null;
-              return (
+            </div>
+            <div className="profile-tree">
+              {customSkills.length > 0 && (
                 <ProfileSourceGroup
-                  key={repository.id}
-                  title={repository.name}
-                  subtitle={`${skills.length} skills`}
-                  icon={<FolderGit2 />}
-                  skills={skills}
-                  namespace={repository.id}
+                  title="My skills"
+                  icon={<Folder />}
+                  skills={customSkills}
+                  namespace="custom"
                   draft={draft}
                   collapsed={effectiveCollapsed}
                   onToggleSkill={(id) => setDraft((current) => toggleSet(current, id))}
                   onToggleGroup={(key) => setCollapsed((current) => toggleSet(current, key))}
                 />
-              );
-            })}
-            {!filtered.length && <Empty text="No skills match your search." />}
+              )}
+              {controller.repositories.map((repository) => {
+                const skills = filtered.filter((skill) => skill.repositoryId === repository.id);
+                if (!skills.length && query.trim()) return null;
+                return (
+                  <ProfileSourceGroup
+                    key={repository.id}
+                    title={repository.name}
+                    subtitle={`${skills.length} skills`}
+                    icon={<FolderGit2 />}
+                    skills={skills}
+                    namespace={repository.id}
+                    draft={draft}
+                    collapsed={effectiveCollapsed}
+                    onToggleSkill={(id) => setDraft((current) => toggleSet(current, id))}
+                    onToggleGroup={(key) => setCollapsed((current) => toggleSet(current, key))}
+                  />
+                );
+              })}
+              {!filtered.length && <Empty text="No skills match your search." />}
+            </div>
           </div>
         </div>
       </div>

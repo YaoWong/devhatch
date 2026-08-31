@@ -680,6 +680,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
               agentThumbnailsHidden={agentThumbnailsHidden}
               agentThumbnailsAutoHide={agentThumbnailsAutoHide}
               agentThumbnailSide={agentThumbnailSide}
+              agents={agent.agents}
+              defaultAgentId={agent.defaultAgentId}
+              onDefaultAgentChange={agent.setDefaultAgentId}
               onAgentCapacityChange={setAgentCapacity}
               onAgentLayoutPresetChange={setAgentLayoutPreset}
               onToggleAgentThumbnails={() => setAgentThumbnailsHidden((hidden) => !hidden)}

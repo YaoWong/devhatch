@@ -3,6 +3,7 @@ import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls"
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
 import type { FocusEventHandler, MouseEventHandler, RefObject } from "react";
+import type { Agent } from "../../types/agents";
 import type { WebAppOperation } from "../../types/web-apps";
 import type { LayoutMode } from "../../types/settings";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
@@ -46,10 +47,13 @@ export function NavigationRail({
   agentLayoutPreset,
   agentThumbnailsAutoHide,
   agentThumbnailSide,
+  agents,
+  defaultAgentId,
   onAgentCapacityChange,
   onAgentLayoutPresetChange,
   onToggleAgentThumbnailAutoHide,
   onAgentThumbnailSideChange,
+  onDefaultAgentChange,
   terminalContent,
   agentContent,
   skillsContent,
@@ -102,10 +106,13 @@ export function NavigationRail({
   agentLayoutPreset: TerminalLayoutPreset | null;
   agentThumbnailsAutoHide: boolean;
   agentThumbnailSide: "left" | "right";
+  agents: Agent[];
+  defaultAgentId: string | null;
   onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onToggleAgentThumbnailAutoHide: () => void;
   onAgentThumbnailSideChange: (side: "left" | "right") => void;
+  onDefaultAgentChange: (agentId: string) => void;
   terminalContent: React.ReactNode;
   agentContent: React.ReactNode;
   skillsContent: React.ReactNode;
@@ -265,12 +272,15 @@ export function NavigationRail({
             thumbnailSide={workspaceMode === "terminal" ? terminalThumbnailSide : agentThumbnailSide}
             launchPathsHeight={terminalLaunchPathsHeight}
             confirmClose={confirmTerminalClose}
+            agents={workspaceMode === "agent" ? agents : undefined}
+            defaultAgentId={defaultAgentId}
             onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
             onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
             onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}
             onThumbnailSideChange={workspaceMode === "terminal" ? onTerminalThumbnailSideChange : onAgentThumbnailSideChange}
             onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
             onConfirmCloseChange={onConfirmTerminalCloseChange}
+            onDefaultAgentChange={workspaceMode === "agent" ? onDefaultAgentChange : undefined}
           />
         </div>
       )}
