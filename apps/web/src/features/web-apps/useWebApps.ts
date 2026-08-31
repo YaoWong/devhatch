@@ -15,6 +15,7 @@ export function operationBusy(local: WebAppOperation | null, app: WebApp | null)
 
 export function useWebApps(active: boolean, reportError: (message: string) => void) {
   const [apps, setApps] = useState<WebApp[]>([]);
+  const [settled, setSettled] = useState(false);
   const [localOperation, setLocalOperation] = useState<WebAppOperation | null>(null);
   const mounted = useRef(false);
   const refreshGeneration = useRef(0);
@@ -44,6 +45,8 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
       if (mounted.current && refreshGeneration.current === generation) {
         reportError(reason instanceof Error ? reason.message : String(reason));
       }
+    } finally {
+      if (mounted.current && refreshGeneration.current === generation) setSettled(true);
     }
   }, [reportError]);
 
@@ -165,5 +168,5 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
     }
   }, [beginMutation, finishMutation, refresh, reportMutationError]);
 
-  return { apps, openDesign, operation, refresh, install, start, stop, checkUpdate, update };
+  return { apps, openDesign, operation, settled, refresh, install, start, stop, checkUpdate, update };
 }

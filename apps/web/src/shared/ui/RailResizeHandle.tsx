@@ -88,6 +88,8 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       onPointerUp={(event) => finish(event, true)}
       onPointerCancel={(event) => finish(event, false)}
       onLostPointerCapture={(event) => finish(event, false)}
-    />
+    >
+      <span aria-hidden="true" />
+    </div>
   );
 }

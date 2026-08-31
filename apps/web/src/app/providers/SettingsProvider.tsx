@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { getSettings, updateSettings } from "../../api/settings";
 import { ThemeContext } from "../../shared/theme/ThemeContext";
 import { applyTheme, cachedTheme, isThemeId } from "../../shared/theme/themes";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { LayoutMode, ThemeId } from "../../types/settings";
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
@@ -12,6 +13,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [navigationRailWidthPx, setNavigationRailWidthPxState] = useState(288);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const showInitialLoading = useDelayedLoading(themeId === null);
   const mountedRef = useRef(false);
   const confirmedRef = useRef<ThemeId>(initialTheme);
   const desiredRef = useRef<ThemeId>(initialTheme);
@@ -253,7 +255,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     void flushLayout();
   }, [flushLayout]);
 
-  if (themeId === null) return null;
+  if (themeId === null) {
+    return showInitialLoading ? <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1><p>Loading settings…</p></section></main> : null;
+  }
   return (
     <ThemeContext
       value={{

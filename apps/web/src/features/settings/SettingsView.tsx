@@ -1,6 +1,7 @@
 import type { LayoutMode } from "../../types/settings";
-import { LogOut, Palette } from "lucide-react";
+import { LayoutPanelLeft, LogOut, PanelLeft, Palette } from "lucide-react";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
+import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { themes } from "../../shared/theme/themes";
 
@@ -82,7 +83,7 @@ export function SettingsView({
           </div>
           <div className="settings-group settings-theme-group">
             <div className="settings-row static settings-theme-row">
-              <Palette />
+              <LayoutPanelLeft />
               <span>
                 <strong>Layout</strong>
                 <small>Canvas uses a full workspace with an overlay sidebar. Classic keeps the original framed layout.</small>
@@ -118,25 +119,15 @@ export function SettingsView({
                 onChange={selectTheme}
               />
             </div>
-            <label className="settings-row settings-range-row">
+            <div className="settings-row settings-range-row">
+              <PanelLeft />
               <span>
                 <strong>Sidebar width</strong>
                 <small>Set the desktop navigation sidebar width.</small>
                 {error && <small className="settings-error" role="alert">{error}</small>}
               </span>
-              <span className="settings-range-control">
-                <input
-                  type="range"
-                  min="240"
-                  max="480"
-                  step="8"
-                  value={navigationRailWidthPx}
-                  aria-label="Sidebar width"
-                  onChange={(event) => setNavigationRailWidthPx(event.target.valueAsNumber)}
-                />
-                <output>{navigationRailWidthPx}px</output>
-              </span>
-            </label>
+              <PixelRangeControl label="Sidebar width" min={240} max={480} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
+            </div>
           </div>
         </section>}
         {section === "account" && <section className="settings-section">

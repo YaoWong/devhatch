@@ -164,6 +164,5 @@
 .skill-manifest-loading, .skill-manifest-error { height: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-text-faint); font-size: 10px; }
 .skill-manifest-loading svg { width: 15px; }
 .skill-manifest-error { color: var(--color-danger); }
-.skills-spinner { position: fixed; right: 28px; top: 86px; z-index: 2; width: 18px; color: var(--color-text-muted); }
 .skills-rail-note { display: flex; align-items: flex-start; gap: 7px; margin: 16px 8px; padding: 10px; border-radius: 9px; background: var(--color-canvas); color: var(--color-text-faint); font-size: 9px; line-height: 1.45; }
 .skills-rail-note svg { width: 14px; flex: none; }

@@ -5,6 +5,7 @@ import type { LayoutMode } from "../../types/settings";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { Statusbar } from "../../shared/terminal/Statusbar";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
   minimizeTerminal,
   reconcileTerminalWorkspaceDock,
@@ -132,6 +133,7 @@ export function TerminalWorkspace({
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
+  const showInitialLoading = useDelayedLoading(busy);
   const renameSavingRef = useRef(false);
   const renameCancelledRef = useRef(false);
   const stageTransitionRef = useRef<{ transition: ViewTransition; generation: number; applyUpdate: () => void; clearCaption: () => void } | null>(null);
@@ -512,7 +514,7 @@ export function TerminalWorkspace({
             </button>)}
           </nav>
         </div>}
-        {busy && <div className="empty-state">Starting DevHatch…</div>}
+        {showInitialLoading && <div className="empty-state">Starting DevHatch…</div>}
         {!busy && !workspaceId && <div className="empty-state">{emptyIcon}<strong>No {workspaceLabel} selected</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
         {!busy && workspaceId && !visibleSessions.length && <div className="empty-state">{emptyIcon}<strong>No {sessionLabel}s in this {workspaceLabel}</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
         {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a {sessionLabel} thumbnail</div>}

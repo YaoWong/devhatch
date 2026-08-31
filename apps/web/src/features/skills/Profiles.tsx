@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, Plus, RotateCcw, Save, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { Skill } from "../../types/skills";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
 import { filterSkills } from "./search";
@@ -14,6 +15,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const saveRef = useRef(false);
+  const showProfileLoading = useDelayedLoading(controller.profileLoading);
   useLayoutEffect(() => {
     if (!controller.profileDetail || controller.profileDetail.profile.id !== controller.selectedProfileId) return;
     const next = new Set(controller.profileDetail.skills.map((skill) => skill.id));
@@ -78,7 +80,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           ))}
           {!controller.profiles.length && <Empty text="No profiles yet." />}
         </nav>
-        <div className={`profile-skills ${controller.profileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading}>
+        <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading}>
           <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
             <div className="profile-skills-header">
               <span>

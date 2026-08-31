@@ -109,6 +109,7 @@ export function AppHeader({
                 thumbnailSide={terminalThumbnailSide}
                 launchPathsHeight={terminalLaunchPathsHeight}
                 confirmClose={confirmTerminalClose}
+                showLaunchPathsHeight={false}
                 onCapacityChange={onTerminalCapacityChange}
                 onLayoutPresetChange={onTerminalLayoutPresetChange}
                 onToggleThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}

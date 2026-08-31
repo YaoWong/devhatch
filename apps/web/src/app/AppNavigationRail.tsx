@@ -278,6 +278,7 @@ export function AppNavigationRail({
           onInstall={webApps.install}
           onStart={webApps.start}
           operation={webApps.operation}
+          settled={webApps.settled}
           onConfirm={onConfirm}
         />
       }

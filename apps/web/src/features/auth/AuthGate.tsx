@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { authStatus, login, logout, setupAdmin, type AuthStatus } from "../../api/auth";
 import { configureAuth } from "../../api/client";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export type AuthGateRenderProps = {
   onLogout: () => Promise<void>;
@@ -13,9 +14,14 @@ export function AuthGate({ children }: { children: (props: AuthGateRenderProps) 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const showStatusLoading = useDelayedLoading(status === null && error === null);
 
   useEffect(() => {
-    authStatus().then(setStatus).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+    let active = true;
+    void authStatus()
+      .then((next) => { if (active) setStatus(next); })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -23,7 +29,7 @@ export function AuthGate({ children }: { children: (props: AuthGateRenderProps) 
   }, [status]);
 
   if (!status) {
-    return <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1><p>{error ?? "Loading…"}</p></section></main>;
+    return <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1>{(error || showStatusLoading) && <p>{error ?? "Loading…"}</p>}</section></main>;
   }
   if (status.authenticated) {
     const signOut = async () => {

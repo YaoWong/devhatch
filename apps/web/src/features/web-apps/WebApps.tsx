@@ -2,21 +2,25 @@ import { CircleAlert, CircleCheck, Download, LoaderCircle, Play, RefreshCw } fro
 import openDesignIcon from "./open-design.svg";
 import type { ConfirmAction } from "../../types/app";
 import type { WebApp, WebAppOperation } from "../../types/web-apps";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function WebAppsRailPage({
   app,
   onInstall,
   onStart,
   operation,
+  settled,
   onConfirm,
 }: {
   app: WebApp | null;
   onInstall: () => Promise<void>;
   onStart: () => Promise<void>;
   operation: WebAppOperation | null;
+  settled: boolean;
   onConfirm: (action: ConfirmAction) => void;
 }) {
-  if (!app) return <div className="quiet-message">Loading Web Apps…</div>;
+  const showLoading = useDelayedLoading(!settled);
+  if (!app) return showLoading ? <div className="quiet-message">Loading Web Apps…</div> : settled ? <div className="quiet-message">Web Apps unavailable.</div> : null;
   const action = () => {
     if (app.running) return;
     if (app.installed) {
@@ -51,6 +55,7 @@ export function WebAppsWorkspace({
   app,
   operation,
   error,
+  settled,
   onInstall,
   onStart,
   onUpdate,
@@ -61,6 +66,7 @@ export function WebAppsWorkspace({
   app: WebApp | null;
   operation: WebAppOperation | null;
   error: string | null;
+  settled: boolean;
   onInstall: () => Promise<void>;
   onStart: () => Promise<void>;
   onUpdate: () => Promise<void>;
@@ -68,7 +74,8 @@ export function WebAppsWorkspace({
   onConfirm: (action: ConfirmAction) => void;
   onDismissError: () => void;
 }) {
-  if (!app) return <div className="webapps-workspace"><div className="empty-state">Loading Web Apps…</div></div>;
+  const showLoading = useDelayedLoading(!settled);
+  if (!app) return showLoading ? <div className="webapps-workspace"><div className="empty-state">Loading Web Apps…</div></div> : settled ? <div className="webapps-workspace"><div className="empty-state">Web Apps unavailable.</div></div> : <div className="webapps-workspace" />;
   const ready = app.prerequisites.git && app.prerequisites.node24 && app.prerequisites.corepack;
   const install = () =>
     onConfirm({

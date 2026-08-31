@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Code2, Layers3 } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { AgentIcon } from "../../shared/branding/Branding";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type {
   Agent,
   AgentLaunchConfig,
@@ -118,6 +119,7 @@ export function AgentRailPage({
   const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
   const [renameAlias, setRenameAlias] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
+  const showAgentLoading = useDelayedLoading(busy);
   const launchSetupStorageKey = selectedAgentId
     ? `devhatch-agent-launch-setup-collapsed:${selectedAgentId}`
     : null;
@@ -198,7 +200,7 @@ export function AgentRailPage({
       <div className="menu-section">
         <p className="menu-label">Agent CLI</p>
         {busy ? (
-          <div className="quiet-message">Loading agents…</div>
+          showAgentLoading ? <div className="quiet-message">Loading agents…</div> : null
         ) : agents.length ? (
           <>
             <CustomSelect

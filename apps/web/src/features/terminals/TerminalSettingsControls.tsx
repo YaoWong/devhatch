@@ -1,5 +1,6 @@
 import type { Agent } from "../../types/agents";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
+import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { TerminalLayoutPresetControl } from "./TerminalLayoutPresetControl";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "./terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "./terminalWorkspaceDock";
@@ -67,11 +68,10 @@ export function TerminalSettingsControls({
       <span>Layout</span>
       <TerminalLayoutPresetControl count={layoutCount} value={layoutPreset} onChange={onLayoutPresetChange} />
     </div>}
-    {showLaunchPathsHeight && <label className="terminal-setting-row terminal-setting-range">
+    {showLaunchPathsHeight && <div className="terminal-setting-row terminal-setting-range">
       <span>Launch paths height</span>
-      <input type="range" min="160" max="480" step="8" value={launchPathsHeight} aria-label="Launch paths height" onChange={(event) => onLaunchPathsHeightChange(event.target.valueAsNumber)} />
-      <output>{launchPathsHeight}px</output>
-    </label>}
+      <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
+    </div>}
     {showConfirmClose && <label className="terminal-setting-row">
       <span>Confirm close</span>
       <input type="checkbox" role="switch" checked={confirmClose} onChange={(event) => onConfirmCloseChange(event.target.checked)} />

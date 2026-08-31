@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpToLine, LoaderCircle } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import type { SkillsSection } from "./SkillsRailPage";
 import type { SkillsController } from "./controller";
@@ -40,7 +40,6 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
   }, [section]);
   return (
     <div className="skills-workspace" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
-      {controller.busy && <LoaderCircle className="skills-spinner spin" />}
       <div className="skills-section-transition" key={section}>
         {section === "repositories" && <Repositories controller={controller} />}
         {section === "skills" && <SkillLibrary controller={controller} />}

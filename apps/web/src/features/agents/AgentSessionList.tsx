@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ConfirmAction } from "../../types/app";
 import type { AgentLaunchPath, AgentSession, HistorySession } from "../../types/agents";
 import { displayPath } from "../../shared/lib/utils";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRow = { live?: AgentSession; history?: HistorySession };
@@ -64,6 +65,7 @@ export function AgentSessionList({
   const historyUnavailable =
     supportsHistory && historySettled && (!historyAvailable || Boolean(historyLoadError));
   const historyMessage = historyLoadError ?? historyDiagnostic;
+  const showHistoryLoading = useDelayedLoading(historyLoading && !historySettled);
   const retryHistory = async () => {
     if (retrying || historyLoading) return;
     setRetrying(true);
@@ -206,7 +208,7 @@ export function AgentSessionList({
               );
             })}
           </>
-        ) : historyLoading && !historySettled ? (
+        ) : showHistoryLoading ? (
           <div className="quiet-message">Loading sessions…</div>
         ) : historyUnavailable ? (
           <div className="quiet-message history-status unavailable">

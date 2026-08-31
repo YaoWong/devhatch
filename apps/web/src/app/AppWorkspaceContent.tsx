@@ -154,6 +154,7 @@ export function AppWorkspaceContent({
           app={webApps.openDesign}
           operation={webApps.operation}
           error={error}
+          settled={webApps.settled}
           onInstall={webApps.install}
           onStart={webApps.start}
           onUpdate={webApps.update}

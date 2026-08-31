@@ -56,9 +56,11 @@
 .settings-section:first-child { padding-top: 0; }
 .settings-section-title h2 { margin: 0; color: var(--color-text); font-size: 17px; letter-spacing: -.02em; }
 .settings-section-title p { margin: 7px 0 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
-.settings-group { overflow: hidden; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); box-shadow: 0 4px 14px rgb(0 0 0 / 4%); }
+.settings-group { overflow: hidden; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 8px 24px rgb(var(--shadow-color) / 5%); }
 .settings-theme-group { overflow: visible; }
-.settings-row { min-height: 68px; display: flex; align-items: center; gap: 24px; padding: 13px 16px; cursor: pointer; }
+.settings-row { min-height: 72px; display: flex; align-items: center; gap: 16px; padding: 14px 16px; cursor: pointer; transition: background-color 150ms ease; }
+.settings-row + .settings-row { border-top: 1px solid var(--color-border); }
+.settings-row:hover { background: color-mix(in srgb, var(--color-surface-raised) 72%, transparent); }
 .settings-row > span { min-width: 0; flex: 1; }
 .settings-row strong, .settings-row small { display: block; }
 .settings-row strong { color: var(--color-text); font-size: 12px; }
@@ -70,15 +72,11 @@
 .settings-row input[type="checkbox"]:checked::after { transform: translateX(16px); }
 .settings-row input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
 .settings-range-row { cursor: default; }
-.settings-range-control { min-width: 180px; display: flex; align-items: center; gap: 12px; flex: none; }
-.settings-range-control input[type="range"] { min-width: 0; width: 130px; accent-color: var(--color-accent); cursor: pointer; }
-.settings-range-control input[type="range"]:focus-visible { border-radius: 99px; outline: 2px solid var(--color-accent); outline-offset: 3px; }
-.settings-range-control output { width: 42px; color: var(--color-text-subtle); font: 10px/1 "SF Mono", monospace; text-align: right; }
 .settings-row.static { cursor: default; }
-.settings-row.static > svg { width: 20px; height: 20px; flex: none; color: var(--color-text-faint); }
+.settings-row.static > svg, .settings-range-row > svg { width: 34px; height: 34px; padding: 8px; flex: none; border-radius: 10px; background: var(--color-surface-muted); color: var(--color-text-muted); }
 .settings-signout { flex: none; padding: 8px 13px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); color: var(--color-danger); font-size: 11px; font-weight: 600; cursor: pointer; }
 .settings-signout:hover { border-color: var(--color-danger); background: var(--color-danger-soft); }
-.settings-theme-row .custom-select { width: min(240px, 48%); flex: none; }
+.settings-theme-row .custom-select, .settings-range-row .pixel-range-control { width: min(240px, 48%); flex: none; }
 .settings-theme-row .custom-select-trigger { min-height: 48px; }
 .settings-theme-row .custom-select-menu { min-width: 240px; right: 0; left: auto; }
 .settings-theme-row .custom-select-option { min-height: 46px; }

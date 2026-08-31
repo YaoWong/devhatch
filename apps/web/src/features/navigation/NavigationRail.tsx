@@ -274,6 +274,7 @@ export function NavigationRail({
             confirmClose={confirmTerminalClose}
             agents={workspaceMode === "agent" ? agents : undefined}
             defaultAgentId={defaultAgentId}
+            showLaunchPathsHeight={workspaceMode === "agent"}
             onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
             onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
             onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}

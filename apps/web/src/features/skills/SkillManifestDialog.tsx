@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { getSkillManifest } from "../../api/skills";
 import type { Skill } from "../../types/skills";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const showLoading = useDelayedLoading(content === null && error === null);
   useEffect(() => {
     let current = true;
     const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
@@ -27,7 +29,7 @@ export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose:
           <button className="skills-icon-button" type="button" aria-label="Close skill content" onClick={onClose}><X /></button>
         </header>
         <div className="skill-manifest-body">
-          {content === null && !error && <div className="skill-manifest-loading"><LoaderCircle className="spin" />Loading content…</div>}
+          {showLoading && <div className="skill-manifest-loading"><LoaderCircle className="spin" />Loading content…</div>}
           {error && <div className="skill-manifest-error">{error}</div>}
           {content !== null && <pre>{content}</pre>}
         </div>

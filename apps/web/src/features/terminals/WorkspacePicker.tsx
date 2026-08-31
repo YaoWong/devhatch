@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight, Folder, FolderOpen, HardDrive, Home, X } from 
 import { listDirectories } from "../../api/terminals";
 import type { DirectoryListing } from "../../types/terminals";
 import { displayPath } from "../../shared/lib/utils";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function WorkspacePicker({
   initialPath,
@@ -18,6 +19,7 @@ export function WorkspacePicker({
   const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const showLoading = useDelayedLoading(loading);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const requestGeneration = useRef(0);
   const mounted = useRef(true);
@@ -128,8 +130,8 @@ export function WorkspacePicker({
           ))}
         </nav>
         <div className="picker-browser">
-          {loading && (
-            <div className="picker-message">
+          {showLoading && (
+            <div className="picker-loading" role="status">
               <span className="picker-spinner" />
               Loading folders…
             </div>
@@ -140,15 +142,14 @@ export function WorkspacePicker({
               <button onClick={() => void openDirectory(listing?.path ?? initialPath)}>Try again</button>
             </div>
           )}
-          {!loading && !pickerError && listing?.directories.length === 0 && (
+          {!pickerError && listing?.directories.length === 0 && (
             <div className="picker-message">
               <FolderOpen />
               <strong>This folder has no subfolders</strong>
               <span>You can still select the current folder.</span>
             </div>
           )}
-          {!loading &&
-            !pickerError &&
+          {!pickerError &&
             listing?.directories.map((directory) => (
               <button key={directory.path} className="folder-row" onClick={() => void openDirectory(directory.path)}>
                 <span className="folder-icon">
