@@ -80,7 +80,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           ))}
           {!controller.profiles.length && <Empty text="No profiles yet." />}
         </nav>
-        <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading}>
+        <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
           <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
             <div className="profile-skills-header">
               <span>

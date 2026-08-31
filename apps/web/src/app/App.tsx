@@ -3,10 +3,8 @@ import { Menu } from "lucide-react";
 import { flushSync } from "react-dom";
 import "@xterm/xterm/css/xterm.css";
 import { AppDialogs } from "./AppDialogs";
-import { AppHeader } from "./AppHeader";
 import { AppNavigationRail } from "./AppNavigationRail";
 import { AppWorkspaceContent } from "./AppWorkspaceContent";
-import { getModeSubtitle } from "./modeSubtitle";
 import { useInitialWorkspaceData } from "./useInitialWorkspaceData";
 import { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { useNavigation } from "../features/navigation/useNavigation";
@@ -31,7 +29,7 @@ import {
 } from "../features/terminals/terminalWorkspaceDock";
 import { useWebApps } from "../features/web-apps/useWebApps";
 import { RailResizeHandle } from "../shared/ui/RailResizeHandle";
-import type { ConfirmAction, DeleteTarget } from "../types/app";
+import type { ConfirmAction, DeleteTarget, LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 import "./styles/index.css";
 
@@ -42,7 +40,17 @@ const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
 const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
 const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v1";
+const TERMINAL_PATH_DISPLAY_STORAGE_KEY = "devhatch-terminal-path-display";
+const AGENT_PATH_DISPLAY_STORAGE_KEY = "devhatch-agent-path-display";
 type TerminalThumbnailSide = "left" | "right";
+
+function initialPathDisplay(storageKey: string): LaunchPathDisplay {
+  try {
+    return localStorage.getItem(storageKey) === "full" ? "full" : "folder";
+  } catch {
+    return "folder";
+  }
+}
 
 function initialThumbnailSide(storageKey = TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY): TerminalThumbnailSide {
   try {
@@ -87,7 +95,6 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     navigationRailWidthPx,
     setAgentLaunchPathsMaxHeightPx,
     setNavigationRailWidthPx,
-    layoutMode,
   } = useTheme();
   const [canvasPinned, setCanvasPinned] = useState(readCanvasSidebarPinned);
   const [canvasOpen, setCanvasOpen] = useState(false);
@@ -122,17 +129,27 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialCapacity);
-  const [terminalThumbnailsHidden, setTerminalThumbnailsHidden] = useState(false);
+  const [terminalPathDisplay, setTerminalPathDisplayState] = useState<LaunchPathDisplay>(() => initialPathDisplay(TERMINAL_PATH_DISPLAY_STORAGE_KEY));
   const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(false);
   const [terminalThumbnailSide, setTerminalThumbnailSideState] = useState<TerminalThumbnailSide>(initialThumbnailSide);
   const [terminalLayoutCount, setTerminalLayoutCount] = useState<TerminalLayoutCount | null>(null);
   const [terminalWorkspaceLayouts, setTerminalWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(readTerminalWorkspaceLayouts);
   const [agentCapacity, setAgentCapacityState] = useState<TerminalWorkspaceCapacity>(() => initialCapacity(AGENT_WORKSPACE_CAPACITY_STORAGE_KEY));
-  const [agentThumbnailsHidden, setAgentThumbnailsHidden] = useState(false);
+  const [agentPathDisplay, setAgentPathDisplayState] = useState<LaunchPathDisplay>(() => initialPathDisplay(AGENT_PATH_DISPLAY_STORAGE_KEY));
   const [agentThumbnailsAutoHide, setAgentThumbnailsAutoHide] = useState(false);
   const [agentThumbnailSide, setAgentThumbnailSideState] = useState<TerminalThumbnailSide>(() => initialThumbnailSide(AGENT_THUMBNAIL_SIDE_STORAGE_KEY));
   const [agentLayoutCount, setAgentLayoutCount] = useState<TerminalLayoutCount | null>(null);
   const [agentWorkspaceLayouts, setAgentWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(() => readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY));
+  const setPathDisplay = useCallback((mode: LaunchPathDisplay, storageKey: string, setValue: (mode: LaunchPathDisplay) => void) => {
+    setValue(mode);
+    try { localStorage.setItem(storageKey, mode); } catch { return; }
+  }, []);
+  const setTerminalPathDisplay = useCallback((mode: LaunchPathDisplay) => {
+    setPathDisplay(mode, TERMINAL_PATH_DISPLAY_STORAGE_KEY, setTerminalPathDisplayState);
+  }, [setPathDisplay]);
+  const setAgentPathDisplay = useCallback((mode: LaunchPathDisplay) => {
+    setPathDisplay(mode, AGENT_PATH_DISPLAY_STORAGE_KEY, setAgentPathDisplayState);
+  }, [setPathDisplay]);
   const setTerminalThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
     setTerminalThumbnailSideState(side);
     try { localStorage.setItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
@@ -198,28 +215,20 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const update = () => {
       const active = document.activeElement;
       const movingToMobile = query.matches;
-      const focusWillBeLost = layoutMode === "canvas" && (movingToMobile
+      const focusWillBeLost = movingToMobile
         ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active)
-        : canvasMobileTriggerRef.current === active || (!canvasPinned && canvasRailRef.current?.contains(active)));
+        : canvasMobileTriggerRef.current === active || (!canvasPinned && canvasRailRef.current?.contains(active));
       breakpointFocusTargetRef.current = focusWillBeLost ? (movingToMobile ? "mobile" : "desktop") : null;
       setMobileNavigation(movingToMobile);
     };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, [canvasPinned, layoutMode]);
+  }, [canvasPinned]);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
-  const navigation = useNavigation(bumpFocus, layoutMode);
-  const previousLayoutModeRef = useRef(layoutMode);
-  const { selectMode, showGlobalSettings, normalizeSettingsRail, closeSidebar, sidebarOpen, workspaceMode } = navigation;
-  useEffect(() => {
-    const previousLayoutMode = previousLayoutModeRef.current;
-    previousLayoutModeRef.current = layoutMode;
-    if (previousLayoutMode !== layoutMode && workspaceMode === "settings") {
-      normalizeSettingsRail(layoutMode);
-    }
-  }, [layoutMode, normalizeSettingsRail, workspaceMode]);
+  const navigation = useNavigation(bumpFocus);
+  const { selectMode, showGlobalSettings, closeSidebar, sidebarOpen } = navigation;
   const dialogOpen = pickerPurpose !== null || confirmAction !== null || deleteCandidate !== null;
   const cancelCanvasClose = useCallback(() => {
     if (canvasCloseTimerRef.current !== null) window.clearTimeout(canvasCloseTimerRef.current);
@@ -254,12 +263,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     }, CANVAS_RAIL_CLOSE_DELAY_MS);
   }, [cancelCanvasClose, navigation.railMotion]);
   const onSessionSelected = useCallback(() => {
-    if (layoutMode !== "canvas" || mobileNavigation || canvasPinned) return;
+    if (mobileNavigation || canvasPinned) return;
     cancelCanvasClose();
     const active = document.activeElement;
     if (active instanceof HTMLElement && canvasRailRef.current?.contains(active)) active.blur();
     setCanvasOpen(false);
-  }, [cancelCanvasClose, canvasPinned, layoutMode, mobileNavigation]);
+  }, [cancelCanvasClose, canvasPinned, mobileNavigation]);
   useEffect(() => {
     const wasMobile = previousMobileNavigationRef.current;
     previousMobileNavigationRef.current = mobileNavigation;
@@ -284,10 +293,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     return () => window.cancelAnimationFrame(frame);
   }, [cancelCanvasClose, canvasPinned, closeSidebar, mobileNavigation]);
   useEffect(() => {
-    if (dialogOpen && layoutMode === "canvas" && mobileNavigation && sidebarOpen) closeSidebar();
-  }, [closeSidebar, dialogOpen, layoutMode, mobileNavigation, sidebarOpen]);
+    if (dialogOpen && mobileNavigation && sidebarOpen) closeSidebar();
+  }, [closeSidebar, dialogOpen, mobileNavigation, sidebarOpen]);
   useEffect(() => {
-    if (layoutMode !== "canvas" || !mobileNavigation || !sidebarOpen || dialogOpen) return;
+    if (!mobileNavigation || !sidebarOpen || dialogOpen) return;
     const rail = canvasRailRef.current;
     const frame = window.requestAnimationFrame(() => {
       const focusable = rail ? getFocusableRailElements(rail) : [];
@@ -316,13 +325,13 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", trapFocus);
     };
-  }, [dialogOpen, layoutMode, mobileNavigation, sidebarOpen]);
+  }, [dialogOpen, mobileNavigation, sidebarOpen]);
   useEffect(() => {
     const wasOpen = previousCanvasSidebarOpenRef.current;
-    const isOpen = layoutMode === "canvas" && mobileNavigation && sidebarOpen;
+    const isOpen = mobileNavigation && sidebarOpen;
     previousCanvasSidebarOpenRef.current = isOpen;
     if (wasOpen && !isOpen && !dialogOpen) canvasMobileTriggerRef.current?.focus();
-  }, [dialogOpen, layoutMode, mobileNavigation, sidebarOpen]);
+  }, [dialogOpen, mobileNavigation, sidebarOpen]);
   useEffect(() => {
     if (railResizing || navigation.railMotion !== null) cancelCanvasClose();
     else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) scheduleCanvasClose();
@@ -332,7 +341,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const modes = ["terminal", "agent", "skills", "webapp", "settings"] as const;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      if (event.key === "Escape" && layoutMode === "canvas") {
+      if (event.key === "Escape") {
         if (dialogOpen || document.querySelector('[aria-modal="true"]')) return;
         if (sidebarOpen) {
           event.preventDefault();
@@ -350,20 +359,20 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         target.matches("input, textarea, select") || target.isContentEditable
       ) return;
       if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      if (layoutMode === "canvas" && event.key === ",") {
+      if (event.key === ",") {
         event.preventDefault();
         showGlobalSettings();
         return;
       }
       const index = Number(event.key) - 1;
       const mode = modes[index];
-      if (!mode || (layoutMode === "canvas" && mode === "settings")) return;
+      if (!mode || mode === "settings") return;
       event.preventDefault();
       selectMode(mode);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canvasOpen, canvasPinned, closeCanvasRail, closeSidebar, dialogOpen, layoutMode, selectMode, showGlobalSettings, sidebarOpen]);
+  }, [canvasOpen, canvasPinned, closeCanvasRail, closeSidebar, dialogOpen, selectMode, showGlobalSettings, sidebarOpen]);
   const terminal = useTerminalWorkspace(homePaths, setHomePaths, reportError, navigation.closeSidebar, bumpFocus);
   const terminalLayoutPreset = terminal.selectedWorkspaceId && terminalLayoutCount
     ? terminalWorkspaceLayouts[terminal.selectedWorkspaceId]?.presets[terminalLayoutCount] ?? defaultTerminalLayoutPreset(terminalLayoutCount)
@@ -474,17 +483,6 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     }
   };
 
-  const modeSubtitle = getModeSubtitle({
-    mode: navigation.workspaceMode,
-    openDesign: webApps.openDesign,
-    activeAgentSession: agent.activeSession,
-    selectedAgent: agent.selectedAgent,
-    selectedWorkspace: terminal.selectedWorkspace
-      ? (terminal.selectedWorkspace.name || "Terminal Workspace")
-      : null,
-    homePaths,
-  });
-
   return (
     <main
       style={
@@ -494,8 +492,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         } as CSSProperties
       }
       className={
-        `app layout-${layoutMode} ${navigation.sidebarOpen ? "drawer-open" : ""} ` +
-        `${navigation.sidebarHidden ? "sidebar-hidden" : ""} ${railResizing ? "rail-resizing" : ""} ` +
+        `app ${navigation.sidebarOpen ? "drawer-open" : ""} ${railResizing ? "rail-resizing" : ""} ` +
         `${canvasPinned ? "canvas-rail-pinned" : "canvas-rail-auto"} ${canvasOpen ? "canvas-rail-open" : ""} ` +
         `mode-${navigation.workspaceMode}`
       }
@@ -531,7 +528,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }}
       />
       <button className="drawer-backdrop" aria-label="Close navigation" onClick={navigation.closeSidebar} />
-      {layoutMode === "canvas" && !mobileNavigation && !canvasPinned && (
+      {!mobileNavigation && !canvasPinned && (
         <button ref={canvasEdgeTriggerRef} className="canvas-edge-trigger" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
           if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
           else openCanvasRail();
@@ -541,7 +538,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           scheduleCanvasClose();
         }} onClick={openCanvasRail} />
       )}
-      {layoutMode === "canvas" && mobileNavigation && !sidebarOpen && (
+      {mobileNavigation && !sidebarOpen && (
         <button ref={canvasMobileTriggerRef} className="canvas-mobile-trigger" type="button" aria-label="Open navigation" aria-expanded={sidebarOpen} aria-controls={CANVAS_RAIL_ID} onClick={navigation.toggleSidebar}><Menu /></button>
       )}
       <AppNavigationRail
@@ -554,8 +551,6 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         busy={busy}
         skillsSection={skillsSection}
         onSelectSkillsSection={setSkillsSection}
-        settingsSection={settingsSection}
-        onSelectSettingsSection={setSettingsSection}
         onPickWorkspace={() => setPickerPurpose("add-launch-path")}
         onNewWorkspace={() => void terminal.createWorkspace()}
         onPickAgentPath={() => setPickerPurpose("agent")}
@@ -563,18 +558,21 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         onSessionSelected={onSessionSelected}
         terminalCapacity={terminalCapacity}
         terminalLayoutCount={terminalLayoutCount}
-        terminalLayoutPreset={terminalLayoutPreset}
-         terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
+         terminalLayoutPreset={terminalLayoutPreset}
+         terminalPathDisplay={terminalPathDisplay}
+          terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
          terminalThumbnailSide={terminalThumbnailSide}
          terminalLaunchPathsHeight={agentLaunchPathsMaxHeightPx}
          confirmTerminalClose={confirmDelete}
          agentCapacity={agentCapacity}
          agentLayoutCount={agentLayoutCount}
          agentLayoutPreset={agentLayoutPreset}
-         agentThumbnailsAutoHide={agentThumbnailsAutoHide}
+         agentPathDisplay={agentPathDisplay}
+          agentThumbnailsAutoHide={agentThumbnailsAutoHide}
          agentThumbnailSide={agentThumbnailSide}
          onTerminalCapacityChange={setTerminalCapacity}
         onTerminalLayoutPresetChange={setTerminalLayoutPreset}
+        onTerminalPathDisplayChange={setTerminalPathDisplay}
          onToggleTerminalThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
          onTerminalThumbnailSideChange={setTerminalThumbnailSide}
          onTerminalLaunchPathsHeightChange={setAgentLaunchPathsMaxHeightPx}
@@ -584,12 +582,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
          }}
          onAgentCapacityChange={setAgentCapacity}
          onAgentLayoutPresetChange={setAgentLayoutPreset}
+         onAgentPathDisplayChange={setAgentPathDisplay}
          onToggleAgentThumbnailAutoHide={() => setAgentThumbnailsAutoHide((autoHide) => !autoHide)}
          onAgentThumbnailSideChange={setAgentThumbnailSide}
          onConfirm={setConfirmAction}
-        layoutMode={layoutMode}
-        canvasPinned={canvasPinned}
-        railInteractive={mobileNavigation ? navigation.sidebarOpen : layoutMode === "classic" ? !navigation.sidebarHidden : canvasPinned || canvasOpen}
+         canvasPinned={canvasPinned}
+         railInteractive={mobileNavigation ? navigation.sidebarOpen : canvasPinned || canvasOpen}
         railId={CANVAS_RAIL_ID}
         railRef={canvasRailRef}
         onCanvasPinnedChange={() => {
@@ -621,8 +619,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       />
       <RailResizeHandle
         handleRef={canvasHandleRef}
-        value={draftRailWidth}
-        hidden={layoutMode === "classic" ? navigation.sidebarHidden : !canvasPinned && !canvasOpen}
+         value={draftRailWidth}
+         hidden={!canvasPinned && !canvasOpen}
         onPreview={setDraftRailWidth}
         onCommit={setNavigationRailWidthPx}
         onResizingChange={(resizing) => {
@@ -631,71 +629,27 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           if (resizing) cancelCanvasClose();
           else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) scheduleCanvasClose();
         }}
-        onPointerEnter={layoutMode === "canvas" ? () => {
-          canvasHandleHoverRef.current = true;
-          openCanvasRail();
-        } : undefined}
-        onPointerLeave={layoutMode === "canvas" ? () => {
-          canvasHandleHoverRef.current = false;
-          if (!railResizingRef.current && !canvasRailHoverRef.current && !canvasHandleRef.current?.contains(document.activeElement)) scheduleCanvasClose();
-        } : undefined}
-        onFocus={layoutMode === "canvas" ? openCanvasRail : undefined}
-        onBlur={layoutMode === "canvas" ? (event) => {
-          const next = event.relatedTarget;
-          if (canvasRailRef.current?.contains(next) || canvasHandleRef.current?.contains(next)) return;
-          scheduleCanvasClose();
-        } : undefined}
+         onPointerEnter={() => {
+           canvasHandleHoverRef.current = true;
+           openCanvasRail();
+         }}
+         onPointerLeave={() => {
+           canvasHandleHoverRef.current = false;
+           if (!railResizingRef.current && !canvasRailHoverRef.current && !canvasHandleRef.current?.contains(document.activeElement)) scheduleCanvasClose();
+         }}
+         onFocus={openCanvasRail}
+         onBlur={(event) => {
+           const next = event.relatedTarget;
+           if (canvasRailRef.current?.contains(next) || canvasHandleRef.current?.contains(next)) return;
+           scheduleCanvasClose();
+         }}
       />
       <section
         className="shell"
-        inert={layoutMode === "canvas" && mobileNavigation && sidebarOpen ? true : undefined}
+        inert={mobileNavigation && sidebarOpen ? true : undefined}
       >
-        {layoutMode === "classic" && (
-          <AppHeader
-            mode={navigation.workspaceMode}
-            label={navigation.modeMeta[navigation.workspaceMode].label}
-            subtitle={modeSubtitle}
-            onToggleNavigation={navigation.toggleSidebar}
-            terminalCapacity={terminalCapacity}
-            terminalLayoutCount={terminalLayoutCount}
-            terminalLayoutPreset={terminalLayoutPreset}
-             terminalThumbnailsHidden={terminalThumbnailsHidden}
-             terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
-             terminalThumbnailSide={terminalThumbnailSide}
-             terminalLaunchPathsHeight={agentLaunchPathsMaxHeightPx}
-             confirmTerminalClose={confirmDelete}
-             onTerminalCapacityChange={setTerminalCapacity}
-            onTerminalLayoutPresetChange={setTerminalLayoutPreset}
-             onToggleTerminalThumbnails={() => setTerminalThumbnailsHidden((hidden) => !hidden)}
-             onToggleTerminalThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
-             onTerminalThumbnailSideChange={setTerminalThumbnailSide}
-             onTerminalLaunchPathsHeightChange={setAgentLaunchPathsMaxHeightPx}
-              onConfirmTerminalCloseChange={(enabled) => {
-                setConfirmDelete(enabled);
-                localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
-              }}
-              agentCapacity={agentCapacity}
-              agentLayoutCount={agentLayoutCount}
-              agentLayoutPreset={agentLayoutPreset}
-              agentThumbnailsHidden={agentThumbnailsHidden}
-              agentThumbnailsAutoHide={agentThumbnailsAutoHide}
-              agentThumbnailSide={agentThumbnailSide}
-              agents={agent.agents}
-              defaultAgentId={agent.defaultAgentId}
-              onDefaultAgentChange={agent.setDefaultAgentId}
-              onAgentCapacityChange={setAgentCapacity}
-              onAgentLayoutPresetChange={setAgentLayoutPreset}
-              onToggleAgentThumbnails={() => setAgentThumbnailsHidden((hidden) => !hidden)}
-              onToggleAgentThumbnailAutoHide={() => setAgentThumbnailsAutoHide((autoHide) => !autoHide)}
-              onAgentThumbnailSideChange={setAgentThumbnailSide}
-              webAppRunning={Boolean(webApps.openDesign?.running)}
-            webAppOperation={webApps.operation}
-            onStopWebApp={() => void webApps.stop()}
-          />
-        )}
         <AppWorkspaceContent
           mode={navigation.workspaceMode}
-          layoutMode={layoutMode}
           terminal={terminal}
           agent={agent}
           skills={skills}
@@ -704,12 +658,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           phases={phases}
           focusVersion={focusVersion}
           terminalCapacity={terminalCapacity}
-          terminalThumbnailsHidden={terminalThumbnailsHidden}
           terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
            terminalThumbnailSide={terminalThumbnailSide}
            terminalWorkspaceLayouts={terminalWorkspaceLayouts}
            agentCapacity={agentCapacity}
-           agentThumbnailsHidden={agentThumbnailsHidden}
            agentThumbnailsAutoHide={agentThumbnailsAutoHide}
            agentThumbnailSide={agentThumbnailSide}
            agentWorkspaceLayouts={agentWorkspaceLayouts}

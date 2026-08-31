@@ -16,6 +16,7 @@ export function operationBusy(local: WebAppOperation | null, app: WebApp | null)
 export function useWebApps(active: boolean, reportError: (message: string) => void) {
   const [apps, setApps] = useState<WebApp[]>([]);
   const [settled, setSettled] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [localOperation, setLocalOperation] = useState<WebAppOperation | null>(null);
   const mounted = useRef(false);
   const refreshGeneration = useRef(0);
@@ -40,15 +41,24 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
     const generation = ++refreshGeneration.current;
     try {
       const data = await webApps();
-      if (mounted.current && refreshGeneration.current === generation) setApps(data.webApps);
+      if (mounted.current && refreshGeneration.current === generation) {
+        setApps(data.webApps);
+        setLoadError(null);
+      }
     } catch (reason) {
       if (mounted.current && refreshGeneration.current === generation) {
-        reportError(reason instanceof Error ? reason.message : String(reason));
+        setLoadError(reason instanceof Error ? reason.message : String(reason));
       }
     } finally {
       if (mounted.current && refreshGeneration.current === generation) setSettled(true);
     }
-  }, [reportError]);
+  }, []);
+
+  const retry = useCallback(async () => {
+    setSettled(false);
+    setLoadError(null);
+    await refresh();
+  }, [refresh]);
 
   useEffect(() => {
     void refresh();
@@ -168,5 +178,5 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
     }
   }, [beginMutation, finishMutation, refresh, reportMutationError]);
 
-  return { apps, openDesign, operation, settled, refresh, install, start, stop, checkUpdate, update };
+  return { apps, openDesign, operation, settled, loadError, refresh, retry, install, start, stop, checkUpdate, update };
 }

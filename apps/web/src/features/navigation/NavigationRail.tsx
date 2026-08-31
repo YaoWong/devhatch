@@ -1,14 +1,14 @@
-import { ArrowLeft, Bot, Globe2, LoaderCircle, Pin, PinOff, Settings, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Bot, Globe2, LoaderCircle, Pin, PinOff, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
 import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
 import type { FocusEventHandler, MouseEventHandler, RefObject } from "react";
 import type { Agent } from "../../types/agents";
 import type { WebAppOperation } from "../../types/web-apps";
-import type { LayoutMode } from "../../types/settings";
-import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
+import type { DetailMode, LaunchPathDisplay, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 import { Brand } from "../../shared/branding/Branding";
 
+type RailDetailMode = Exclude<DetailMode, "settings">;
 type ModeRefs = RefObject<Record<DetailMode, HTMLButtonElement | null>>;
 type PageRefs = RefObject<Record<DetailMode, HTMLElement | null>>;
 type TitleRefs = RefObject<Record<DetailMode, HTMLSpanElement | null>>;
@@ -30,6 +30,7 @@ export function NavigationRail({
   terminalCapacity,
   terminalLayoutCount,
   terminalLayoutPreset,
+  terminalPathDisplay,
   terminalThumbnailsAutoHide,
   terminalThumbnailSide,
   terminalLaunchPathsHeight,
@@ -38,6 +39,7 @@ export function NavigationRail({
   onCloseTerminalSettings,
   onTerminalCapacityChange,
   onTerminalLayoutPresetChange,
+  onTerminalPathDisplayChange,
   onToggleTerminalThumbnailAutoHide,
   onTerminalThumbnailSideChange,
   onTerminalLaunchPathsHeightChange,
@@ -45,12 +47,14 @@ export function NavigationRail({
   agentCapacity,
   agentLayoutCount,
   agentLayoutPreset,
+  agentPathDisplay,
   agentThumbnailsAutoHide,
   agentThumbnailSide,
   agents,
   defaultAgentId,
   onAgentCapacityChange,
   onAgentLayoutPresetChange,
+  onAgentPathDisplayChange,
   onToggleAgentThumbnailAutoHide,
   onAgentThumbnailSideChange,
   onDefaultAgentChange,
@@ -58,8 +62,6 @@ export function NavigationRail({
   agentContent,
   skillsContent,
   webAppContent,
-  settingsContent,
-  layoutMode,
   canvasPinned,
   railInteractive,
   railId,
@@ -89,6 +91,7 @@ export function NavigationRail({
   terminalCapacity: TerminalWorkspaceCapacity;
   terminalLayoutCount: TerminalLayoutCount | null;
   terminalLayoutPreset: TerminalLayoutPreset | null;
+  terminalPathDisplay: LaunchPathDisplay;
   terminalThumbnailsAutoHide: boolean;
   terminalThumbnailSide: "left" | "right";
   terminalLaunchPathsHeight: number;
@@ -97,6 +100,7 @@ export function NavigationRail({
   onCloseTerminalSettings: () => void;
   onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onTerminalPathDisplayChange: (mode: LaunchPathDisplay) => void;
   onToggleTerminalThumbnailAutoHide: () => void;
   onTerminalThumbnailSideChange: (side: "left" | "right") => void;
   onTerminalLaunchPathsHeightChange: (height: number) => void;
@@ -104,12 +108,14 @@ export function NavigationRail({
   agentCapacity: TerminalWorkspaceCapacity;
   agentLayoutCount: TerminalLayoutCount | null;
   agentLayoutPreset: TerminalLayoutPreset | null;
+  agentPathDisplay: LaunchPathDisplay;
   agentThumbnailsAutoHide: boolean;
   agentThumbnailSide: "left" | "right";
   agents: Agent[];
   defaultAgentId: string | null;
   onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onAgentPathDisplayChange: (mode: LaunchPathDisplay) => void;
   onToggleAgentThumbnailAutoHide: () => void;
   onAgentThumbnailSideChange: (side: "left" | "right") => void;
   onDefaultAgentChange: (agentId: string) => void;
@@ -117,8 +123,6 @@ export function NavigationRail({
   agentContent: React.ReactNode;
   skillsContent: React.ReactNode;
   webAppContent: React.ReactNode;
-  settingsContent: React.ReactNode;
-  layoutMode: LayoutMode;
   canvasPinned: boolean;
   railInteractive: boolean;
   railId: string;
@@ -132,10 +136,13 @@ export function NavigationRail({
   onCanvasBlur: FocusEventHandler<HTMLElement>;
   onStopWebApp: () => void;
 }) {
-  const pageClass = (page: DetailMode) =>
+  const pageClass = (page: RailDetailMode) =>
     `rail-page ${railPage === page ? "active" : ""} ` +
     `${railMotion === "forward" ? "forward-enter" : ""} ` +
     `${railMotion === "return" ? "return-exit" : ""}`;
+  const settingsAvailable =
+    (railPage === "terminal" && workspaceMode === "terminal") ||
+    (railPage === "agent" && workspaceMode === "agent");
   return (
     <aside
       ref={railRef}
@@ -192,16 +199,7 @@ export function NavigationRail({
               active={workspaceMode === "webapp"}
               onNavigate={onNavigate}
             />
-            {layoutMode === "classic" && (
-              <ModeButton
-                mode="settings"
-                modeRefs={modeRefs}
-                active={workspaceMode === "settings"}
-                onNavigate={onNavigate}
-              />
-            )}
           </nav>
-          {layoutMode === "classic" && <footer className="mode-footer">⌘ 1–5</footer>}
         </section>
         <DetailPage
           mode="terminal"
@@ -243,18 +241,8 @@ export function NavigationRail({
         >
           {webAppContent}
         </DetailPage>
-        <DetailPage
-          mode="settings"
-          className={pageClass("settings")}
-          railMotion={railMotion}
-          pageRefs={pageRefs}
-          titleRefs={titleRefs}
-          onNavigate={onNavigate}
-        >
-          {settingsContent}
-        </DetailPage>
       </div>
-      {layoutMode === "canvas" && workspaceMode === "webapp" && webAppRunning && (
+      {workspaceMode === "webapp" && webAppRunning && (
         <div className="canvas-mode-actions">
           <button className="secondary-button canvas-stop-button" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
             {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
@@ -262,12 +250,13 @@ export function NavigationRail({
           </button>
         </div>
       )}
-      {layoutMode === "canvas" && terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (
+      {terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (
         <div ref={terminalSettingsPanelRef} id={`canvas-${workspaceMode}-settings`} className={`canvas-terminal-settings ${canvasPinned ? "pinned" : ""}`} role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
           <TerminalSettingsControls
             capacity={workspaceMode === "terminal" ? terminalCapacity : agentCapacity}
             layoutCount={workspaceMode === "terminal" ? terminalLayoutCount : agentLayoutCount}
             layoutPreset={workspaceMode === "terminal" ? terminalLayoutPreset : agentLayoutPreset}
+            pathDisplay={workspaceMode === "terminal" ? terminalPathDisplay : agentPathDisplay}
             thumbnailsAutoHide={workspaceMode === "terminal" ? terminalThumbnailsAutoHide : agentThumbnailsAutoHide}
             thumbnailSide={workspaceMode === "terminal" ? terminalThumbnailSide : agentThumbnailSide}
             launchPathsHeight={terminalLaunchPathsHeight}
@@ -277,6 +266,7 @@ export function NavigationRail({
             showLaunchPathsHeight={workspaceMode === "agent"}
             onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
             onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
+            onPathDisplayChange={workspaceMode === "terminal" ? onTerminalPathDisplayChange : onAgentPathDisplayChange}
             onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}
             onThumbnailSideChange={workspaceMode === "terminal" ? onTerminalThumbnailSideChange : onAgentThumbnailSideChange}
             onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
@@ -285,34 +275,34 @@ export function NavigationRail({
           />
         </div>
       )}
-      {layoutMode === "canvas" && (
-        <footer className="canvas-rail-footer">
-          {(railPage === "terminal" && workspaceMode === "terminal" || railPage === "agent" && workspaceMode === "agent") && (
-            <button
-              ref={terminalSettingsToggleRef}
-              className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
-              type="button"
-              aria-expanded={terminalSettingsOpen}
-              aria-controls={`canvas-${workspaceMode}-settings`}
-              onClick={onToggleTerminalSettings}
-            >
-              <SlidersHorizontal />
-              <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
-            </button>
-          )}
+      <footer className={`canvas-rail-footer ${settingsAvailable ? "has-settings" : ""}`}>
+        <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
           <button
-            className="canvas-auto-hide"
+            ref={terminalSettingsToggleRef}
+            className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
             type="button"
-            aria-label="Auto-hide navigation"
-            aria-pressed={!canvasPinned}
-            title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`}
-            onClick={onCanvasPinnedChange}
+            aria-hidden={!settingsAvailable}
+            aria-expanded={settingsAvailable ? terminalSettingsOpen : false}
+            aria-controls={`canvas-${workspaceMode}-settings`}
+            tabIndex={settingsAvailable ? undefined : -1}
+            onClick={onToggleTerminalSettings}
           >
-            {canvasPinned ? <Pin /> : <PinOff />}
-            <span className="sr-only">Auto-hide navigation</span>
+            <SlidersHorizontal />
+            <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
           </button>
-        </footer>
-      )}
+        </div>
+        <button
+          className="canvas-auto-hide"
+          type="button"
+          aria-label="Auto-hide navigation"
+          aria-pressed={!canvasPinned}
+          title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`}
+          onClick={onCanvasPinnedChange}
+        >
+          {canvasPinned ? <Pin /> : <PinOff />}
+          <span className="sr-only">Auto-hide navigation</span>
+        </button>
+      </footer>
     </aside>
   );
 }
@@ -324,7 +314,7 @@ function ModeButton({
   count,
   onNavigate,
 }: {
-  mode: DetailMode;
+  mode: RailDetailMode;
   modeRefs: ModeRefs;
   active: boolean;
   count?: number;
@@ -335,7 +325,6 @@ function ModeButton({
     agent: { icon: Bot, label: "Agent CLI" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
-    settings: { icon: Settings, label: "Settings" },
   }[mode];
   const Icon = meta.icon;
   return (
@@ -362,7 +351,7 @@ function DetailPage({
   onNavigate,
   children,
 }: {
-  mode: DetailMode;
+  mode: RailDetailMode;
   className: string;
   railMotion: RailMotion;
   pageRefs: PageRefs;
@@ -375,7 +364,6 @@ function DetailPage({
     agent: { icon: Bot, label: "Agent CLI" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
-    settings: { icon: Settings, label: "Settings" },
   }[mode];
   const Icon = meta.icon;
   return (

@@ -10,7 +10,7 @@ import type {
   AgentLaunchPath,
   AgentSession,
 } from "../../types/agents";
-import type { ConfirmAction } from "../../types/app";
+import type { ConfirmAction, LaunchPathDisplay } from "../../types/app";
 import type { SkillProfile } from "../../types/skills";
 import { AgentConfigDialog } from "./AgentConfigDialog";
 import { LaunchPaths } from "./LaunchPaths";
@@ -45,6 +45,7 @@ export function AgentRailPage({
   rows,
   search,
   homePaths,
+  pathDisplay,
   onSelectAgent,
   onSelectConfig,
   onSelectProfile,
@@ -91,6 +92,7 @@ export function AgentRailPage({
   rows: SessionRows;
   search: string;
   homePaths: HomePaths;
+  pathDisplay: LaunchPathDisplay;
   onSelectAgent: (id: string) => void;
   onSelectConfig: (id: string) => void;
   onSelectProfile: (id: string | null) => void;
@@ -112,9 +114,6 @@ export function AgentRailPage({
   onDeleteHistory: (id: string) => Promise<void>;
   onRetryHistory: () => Promise<void>;
 }) {
-  const [pathDisplay, setPathDisplay] = useState<"folder" | "full">(() =>
-    localStorage.getItem("devhatch-agent-path-display") === "full" ? "full" : "folder",
-  );
   const [page, setPage] = useState(1);
   const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
   const [renameAlias, setRenameAlias] = useState("");
@@ -135,10 +134,6 @@ export function AgentRailPage({
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
 
-  const updateDisplay = (mode: "folder" | "full") => {
-    setPathDisplay(mode);
-    localStorage.setItem("devhatch-agent-path-display", mode);
-  };
   const deletePath = (path: AgentLaunchPath) =>
     onConfirm({
       title: "Delete launch path?",
@@ -200,7 +195,7 @@ export function AgentRailPage({
       <div className="menu-section">
         <p className="menu-label">Agent CLI</p>
         {busy ? (
-          showAgentLoading ? <div className="quiet-message">Loading agents…</div> : null
+          showAgentLoading ? <div className="quiet-message" role="status">Loading agents…</div> : null
         ) : agents.length ? (
           <>
             <CustomSelect
@@ -288,7 +283,6 @@ export function AgentRailPage({
         homePaths={homePaths}
         pathDisplay={pathDisplay}
         page={page}
-        onDisplayChange={updateDisplay}
         onPageChange={setPage}
         onChoose={onChoosePath}
         onSelect={(path) => onSelectPath(path.id)}

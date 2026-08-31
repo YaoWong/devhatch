@@ -13,7 +13,7 @@ pub(super) struct ExistingSkill {
 impl Skillink {
     pub(crate) async fn get_repository(&self, id: &str) -> Result<Repository> {
         sqlx::query_as::<_, Repository>(
-            "SELECT id, COALESCE(name, '') AS name, url, git_ref, commit_hash, sync_version FROM repositories WHERE id = ?",
+            "SELECT id, name, url, git_ref, commit_hash, sync_version FROM repositories WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(self.pool())

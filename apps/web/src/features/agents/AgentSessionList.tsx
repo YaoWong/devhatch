@@ -209,7 +209,7 @@ export function AgentSessionList({
             })}
           </>
         ) : showHistoryLoading ? (
-          <div className="quiet-message">Loading sessions…</div>
+          <div className="quiet-message" role="status">Loading sessions…</div>
         ) : historyUnavailable ? (
           <div className="quiet-message history-status unavailable">
             <strong>History unavailable</strong>

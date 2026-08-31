@@ -1,4 +1,5 @@
 import type { Agent } from "../../types/agents";
+import type { LaunchPathDisplay } from "../../types/app";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { TerminalLayoutPresetControl } from "./TerminalLayoutPresetControl";
@@ -9,6 +10,7 @@ export function TerminalSettingsControls({
   capacity,
   layoutCount,
   layoutPreset,
+  pathDisplay,
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
@@ -19,6 +21,7 @@ export function TerminalSettingsControls({
   showConfirmClose = true,
   onCapacityChange,
   onLayoutPresetChange,
+  onPathDisplayChange,
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
@@ -28,6 +31,7 @@ export function TerminalSettingsControls({
   capacity: TerminalWorkspaceCapacity;
   layoutCount: TerminalLayoutCount | null;
   layoutPreset: TerminalLayoutPreset | null;
+  pathDisplay: LaunchPathDisplay;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
@@ -38,6 +42,7 @@ export function TerminalSettingsControls({
   showConfirmClose?: boolean;
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onPathDisplayChange: (mode: LaunchPathDisplay) => void;
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
@@ -68,6 +73,12 @@ export function TerminalSettingsControls({
       <span>Layout</span>
       <TerminalLayoutPresetControl count={layoutCount} value={layoutPreset} onChange={onLayoutPresetChange} />
     </div>}
+    <div className="terminal-setting-row">
+      <span>Path display</span>
+      <div className="terminal-capacity-control path-display-control" role="group" aria-label="Launch path display">
+        {(["folder", "full"] as const).map((mode) => <button key={mode} type="button" aria-label={mode === "folder" ? "Show relative paths" : "Show absolute paths"} aria-pressed={pathDisplay === mode} onClick={() => onPathDisplayChange(mode)}>{mode === "folder" ? "Relative" : "Absolute"}</button>)}
+      </div>
+    </div>
     {showLaunchPathsHeight && <div className="terminal-setting-row terminal-setting-range">
       <span>Launch paths height</span>
       <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />

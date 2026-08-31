@@ -12,12 +12,10 @@ import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWo
 import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
-import type { LayoutMode } from "../types/settings";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
 type AppWorkspaceContentProps = {
   mode: WorkspaceMode;
-  layoutMode: LayoutMode;
   terminal: ReturnType<typeof useTerminalWorkspace>;
   agent: ReturnType<typeof useAgentWorkspace>;
   skills: ReturnType<typeof useSkillsWorkspace>;
@@ -26,12 +24,10 @@ type AppWorkspaceContentProps = {
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
   terminalCapacity: TerminalWorkspaceCapacity;
-  terminalThumbnailsHidden: boolean;
   terminalThumbnailsAutoHide: boolean;
   terminalThumbnailSide: "left" | "right";
   terminalWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   agentCapacity: TerminalWorkspaceCapacity;
-  agentThumbnailsHidden: boolean;
   agentThumbnailsAutoHide: boolean;
   agentThumbnailSide: "left" | "right";
   agentWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
@@ -56,7 +52,6 @@ type AppWorkspaceContentProps = {
 
 export function AppWorkspaceContent({
   mode,
-  layoutMode,
   terminal,
   agent,
   skills,
@@ -65,12 +60,10 @@ export function AppWorkspaceContent({
   phases,
   focusVersion,
   terminalCapacity,
-  terminalThumbnailsHidden,
   terminalThumbnailsAutoHide,
   terminalThumbnailSide,
   terminalWorkspaceLayouts,
   agentCapacity,
-  agentThumbnailsHidden,
   agentThumbnailsAutoHide,
   agentThumbnailSide,
   agentWorkspaceLayouts,
@@ -96,7 +89,6 @@ export function AppWorkspaceContent({
     <>
       <TerminalWorkspace
         visible={mode === "terminal"}
-        layoutMode={layoutMode}
         busy={busy}
         launching={terminal.launching}
         sessions={terminal.sessions}
@@ -105,7 +97,6 @@ export function AppWorkspaceContent({
         phases={phases}
         focusVersion={focusVersion}
         capacity={terminalCapacity}
-        thumbnailsHidden={terminalThumbnailsHidden}
         thumbnailsAutoHide={terminalThumbnailsAutoHide}
         thumbnailSide={terminalThumbnailSide}
         workspaceLayouts={terminalWorkspaceLayouts}
@@ -122,7 +113,6 @@ export function AppWorkspaceContent({
       />
       <AgentWorkspace
         visible={mode === "agent"}
-        layoutMode={layoutMode}
         busy={busy}
         launching={agent.launching}
         displaySessions={agent.displaySessions}
@@ -132,7 +122,6 @@ export function AppWorkspaceContent({
         phases={phases}
         focusVersion={focusVersion}
         capacity={agentCapacity}
-        thumbnailsHidden={agentThumbnailsHidden}
         thumbnailsAutoHide={agentThumbnailsAutoHide}
         thumbnailSide={agentThumbnailSide}
         workspaceLayouts={agentWorkspaceLayouts}
@@ -155,6 +144,8 @@ export function AppWorkspaceContent({
           operation={webApps.operation}
           error={error}
           settled={webApps.settled}
+          loadError={webApps.loadError}
+          onRetry={webApps.retry}
           onInstall={webApps.install}
           onStart={webApps.start}
           onUpdate={webApps.update}
@@ -173,7 +164,6 @@ export function AppWorkspaceContent({
       )}
       {mode === "settings" && (
         <SettingsView
-          layoutMode={layoutMode}
           section={settingsSection}
           onSelectSection={onSelectSettingsSection}
           onLogout={onLogout}

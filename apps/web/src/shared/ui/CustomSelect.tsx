@@ -103,8 +103,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openMenu())}
       >
-        {renderTrigger(selected)}
-        <ChevronDown />
+        <span className="custom-select-trigger-content">{renderTrigger(selected)}</span>
+        <span className="custom-select-indicator" aria-hidden="true"><ChevronDown /></span>
       </button>
       {open && (
         <div
@@ -131,8 +131,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
                 triggerRef.current?.focus();
               }}
             >
-              {renderOption(option)}
-              <Check className="option-check" />
+              <span className="custom-select-option-content">{renderOption(option)}</span>
+              <span className="custom-select-check" aria-hidden="true"><Check /></span>
             </button>
           ))}
         </div>

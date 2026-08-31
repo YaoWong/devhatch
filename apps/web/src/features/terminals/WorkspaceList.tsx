@@ -1,13 +1,13 @@
 import { ChevronLeft, ChevronRight, Folder, Pencil, Pin, Play, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ConfirmAction } from "../../types/app";
+import type { ConfirmAction, LaunchPathDisplay } from "../../types/app";
 import type { TerminalLaunchPath, TerminalWorkspace } from "../../types/terminals";
 import { displayPath, workspaceName } from "../../shared/lib/utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
 export function WorkspaceList({
-  workspaces, launchPaths, selectedWorkspaceId, homePaths, launching,
+  workspaces, launchPaths, selectedWorkspaceId, homePaths, launching, pathDisplay,
   onSelectWorkspace, onRenameWorkspace, onDeleteWorkspace, onNewWorkspace,
   onLaunch, onPinPath, onRenamePath, onDeletePath, onConfirm, onAddPath,
 }: {
@@ -16,6 +16,7 @@ export function WorkspaceList({
   selectedWorkspaceId: string | null;
   homePaths: HomePaths;
   launching: boolean;
+  pathDisplay: LaunchPathDisplay;
   onSelectWorkspace: (id: string) => void;
   onRenameWorkspace: (workspace: TerminalWorkspace) => void;
   onDeleteWorkspace: (workspace: TerminalWorkspace) => Promise<boolean>;
@@ -27,19 +28,12 @@ export function WorkspaceList({
   onConfirm: (action: ConfirmAction) => void;
   onAddPath: () => void;
 }) {
-  const [pathDisplay, setPathDisplay] = useState<"folder" | "full">(() =>
-    localStorage.getItem("devhatch-terminal-path-display") === "full" ? "full" : "folder",
-  );
   const [page, setPage] = useState(1);
   const [renamePath, setRenamePath] = useState<TerminalLaunchPath | null>(null);
   const [renameAlias, setRenameAlias] = useState("");
   const pageCount = Math.max(1, Math.ceil(launchPaths.length / 10));
   const visiblePaths = launchPaths.length > 24 ? launchPaths.slice((page - 1) * 10, page * 10) : launchPaths;
   useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
-  const updateDisplay = (mode: "folder" | "full") => {
-    setPathDisplay(mode);
-    localStorage.setItem("devhatch-terminal-path-display", mode);
-  };
   return (
     <>
       {renamePath && (
@@ -67,7 +61,7 @@ export function WorkspaceList({
         </div>
       </div>
       <div className="menu-section paths-section terminal-paths-section">
-        <div className="path-section-head"><p className="menu-label">Launch Paths</p><div className="path-head-actions"><button className={`path-mode-toggle ${pathDisplay}`} role="switch" aria-checked={pathDisplay === "full"} onClick={() => updateDisplay(pathDisplay === "folder" ? "full" : "folder")}><span className="path-mode-label">{pathDisplay === "folder" ? "Full path" : "Folder"}</span><span className="path-mode-knob" /></button><button className="mini-action" onClick={onAddPath}><Plus />Add</button></div></div>
+        <div className="path-section-head"><p className="menu-label">Launch Paths</p><button className="mini-action" onClick={onAddPath}><Plus />Add</button></div>
         <div className="agent-path-list">
           {visiblePaths.length ? visiblePaths.map((path) => (
             <div key={path.id} className="agent-path-row"><Folder /><div className="path-main" title={path.path}><span><strong>{pathDisplay === "folder" ? path.alias || workspaceName(path.path) : path.path}</strong>{pathDisplay === "folder" && <small>{displayPath(path.path, homePaths?.home, homePaths?.resolvedHome)}</small>}</span></div><span className="path-actions"><button className={path.pinned ? "pinned" : ""} aria-label={path.pinned ? "Unpin path" : "Pin path"} onClick={() => onPinPath(path)}><Pin /></button><button aria-label="Launch path" disabled={launching} onClick={() => onLaunch(path.path)}><Play /></button><button aria-label="Rename alias" onClick={() => { setRenamePath(path); setRenameAlias(path.alias ?? ""); }}><Pencil /></button><button aria-label="Delete path" onClick={() => onConfirm({ title: "Delete launch path?", description: "This only removes the saved launch path. Running terminals and files are unchanged.", confirmLabel: "Delete", danger: true, action: () => onDeletePath(path) })}><Trash2 /></button></span>

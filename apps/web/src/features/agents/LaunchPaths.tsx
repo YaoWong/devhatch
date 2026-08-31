@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Folder, Pencil, Pin, Play, Plus, Trash2 } from "lucide-react";
 import type { AgentLaunchPath } from "../../types/agents";
+import type { LaunchPathDisplay } from "../../types/app";
 import { displayPath, workspaceName } from "../../shared/lib/utils";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
@@ -13,7 +14,6 @@ export function LaunchPaths({
   homePaths,
   pathDisplay,
   page,
-  onDisplayChange,
   onPageChange,
   onChoose,
   onSelect,
@@ -28,9 +28,8 @@ export function LaunchPaths({
   canAdd: boolean;
   launching: boolean;
   homePaths: HomePaths;
-  pathDisplay: "folder" | "full";
+  pathDisplay: LaunchPathDisplay;
   page: number;
-  onDisplayChange: (mode: "folder" | "full") => void;
   onPageChange: (page: number) => void;
   onChoose: () => void;
   onSelect: (path: AgentLaunchPath) => void;
@@ -45,23 +44,10 @@ export function LaunchPaths({
     <div className="menu-section paths-section">
       <div className="path-section-head">
         <p className="menu-label">Launch Paths</p>
-        <div className="path-head-actions">
-          <button
-            className={`path-mode-toggle ${pathDisplay}`}
-            type="button"
-            role="switch"
-            aria-label={`Switch to ${pathDisplay === "folder" ? "full path" : "folder name"}`}
-            aria-checked={pathDisplay === "full"}
-            onClick={() => onDisplayChange(pathDisplay === "folder" ? "full" : "folder")}
-          >
-            <span className="path-mode-label">{pathDisplay === "folder" ? "Full path" : "Folder"}</span>
-            <span className="path-mode-knob" />
-          </button>
-           <button className="mini-action" disabled={!canAdd} onClick={onChoose}>
-            <Plus />
-            Add
-          </button>
-        </div>
+        <button className="mini-action" disabled={!canAdd} onClick={onChoose}>
+          <Plus />
+          Add
+        </button>
       </div>
       <div className="agent-path-list">
         {visiblePaths.length ? (

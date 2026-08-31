@@ -28,9 +28,9 @@ export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose:
           <span><FileText /><div><h2 id="skill-manifest-title">{skill.slug}</h2><p>SKILL.md</p></div></span>
           <button className="skills-icon-button" type="button" aria-label="Close skill content" onClick={onClose}><X /></button>
         </header>
-        <div className="skill-manifest-body">
-          {showLoading && <div className="skill-manifest-loading"><LoaderCircle className="spin" />Loading content…</div>}
-          {error && <div className="skill-manifest-error">{error}</div>}
+        <div className="skill-manifest-body" aria-busy={content === null && error === null}>
+          {showLoading && <div className="skill-manifest-loading" role="status"><LoaderCircle className="spin" />Loading content…</div>}
+          {error && <div className="skill-manifest-error" role="alert">{error}</div>}
           {content !== null && <pre>{content}</pre>}
         </div>
       </section>

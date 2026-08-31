@@ -52,39 +52,10 @@ impl TryFrom<String> for Theme {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum LayoutMode {
-    Classic,
-    Canvas,
-}
-
-impl LayoutMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Classic => "classic",
-            Self::Canvas => "canvas",
-        }
-    }
-}
-
-impl TryFrom<String> for LayoutMode {
-    type Error = ();
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        match value.as_str() {
-            "classic" => Ok(Self::Classic),
-            "canvas" => Ok(Self::Canvas),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppSettings {
     theme: Theme,
-    layout_mode: LayoutMode,
     agent_launch_paths_max_height_px: i64,
     navigation_rail_width_px: i64,
     created_at: i64,
@@ -95,7 +66,6 @@ struct AppSettings {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UpdateRequest {
     theme: Option<Theme>,
-    layout_mode: Option<LayoutMode>,
     agent_launch_paths_max_height_px: Option<i64>,
     navigation_rail_width_px: Option<i64>,
 }
@@ -115,11 +85,10 @@ pub(crate) async fn update(
     if let Err(code) = validate_update(&request) {
         return error(StatusCode::BAD_REQUEST, code);
     }
-    match sqlx::query_as::<_, (String, String, i64, i64, i64, i64)>(
-        "UPDATE app_settings SET theme = COALESCE(?, theme), layout_mode = COALESCE(?, layout_mode), agent_launch_paths_max_height_px = COALESCE(?, agent_launch_paths_max_height_px), navigation_rail_width_px = COALESCE(?, navigation_rail_width_px), updated_at = ? WHERE id = 1 RETURNING theme, layout_mode, agent_launch_paths_max_height_px, navigation_rail_width_px, created_at, updated_at",
+    match sqlx::query_as::<_, (String, i64, i64, i64, i64)>(
+        "UPDATE app_settings SET theme = COALESCE(?, theme), agent_launch_paths_max_height_px = COALESCE(?, agent_launch_paths_max_height_px), navigation_rail_width_px = COALESCE(?, navigation_rail_width_px), updated_at = ? WHERE id = 1 RETURNING theme, agent_launch_paths_max_height_px, navigation_rail_width_px, created_at, updated_at",
     )
     .bind(request.theme.map(Theme::as_str))
-    .bind(request.layout_mode.map(LayoutMode::as_str))
     .bind(request.agent_launch_paths_max_height_px)
     .bind(request.navigation_rail_width_px)
     .bind(now() as i64)
@@ -140,8 +109,8 @@ async fn settings_response(state: &AppState) -> Response {
 }
 
 async fn find(state: &AppState) -> Result<AppSettings, sqlx::Error> {
-    let row = sqlx::query_as::<_, (String, String, i64, i64, i64, i64)>(
-        "SELECT theme, layout_mode, agent_launch_paths_max_height_px, navigation_rail_width_px, created_at, updated_at FROM app_settings WHERE id = 1",
+    let row = sqlx::query_as::<_, (String, i64, i64, i64, i64)>(
+        "SELECT theme, agent_launch_paths_max_height_px, navigation_rail_width_px, created_at, updated_at FROM app_settings WHERE id = 1",
     )
     .fetch_one(state.pool())
     .await?;
@@ -149,20 +118,17 @@ async fn find(state: &AppState) -> Result<AppSettings, sqlx::Error> {
 }
 
 fn app_settings(
-    (
-        theme,
-        layout_mode,
-        agent_launch_paths_max_height_px,
-        navigation_rail_width_px,
-        created_at,
-        updated_at,
-    ): (String, String, i64, i64, i64, i64),
+    (theme, agent_launch_paths_max_height_px, navigation_rail_width_px, created_at, updated_at): (
+        String,
+        i64,
+        i64,
+        i64,
+        i64,
+    ),
 ) -> Result<AppSettings, sqlx::Error> {
     let theme = Theme::try_from(theme).map_err(|_| sqlx::Error::RowNotFound)?;
-    let layout_mode = LayoutMode::try_from(layout_mode).map_err(|_| sqlx::Error::RowNotFound)?;
     Ok(AppSettings {
         theme,
-        layout_mode,
         agent_launch_paths_max_height_px,
         navigation_rail_width_px,
         created_at,
@@ -172,7 +138,6 @@ fn app_settings(
 
 fn validate_update(request: &UpdateRequest) -> Result<(), &'static str> {
     if request.theme.is_none()
-        && request.layout_mode.is_none()
         && request.agent_launch_paths_max_height_px.is_none()
         && request.navigation_rail_width_px.is_none()
     {
@@ -206,7 +171,7 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::{
-        LayoutMode, MAX_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, MAX_NAVIGATION_RAIL_WIDTH_PX,
+        MAX_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, MAX_NAVIGATION_RAIL_WIDTH_PX,
         MIN_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, MIN_NAVIGATION_RAIL_WIDTH_PX, Theme, UpdateRequest,
         validate_update,
     };
@@ -219,11 +184,8 @@ mod tests {
     }
 
     #[test]
-    fn validates_layout_values() {
-        let request: UpdateRequest = serde_json::from_str(r#"{"layoutMode":"canvas"}"#).unwrap();
-        assert_eq!(request.layout_mode, Some(LayoutMode::Canvas));
-        assert_eq!(validate_update(&request), Ok(()));
-        assert!(serde_json::from_str::<UpdateRequest>(r#"{"layoutMode":"wide"}"#).is_err());
+    fn rejects_layout_mode() {
+        assert!(serde_json::from_str::<UpdateRequest>(r#"{"layoutMode":"canvas"}"#).is_err());
     }
 
     #[test]
@@ -301,46 +263,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn migration_adds_default_and_enforces_height_bounds() {
+    async fn baseline_has_final_settings_schema_and_seed() {
         let pool = SqlitePoolOptions::new()
             .connect("sqlite::memory:")
             .await
             .unwrap();
         sqlx::migrate!().run(&pool).await.unwrap();
-        let (layout_mode, height, width): (String, i64, i64) = sqlx::query_as(
-            "SELECT layout_mode, agent_launch_paths_max_height_px, navigation_rail_width_px FROM app_settings WHERE id = 1",
+
+        let column_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('app_settings') WHERE name = 'layout_mode'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(layout_mode, "canvas");
-        assert_eq!(height, 286);
-        assert_eq!(width, 288);
-        assert!(
-            sqlx::query("UPDATE app_settings SET layout_mode = 'wide' WHERE id = 1")
-                .execute(&pool)
-                .await
-                .is_err()
-        );
-        for value in [159, 481] {
-            assert!(
-                sqlx::query(
-                    "UPDATE app_settings SET agent_launch_paths_max_height_px = ? WHERE id = 1"
-                )
-                .bind(value)
-                .execute(&pool)
-                .await
-                .is_err()
-            );
-        }
-        for value in [239, 481] {
-            assert!(
-                sqlx::query("UPDATE app_settings SET navigation_rail_width_px = ? WHERE id = 1")
-                    .bind(value)
-                    .execute(&pool)
-                    .await
-                    .is_err()
-            );
+        assert_eq!(column_count, 0);
+        let settings: (String, i64, i64) = sqlx::query_as(
+            "SELECT theme, agent_launch_paths_max_height_px, navigation_rail_width_px FROM app_settings WHERE id = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(settings, ("default".to_owned(), 286, 288));
+        let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(migrations, 3);
+        let launch_configs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_launch_configs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(launch_configs, 4);
+        for statement in [
+            "UPDATE app_settings SET theme = 'dark' WHERE id = 1",
+            "UPDATE app_settings SET agent_launch_paths_max_height_px = 159 WHERE id = 1",
+            "UPDATE app_settings SET agent_launch_paths_max_height_px = 481 WHERE id = 1",
+            "UPDATE app_settings SET navigation_rail_width_px = 239 WHERE id = 1",
+            "UPDATE app_settings SET navigation_rail_width_px = 481 WHERE id = 1",
+        ] {
+            assert!(sqlx::query(statement).execute(&pool).await.is_err());
         }
     }
 

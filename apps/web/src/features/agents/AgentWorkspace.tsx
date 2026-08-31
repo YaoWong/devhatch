@@ -1,6 +1,5 @@
 import { Bot } from "lucide-react";
 import type { Agent, AgentSession } from "../../types/agents";
-import type { LayoutMode } from "../../types/settings";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { TerminalWorkspace } from "../terminals/TerminalWorkspace";
 import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../terminals/terminalWorkspaceLayout";
@@ -8,7 +7,6 @@ import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDo
 
 export function AgentWorkspace({
   visible,
-  layoutMode,
   busy,
   launching,
   displaySessions,
@@ -18,7 +16,6 @@ export function AgentWorkspace({
   phases,
   focusVersion,
   capacity,
-  thumbnailsHidden,
   thumbnailsAutoHide,
   thumbnailSide,
   workspaceLayouts,
@@ -36,7 +33,6 @@ export function AgentWorkspace({
   onDismissError,
 }: {
   visible: boolean;
-  layoutMode: LayoutMode;
   busy: boolean;
   launching: boolean;
   displaySessions: AgentSession[];
@@ -46,7 +42,6 @@ export function AgentWorkspace({
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
-  thumbnailsHidden: boolean;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   workspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
@@ -68,7 +63,6 @@ export function AgentWorkspace({
   const selectedActiveId = activeId && selectedIds.has(activeId) ? activeId : (visibleSessions[0]?.id ?? null);
   return <TerminalWorkspace
     visible={visible}
-    layoutMode={layoutMode}
     busy={busy}
     launching={launching}
     sessions={displaySessions}
@@ -83,7 +77,6 @@ export function AgentWorkspace({
     phases={phases}
     focusVersion={focusVersion}
     capacity={capacity}
-    thumbnailsHidden={thumbnailsHidden}
     thumbnailsAutoHide={thumbnailsAutoHide}
     thumbnailSide={thumbnailSide}
     workspaceLayouts={workspaceLayouts}

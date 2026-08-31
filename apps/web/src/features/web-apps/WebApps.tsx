@@ -10,6 +10,8 @@ export function WebAppsRailPage({
   onStart,
   operation,
   settled,
+  loadError,
+  onRetry,
   onConfirm,
 }: {
   app: WebApp | null;
@@ -17,10 +19,22 @@ export function WebAppsRailPage({
   onStart: () => Promise<void>;
   operation: WebAppOperation | null;
   settled: boolean;
+  loadError: string | null;
+  onRetry: () => Promise<void>;
   onConfirm: (action: ConfirmAction) => void;
 }) {
   const showLoading = useDelayedLoading(!settled);
-  if (!app) return showLoading ? <div className="quiet-message">Loading Web Apps…</div> : settled ? <div className="quiet-message">Web Apps unavailable.</div> : null;
+  if (!app) {
+    if (showLoading) return <div className="quiet-message">Loading Web Apps…</div>;
+    if (!settled) return null;
+    return (
+      <div className="quiet-message history-status unavailable">
+        <strong>{loadError ? "Web Apps unavailable" : "No Web Apps available"}</strong>
+        {loadError && <span>{loadError}</span>}
+        {loadError && <button type="button" onClick={() => void onRetry()}>Retry</button>}
+      </div>
+    );
+  }
   const action = () => {
     if (app.running) return;
     if (app.installed) {
@@ -56,6 +70,8 @@ export function WebAppsWorkspace({
   operation,
   error,
   settled,
+  loadError,
+  onRetry,
   onInstall,
   onStart,
   onUpdate,
@@ -67,6 +83,8 @@ export function WebAppsWorkspace({
   operation: WebAppOperation | null;
   error: string | null;
   settled: boolean;
+  loadError: string | null;
+  onRetry: () => Promise<void>;
   onInstall: () => Promise<void>;
   onStart: () => Promise<void>;
   onUpdate: () => Promise<void>;
@@ -75,7 +93,19 @@ export function WebAppsWorkspace({
   onDismissError: () => void;
 }) {
   const showLoading = useDelayedLoading(!settled);
-  if (!app) return showLoading ? <div className="webapps-workspace"><div className="empty-state">Loading Web Apps…</div></div> : settled ? <div className="webapps-workspace"><div className="empty-state">Web Apps unavailable.</div></div> : <div className="webapps-workspace" />;
+  if (!app) {
+    if (showLoading) return <div className="webapps-workspace" aria-busy="true"><div className="empty-state" role="status">Loading Web Apps…</div></div>;
+    if (!settled) return <div className="webapps-workspace" aria-busy="true" />;
+    return (
+      <div className="webapps-workspace">
+        <div className="empty-state" role={loadError ? "alert" : undefined}>
+          <strong>{loadError ? "Web Apps unavailable" : "No Web Apps available"}</strong>
+          {loadError && <span>{loadError}</span>}
+          {loadError && <button type="button" onClick={() => void onRetry()}>Retry</button>}
+        </div>
+      </div>
+    );
+  }
   const ready = app.prerequisites.git && app.prerequisites.node24 && app.prerequisites.corepack;
   const install = () =>
     onConfirm({

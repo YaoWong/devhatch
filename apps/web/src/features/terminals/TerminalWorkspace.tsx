@@ -1,9 +1,7 @@
 import { ChevronRight, Minus, Pencil, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
-import type { LayoutMode } from "../../types/settings";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
-import { Statusbar } from "../../shared/terminal/Statusbar";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
@@ -81,11 +79,10 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 }
 
 export function TerminalWorkspace({
-  visible, layoutMode, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsHidden, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  visible, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
   onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, onError, onDismissError,
 }: {
   visible: boolean;
-  layoutMode: LayoutMode;
   busy: boolean;
   launching: boolean;
   sessions: TerminalInfo[];
@@ -101,7 +98,6 @@ export function TerminalWorkspace({
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
-  thumbnailsHidden: boolean;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   workspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
@@ -184,9 +180,8 @@ export function TerminalWorkspace({
   const layoutRatios = layoutCount && layoutPreset ? workspaceLayout?.ratios[terminalLayoutKey(layoutCount, layoutPreset)] ?? defaultTerminalLayoutRatios(layoutCount, layoutPreset) : [];
   const layoutClassName = layoutCount && layoutPreset ? `layout-${layoutCount}-${layoutPreset}` : "";
   const layoutStyle = terminalGridStyle(layoutCount, layoutPreset, layoutRatios);
-  const activeSession = visibleSessions.find((session) => session.id === activeId) ?? null;
   const thumbnailSessions = visibleSessions.filter((session) => !staged.has(session.id));
-  const hasThumbnailDock = !thumbnailsHidden && thumbnailSessions.length > 0;
+  const hasThumbnailDock = thumbnailSessions.length > 0;
   const thumbnailDockOpen = hasThumbnailDock && (!thumbnailsAutoHide || thumbnailDockExpanded);
   const thumbnailsReserveSpace = hasThumbnailDock && !thumbnailsAutoHide;
   const thumbnailTabStopId = thumbnailSessions[0]?.id;
@@ -297,8 +292,8 @@ export function TerminalWorkspace({
   }, [cancelThumbnailCollapse, thumbnailsAutoHide]);
   useEffect(() => {
     cancelThumbnailCollapse();
-    setThumbnailDockExpanded(!thumbnailsAutoHide && !thumbnailsHidden);
-  }, [cancelThumbnailCollapse, thumbnailsAutoHide, thumbnailsHidden]);
+    setThumbnailDockExpanded(!thumbnailsAutoHide);
+  }, [cancelThumbnailCollapse, thumbnailsAutoHide]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -482,7 +477,7 @@ export function TerminalWorkspace({
   };
 
   return (
-    <div className={`terminal-workspace ${layoutMode === "canvas" ? "canvas-terminal-workspace" : ""} ${visible ? "" : "workspace-hidden"}`}>
+    <div className={`terminal-workspace ${visible ? "" : "workspace-hidden"}`}>
       <div className="stage terminal-stage">
         {hasThumbnailDock && <div
           ref={thumbnailDockRef}
@@ -514,7 +509,7 @@ export function TerminalWorkspace({
             </button>)}
           </nav>
         </div>}
-        {showInitialLoading && <div className="empty-state">Starting DevHatch…</div>}
+        {showInitialLoading && <div className="empty-state" role="status">Starting DevHatch…</div>}
         {!busy && !workspaceId && <div className="empty-state">{emptyIcon}<strong>No {workspaceLabel} selected</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
         {!busy && workspaceId && !visibleSessions.length && <div className="empty-state">{emptyIcon}<strong>No {sessionLabel}s in this {workspaceLabel}</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
         {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a {sessionLabel} thumbnail</div>}
@@ -571,7 +566,6 @@ export function TerminalWorkspace({
          </div>
         {error && visible && <div className="error-banner">{error}<button aria-label="Dismiss" onClick={onDismissError}><X /></button></div>}
       </div>
-      {layoutMode === "classic" && <Statusbar session={activeSession} phase={activeId ? phases[activeId] : undefined} />}
     </div>
   );
 }

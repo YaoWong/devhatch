@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
-import type { LayoutMode } from "../../types/settings";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 
-export function useNavigation(bumpFocus: () => void, initialLayoutMode: LayoutMode) {
+export function useNavigation(bumpFocus: () => void) {
   const [railPage, setRailPage] = useState<RailPage>("modes");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => initialLayoutMode === "canvas" ? "settings" : "terminal");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("settings");
   const [railMotion, setRailMotion] = useState<RailMotion>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarHidden, setSidebarHidden] = useState(() => localStorage.getItem("devhatch-sidebar-hidden") === "1");
   const motionTimer = useRef<number | null>(null);
   const modesPageRef = useRef<HTMLElement | null>(null);
   const pageRefs = useRef<Record<DetailMode, HTMLElement | null>>({
@@ -133,14 +131,7 @@ export function useNavigation(bumpFocus: () => void, initialLayoutMode: LayoutMo
   );
 
   const toggleSidebar = useCallback(() => {
-    if (window.innerWidth <= 920) {
-      setSidebarOpen((value) => !value);
-      return;
-    }
-    setSidebarHidden((value) => {
-      localStorage.setItem("devhatch-sidebar-hidden", value ? "0" : "1");
-      return !value;
-    });
+    setSidebarOpen((value) => !value);
   }, []);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
@@ -160,20 +151,11 @@ export function useNavigation(bumpFocus: () => void, initialLayoutMode: LayoutMo
     setSidebarOpen(false);
   }, []);
 
-  const normalizeSettingsRail = useCallback((layoutMode: LayoutMode) => {
-    if (motionTimer.current) window.clearTimeout(motionTimer.current);
-    motionTimer.current = null;
-    setWorkspaceMode("settings");
-    setRailPage(layoutMode === "canvas" ? "modes" : "settings");
-    setRailMotion(null);
-  }, []);
-
   return {
     railPage,
     workspaceMode,
     railMotion,
     sidebarOpen,
-    sidebarHidden,
     modesPageRef,
     pageRefs,
     modeRefs,
@@ -182,7 +164,6 @@ export function useNavigation(bumpFocus: () => void, initialLayoutMode: LayoutMo
     animateRail,
     selectMode,
     showGlobalSettings,
-    normalizeSettingsRail,
     toggleSidebar,
     closeSidebar,
   };

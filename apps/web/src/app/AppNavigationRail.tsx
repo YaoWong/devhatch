@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
-import type { LayoutMode } from "../types/settings";
-import type { ConfirmAction } from "../types/app";
+import type { ConfirmAction, LaunchPathDisplay } from "../types/app";
 import type { TerminalInfo } from "../types/terminals";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentRailPage } from "../features/agents/AgentRailPage";
 import { NavigationRail } from "../features/navigation/NavigationRail";
 import type { useNavigation } from "../features/navigation/useNavigation";
-import { SettingsRailPage, type SettingsSection } from "../features/settings/SettingsView";
 import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { WorkspaceList } from "../features/terminals/WorkspaceList";
@@ -26,8 +24,6 @@ type AppNavigationRailProps = {
   busy: boolean;
   skillsSection: SkillsSection;
   onSelectSkillsSection: Dispatch<SetStateAction<SkillsSection>>;
-  settingsSection: SettingsSection;
-  onSelectSettingsSection: Dispatch<SetStateAction<SettingsSection>>;
   onPickWorkspace: () => void;
   onNewWorkspace: () => void;
   onPickAgentPath: () => void;
@@ -36,6 +32,7 @@ type AppNavigationRailProps = {
   terminalCapacity: TerminalWorkspaceCapacity;
   terminalLayoutCount: TerminalLayoutCount | null;
   terminalLayoutPreset: TerminalLayoutPreset | null;
+  terminalPathDisplay: LaunchPathDisplay;
   terminalThumbnailsAutoHide: boolean;
   terminalThumbnailSide: "left" | "right";
   terminalLaunchPathsHeight: number;
@@ -43,20 +40,22 @@ type AppNavigationRailProps = {
   agentCapacity: TerminalWorkspaceCapacity;
   agentLayoutCount: TerminalLayoutCount | null;
   agentLayoutPreset: TerminalLayoutPreset | null;
+  agentPathDisplay: LaunchPathDisplay;
   agentThumbnailsAutoHide: boolean;
   agentThumbnailSide: "left" | "right";
   onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onTerminalPathDisplayChange: (mode: LaunchPathDisplay) => void;
   onToggleTerminalThumbnailAutoHide: () => void;
   onTerminalThumbnailSideChange: (side: "left" | "right") => void;
   onTerminalLaunchPathsHeightChange: (height: number) => void;
   onConfirmTerminalCloseChange: (enabled: boolean) => void;
   onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onAgentPathDisplayChange: (mode: LaunchPathDisplay) => void;
   onToggleAgentThumbnailAutoHide: () => void;
   onAgentThumbnailSideChange: (side: "left" | "right") => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
-  layoutMode: LayoutMode;
   canvasPinned: boolean;
   railInteractive: boolean;
   railId: string;
@@ -79,8 +78,6 @@ export function AppNavigationRail({
   busy,
   skillsSection,
   onSelectSkillsSection,
-  settingsSection,
-  onSelectSettingsSection,
   onPickWorkspace,
   onNewWorkspace,
   onPickAgentPath,
@@ -89,6 +86,7 @@ export function AppNavigationRail({
   terminalCapacity,
   terminalLayoutCount,
   terminalLayoutPreset,
+  terminalPathDisplay,
   terminalThumbnailsAutoHide,
   terminalThumbnailSide,
   terminalLaunchPathsHeight,
@@ -96,20 +94,22 @@ export function AppNavigationRail({
   agentCapacity,
   agentLayoutCount,
   agentLayoutPreset,
+  agentPathDisplay,
   agentThumbnailsAutoHide,
   agentThumbnailSide,
   onTerminalCapacityChange,
   onTerminalLayoutPresetChange,
+  onTerminalPathDisplayChange,
   onToggleTerminalThumbnailAutoHide,
   onTerminalThumbnailSideChange,
   onTerminalLaunchPathsHeightChange,
   onConfirmTerminalCloseChange,
   onAgentCapacityChange,
   onAgentLayoutPresetChange,
+  onAgentPathDisplayChange,
   onToggleAgentThumbnailAutoHide,
   onAgentThumbnailSideChange,
   onConfirm,
-  layoutMode,
   canvasPinned,
   railInteractive,
   railId,
@@ -131,11 +131,11 @@ export function AppNavigationRail({
   useEffect(() => {
     if (
       terminalSettingsOpen &&
-      (layoutMode !== "canvas" || (navigation.workspaceMode !== "terminal" && navigation.workspaceMode !== "agent") || navigation.railPage !== navigation.workspaceMode)
+      ((navigation.workspaceMode !== "terminal" && navigation.workspaceMode !== "agent") || navigation.railPage !== navigation.workspaceMode)
     ) {
       closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
     }
-  }, [closeTerminalSettings, layoutMode, navigation.railPage, navigation.workspaceMode, terminalSettingsOpen]);
+  }, [closeTerminalSettings, navigation.railPage, navigation.workspaceMode, terminalSettingsOpen]);
   useEffect(() => {
     if (!terminalSettingsOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -168,6 +168,7 @@ export function AppNavigationRail({
        terminalCapacity={terminalCapacity}
        terminalLayoutCount={terminalLayoutCount}
        terminalLayoutPreset={terminalLayoutPreset}
+       terminalPathDisplay={terminalPathDisplay}
        terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
       terminalThumbnailSide={terminalThumbnailSide}
       terminalLaunchPathsHeight={terminalLaunchPathsHeight}
@@ -176,6 +177,7 @@ export function AppNavigationRail({
       onCloseTerminalSettings={() => closeTerminalSettings(true)}
        onTerminalCapacityChange={onTerminalCapacityChange}
        onTerminalLayoutPresetChange={onTerminalLayoutPresetChange}
+       onTerminalPathDisplayChange={onTerminalPathDisplayChange}
        onToggleTerminalThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
       onTerminalThumbnailSideChange={onTerminalThumbnailSideChange}
       onTerminalLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
@@ -183,6 +185,7 @@ export function AppNavigationRail({
        agentCapacity={agentCapacity}
        agentLayoutCount={agentLayoutCount}
        agentLayoutPreset={agentLayoutPreset}
+       agentPathDisplay={agentPathDisplay}
        agentThumbnailsAutoHide={agentThumbnailsAutoHide}
        agentThumbnailSide={agentThumbnailSide}
        agents={agent.agents}
@@ -190,6 +193,7 @@ export function AppNavigationRail({
        onDefaultAgentChange={agent.setDefaultAgentId}
        onAgentCapacityChange={onAgentCapacityChange}
        onAgentLayoutPresetChange={onAgentLayoutPresetChange}
+       onAgentPathDisplayChange={onAgentPathDisplayChange}
        onToggleAgentThumbnailAutoHide={onToggleAgentThumbnailAutoHide}
        onAgentThumbnailSideChange={onAgentThumbnailSideChange}
        terminalContent={
@@ -199,6 +203,7 @@ export function AppNavigationRail({
           selectedWorkspaceId={terminal.selectedWorkspaceId}
           homePaths={homePaths}
           launching={terminal.launching}
+          pathDisplay={terminalPathDisplay}
           onSelectWorkspace={(id) => {
             terminal.activateWorkspace(id);
             sessionSelected();
@@ -241,6 +246,7 @@ export function AppNavigationRail({
           rows={agent.mergedSessions}
           search={agent.search}
           homePaths={homePaths}
+          pathDisplay={agentPathDisplay}
           onSelectAgent={agent.setSelectedAgentId}
           onSelectConfig={agent.setSelectedConfigId}
           onSelectProfile={agent.setSelectedSkillProfileId}
@@ -270,20 +276,20 @@ export function AppNavigationRail({
           onRetryHistory={agent.retryHistory}
         />
       }
-      skillsContent={<SkillsRailPage section={skillsSection} onSelect={onSelectSkillsSection} />}
-      settingsContent={<SettingsRailPage section={settingsSection} onSelect={onSelectSettingsSection} />}
-      webAppContent={
+       skillsContent={<SkillsRailPage section={skillsSection} onSelect={onSelectSkillsSection} />}
+       webAppContent={
         <WebAppsRailPage
           app={webApps.openDesign}
           onInstall={webApps.install}
           onStart={webApps.start}
           operation={webApps.operation}
           settled={webApps.settled}
+          loadError={webApps.loadError}
+          onRetry={webApps.retry}
           onConfirm={onConfirm}
         />
-      }
-      layoutMode={layoutMode}
-      canvasPinned={canvasPinned}
+       }
+       canvasPinned={canvasPinned}
       railInteractive={railInteractive}
       railId={railId}
       railRef={railRef}

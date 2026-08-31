@@ -1,8 +1,10 @@
 CREATE TABLE repositories (
     id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL CHECK (trim(name) <> ''),
     url TEXT NOT NULL COLLATE NOCASE UNIQUE,
     git_ref TEXT,
     commit_hash TEXT NOT NULL,
+    sync_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -35,3 +37,10 @@ CREATE TABLE profile_skills (
     skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
     PRIMARY KEY (profile_id, skill_id)
 );
+
+CREATE UNIQUE INDEX skills_repository_relative_path_unique
+ON skills(repository_id, relative_path)
+WHERE source_type = 'repository';
+
+CREATE INDEX skills_repository_id_index ON skills(repository_id);
+CREATE INDEX profile_skills_skill_id_index ON profile_skills(skill_id);

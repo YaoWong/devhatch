@@ -14,7 +14,7 @@ ON terminal_launch_paths (pinned DESC, last_used_at DESC, path COLLATE NOCASE);
 CREATE TABLE terminal_workspaces (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT,
-    active_terminal_id TEXT NOT NULL CHECK (active_terminal_id <> ''),
+    active_terminal_id TEXT CHECK (active_terminal_id <> ''),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );

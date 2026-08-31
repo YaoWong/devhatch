@@ -78,5 +78,5 @@
 .settings-signout:hover { border-color: var(--color-danger); background: var(--color-danger-soft); }
 .settings-theme-row .custom-select, .settings-range-row .pixel-range-control { width: min(240px, 48%); flex: none; }
 .settings-theme-row .custom-select-trigger { min-height: 48px; }
-.settings-theme-row .custom-select-menu { min-width: 240px; right: 0; left: auto; }
+.settings-theme-row .custom-select-menu { width: 240px; min-width: 240px; max-width: 240px; right: 0; left: auto; }
 .settings-theme-row .custom-select-option { min-height: 46px; }

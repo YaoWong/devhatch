@@ -29,7 +29,7 @@ export function AuthGate({ children }: { children: (props: AuthGateRenderProps) 
   }, [status]);
 
   if (!status) {
-    return <main className="auth-page"><section className="auth-card"><h1>DevHatch</h1>{(error || showStatusLoading) && <p>{error ?? "Loading…"}</p>}</section></main>;
+    return <main className="auth-page" aria-busy={error === null}><section className="auth-card"><h1>DevHatch</h1>{(error || showStatusLoading) && <p role={error ? "alert" : "status"}>{error ?? "Loading…"}</p>}</section></main>;
   }
   if (status.authenticated) {
     const signOut = async () => {

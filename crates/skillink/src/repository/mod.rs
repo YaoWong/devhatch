@@ -65,7 +65,7 @@ impl Skillink {
 
     pub async fn list_repositories(&self) -> Result<Vec<Repository>> {
         Ok(sqlx::query_as::<_, Repository>(
-            "SELECT id, COALESCE(name, '') AS name, url, git_ref, commit_hash, sync_version FROM repositories ORDER BY name, url",
+            "SELECT id, name, url, git_ref, commit_hash, sync_version FROM repositories ORDER BY name, url",
         )
         .fetch_all(self.pool())
         .await?)
