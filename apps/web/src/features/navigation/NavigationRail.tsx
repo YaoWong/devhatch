@@ -256,7 +256,7 @@ export function NavigationRail({
         </div>
       )}
       {layoutMode === "canvas" && terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (
-        <div ref={terminalSettingsPanelRef} id={`canvas-${workspaceMode}-settings`} className="canvas-terminal-settings" role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
+        <div ref={terminalSettingsPanelRef} id={`canvas-${workspaceMode}-settings`} className={`canvas-terminal-settings ${canvasPinned ? "pinned" : ""}`} role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
           <TerminalSettingsControls
             capacity={workspaceMode === "terminal" ? terminalCapacity : agentCapacity}
             layoutCount={workspaceMode === "terminal" ? terminalLayoutCount : agentLayoutCount}

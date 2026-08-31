@@ -27,6 +27,7 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
+    element.scrollTo({ top: 0, behavior: "auto" });
     const update = () => updateScrollEdges(element);
     update();
     const observer = new MutationObserver(update);
@@ -40,9 +41,11 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
   return (
     <div className="skills-workspace" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
       {controller.busy && <LoaderCircle className="skills-spinner spin" />}
-      {section === "repositories" && <Repositories controller={controller} />}
-      {section === "skills" && <SkillLibrary controller={controller} />}
-      {section === "profiles" && <Profiles controller={controller} />}
+      <div className="skills-section-transition" key={section}>
+        {section === "repositories" && <Repositories controller={controller} />}
+        {section === "skills" && <SkillLibrary controller={controller} />}
+        {section === "profiles" && <Profiles controller={controller} />}
+      </div>
       {error && <div className={`error-banner ${section === "profiles" ? "skills-error-top" : ""}`}>{error}<button aria-label="Dismiss" onClick={onDismissError}>×</button></div>}
       <div className="skills-scroll-controls" aria-label="Page navigation">
         <button type="button" aria-label="Scroll to top" title="Scroll to top" disabled={scrollEdges.top} onClick={() => scrollTo("top")}><ArrowUpToLine /></button>

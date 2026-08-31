@@ -24,7 +24,7 @@ export function SkillTree({ nodes, collapsed, namespace, onToggle, selected, onT
           </button>
         )}
         {(isRoot || !isCollapsed) && (
-          <div>
+          <div className="skill-tree-children">
             {node.skills.map((skill) => selected && onToggleSkill
               ? <SelectableSkill key={skill.id} skill={skill} selected={selected.has(skill.id)} depth={depth + (isRoot ? 0 : 1)} onToggle={() => onToggleSkill(skill.id)} />
               : <RepositorySkill key={skill.id} skill={skill} depth={depth + (isRoot ? 0 : 1)} onView={onViewSkill} />)}

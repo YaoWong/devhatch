@@ -13,11 +13,12 @@ export function SourceFilterControl({ value, onChange }: { value: SourceFilter; 
   );
 }
 
-export function TreeControls({ onExpand, onCollapse }: { onExpand: () => void; onCollapse: () => void }) {
+export function TreeControls({ allCollapsed, disabled = false, onToggle }: { allCollapsed: boolean; disabled?: boolean; onToggle: () => void }) {
+  const label = allCollapsed ? "Expand all" : "Collapse all";
+  const Icon = allCollapsed ? ChevronDown : ChevronRight;
   return (
     <div className="tree-controls">
-      <button type="button" onClick={onExpand}><ChevronDown />Expand all</button>
-      <button type="button" onClick={onCollapse}><ChevronRight />Collapse all</button>
+      <button type="button" disabled={disabled} aria-label={label} title={label} onClick={onToggle}><Icon /><span>{label}</span></button>
     </div>
   );
 }

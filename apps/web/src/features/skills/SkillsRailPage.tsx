@@ -9,18 +9,18 @@ export function SkillsRailPage({ section, onSelect }: { section: SkillsSection; 
     { id: "profiles" as const, label: "Profiles", icon: UserRound },
   ];
   return (
-    <div className="menu-section">
+    <nav className="menu-section" aria-label="Skills workspace">
       <p className="menu-label">Workspace</p>
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <button key={item.id} className={`settings-nav-item ${section === item.id ? "active" : ""}`} onClick={() => onSelect(item.id)}>
+          <button type="button" key={item.id} className={`settings-nav-item ${section === item.id ? "active" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
             <Icon />
             <span>{item.label}</span>
           </button>
         );
       })}
       <div className="skills-rail-note"><Boxes />Compose reusable skills into launch profiles.</div>
-    </div>
+    </nav>
   );
 }

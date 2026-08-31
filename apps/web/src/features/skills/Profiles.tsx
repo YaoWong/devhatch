@@ -51,6 +51,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
     ...treeKeys(buildSkillTree(source.skills), `profile:${source.namespace}`),
   ]);
   const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
+  const allCollapsed = visibleTreeKeys.length > 0 && visibleTreeKeys.every((key) => effectiveCollapsed.has(key));
   return (
     <WorkspaceSection title="Profiles" description="Build a reusable skill set, then save all changes in one update.">
       {controller.profileError && (
@@ -88,8 +89,9 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           </div>
           <div className="profile-tree-toolbar">
             <TreeControls
-              onExpand={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, false))}
-              onCollapse={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, true))}
+              allCollapsed={allCollapsed}
+              disabled={!visibleTreeKeys.length || Boolean(query.trim())}
+              onToggle={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, !allCollapsed))}
             />
           </div>
           <div className="profile-tree">

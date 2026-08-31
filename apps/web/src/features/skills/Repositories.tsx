@@ -40,6 +40,9 @@ export function Repositories({ controller }: { controller: SkillsController }) {
           const isExpanded = expanded.has(repository.id);
           const query = queries[repository.id] ?? "";
           const filtered = filterSkills(repositorySkills, query, "all");
+          const tree = buildSkillTree(filtered);
+          const collapsibleKeys = treeKeys(tree, repository.id);
+          const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => collapsed.has(key));
           const plan = controller.syncPlan?.repositoryId === repository.id ? controller.syncPlan : null;
           return (
             <article className={`repository-card ${isExpanded ? "expanded" : ""}`} key={repository.id}>
@@ -77,12 +80,13 @@ export function Repositories({ controller }: { controller: SkillsController }) {
                   <div className="skill-tree-toolbar">
                     <SearchField value={query} placeholder={`Search ${repositorySkills.length} skills`} onChange={(value) => setQueries((current) => ({ ...current, [repository.id]: value }))} />
                     <TreeControls
-                      onExpand={() => setCollapsed((current) => setKeysCollapsed(current, treeKeys(buildSkillTree(filtered), repository.id), false))}
-                      onCollapse={() => setCollapsed((current) => setKeysCollapsed(current, treeKeys(buildSkillTree(filtered), repository.id), true))}
+                      allCollapsed={allCollapsed}
+                      disabled={!collapsibleKeys.length}
+                      onToggle={() => setCollapsed((current) => setKeysCollapsed(current, collapsibleKeys, !allCollapsed))}
                     />
                   </div>
                   <div className="skill-tree-shell">
-                    <SkillTree nodes={buildSkillTree(filtered)} collapsed={collapsed} namespace={repository.id} onToggle={(key) => setCollapsed((current) => toggleSet(current, key))} onViewSkill={setViewer} />
+                    <SkillTree nodes={tree} collapsed={collapsed} namespace={repository.id} onToggle={(key) => setCollapsed((current) => toggleSet(current, key))} onViewSkill={setViewer} />
                     {!filtered.length && <div className="repository-no-skills">{repositorySkills.length ? "No skills match your search." : "No skills discovered in this repository."}</div>}
                   </div>
                 </div>
