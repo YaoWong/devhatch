@@ -59,9 +59,9 @@ export function clampTerminalLayoutCut(cuts: readonly number[], index: number, v
   return Math.min(upper, Math.max(lower, value));
 }
 
-export function readTerminalWorkspaceLayouts(): Record<string, TerminalWorkspaceLayoutPreferences> {
+export function readTerminalWorkspaceLayouts(storageKey = TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY): Record<string, TerminalWorkspaceLayoutPreferences> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}") as unknown;
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const result: Record<string, TerminalWorkspaceLayoutPreferences> = {};
     for (const [workspaceId, raw] of Object.entries(parsed)) {
@@ -95,9 +95,9 @@ export function readTerminalWorkspaceLayouts(): Record<string, TerminalWorkspace
   }
 }
 
-export function writeTerminalWorkspaceLayouts(layouts: Record<string, TerminalWorkspaceLayoutPreferences>) {
+export function writeTerminalWorkspaceLayouts(layouts: Record<string, TerminalWorkspaceLayoutPreferences>, storageKey = TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY) {
   try {
-    localStorage.setItem(TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify(layouts));
+    localStorage.setItem(storageKey, JSON.stringify(layouts));
   } catch {
     return;
   }

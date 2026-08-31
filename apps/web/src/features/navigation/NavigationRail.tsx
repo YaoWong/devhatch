@@ -41,6 +41,15 @@ export function NavigationRail({
   onTerminalThumbnailSideChange,
   onTerminalLaunchPathsHeightChange,
   onConfirmTerminalCloseChange,
+  agentCapacity,
+  agentLayoutCount,
+  agentLayoutPreset,
+  agentThumbnailsAutoHide,
+  agentThumbnailSide,
+  onAgentCapacityChange,
+  onAgentLayoutPresetChange,
+  onToggleAgentThumbnailAutoHide,
+  onAgentThumbnailSideChange,
   terminalContent,
   agentContent,
   skillsContent,
@@ -88,6 +97,15 @@ export function NavigationRail({
   onTerminalThumbnailSideChange: (side: "left" | "right") => void;
   onTerminalLaunchPathsHeightChange: (height: number) => void;
   onConfirmTerminalCloseChange: (enabled: boolean) => void;
+  agentCapacity: TerminalWorkspaceCapacity;
+  agentLayoutCount: TerminalLayoutCount | null;
+  agentLayoutPreset: TerminalLayoutPreset | null;
+  agentThumbnailsAutoHide: boolean;
+  agentThumbnailSide: "left" | "right";
+  onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onToggleAgentThumbnailAutoHide: () => void;
+  onAgentThumbnailSideChange: (side: "left" | "right") => void;
   terminalContent: React.ReactNode;
   agentContent: React.ReactNode;
   skillsContent: React.ReactNode;
@@ -237,20 +255,20 @@ export function NavigationRail({
           </button>
         </div>
       )}
-      {layoutMode === "canvas" && terminalSettingsOpen && railPage === "terminal" && workspaceMode === "terminal" && (
-        <div ref={terminalSettingsPanelRef} id="canvas-terminal-settings" className="canvas-terminal-settings" role="group" aria-label="Terminal settings">
+      {layoutMode === "canvas" && terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (
+        <div ref={terminalSettingsPanelRef} id={`canvas-${workspaceMode}-settings`} className="canvas-terminal-settings" role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
           <TerminalSettingsControls
-            capacity={terminalCapacity}
-            layoutCount={terminalLayoutCount}
-            layoutPreset={terminalLayoutPreset}
-            thumbnailsAutoHide={terminalThumbnailsAutoHide}
-            thumbnailSide={terminalThumbnailSide}
+            capacity={workspaceMode === "terminal" ? terminalCapacity : agentCapacity}
+            layoutCount={workspaceMode === "terminal" ? terminalLayoutCount : agentLayoutCount}
+            layoutPreset={workspaceMode === "terminal" ? terminalLayoutPreset : agentLayoutPreset}
+            thumbnailsAutoHide={workspaceMode === "terminal" ? terminalThumbnailsAutoHide : agentThumbnailsAutoHide}
+            thumbnailSide={workspaceMode === "terminal" ? terminalThumbnailSide : agentThumbnailSide}
             launchPathsHeight={terminalLaunchPathsHeight}
             confirmClose={confirmTerminalClose}
-            onCapacityChange={onTerminalCapacityChange}
-            onLayoutPresetChange={onTerminalLayoutPresetChange}
-            onToggleThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
-            onThumbnailSideChange={onTerminalThumbnailSideChange}
+            onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
+            onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
+            onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}
+            onThumbnailSideChange={workspaceMode === "terminal" ? onTerminalThumbnailSideChange : onAgentThumbnailSideChange}
             onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
             onConfirmCloseChange={onConfirmTerminalCloseChange}
           />
@@ -258,17 +276,17 @@ export function NavigationRail({
       )}
       {layoutMode === "canvas" && (
         <footer className="canvas-rail-footer">
-          {railPage === "terminal" && workspaceMode === "terminal" && (
+          {(railPage === "terminal" && workspaceMode === "terminal" || railPage === "agent" && workspaceMode === "agent") && (
             <button
               ref={terminalSettingsToggleRef}
               className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
               type="button"
               aria-expanded={terminalSettingsOpen}
-              aria-controls="canvas-terminal-settings"
+              aria-controls={`canvas-${workspaceMode}-settings`}
               onClick={onToggleTerminalSettings}
             >
               <SlidersHorizontal />
-              <span>Terminal settings</span>
+              <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
             </button>
           )}
           <button

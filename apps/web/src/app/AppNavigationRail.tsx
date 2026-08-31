@@ -40,12 +40,21 @@ type AppNavigationRailProps = {
   terminalThumbnailSide: "left" | "right";
   terminalLaunchPathsHeight: number;
   confirmTerminalClose: boolean;
+  agentCapacity: TerminalWorkspaceCapacity;
+  agentLayoutCount: TerminalLayoutCount | null;
+  agentLayoutPreset: TerminalLayoutPreset | null;
+  agentThumbnailsAutoHide: boolean;
+  agentThumbnailSide: "left" | "right";
   onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onToggleTerminalThumbnailAutoHide: () => void;
   onTerminalThumbnailSideChange: (side: "left" | "right") => void;
   onTerminalLaunchPathsHeightChange: (height: number) => void;
   onConfirmTerminalCloseChange: (enabled: boolean) => void;
+  onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onToggleAgentThumbnailAutoHide: () => void;
+  onAgentThumbnailSideChange: (side: "left" | "right") => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
   layoutMode: LayoutMode;
   canvasPinned: boolean;
@@ -84,12 +93,21 @@ export function AppNavigationRail({
   terminalThumbnailSide,
   terminalLaunchPathsHeight,
   confirmTerminalClose,
+  agentCapacity,
+  agentLayoutCount,
+  agentLayoutPreset,
+  agentThumbnailsAutoHide,
+  agentThumbnailSide,
   onTerminalCapacityChange,
   onTerminalLayoutPresetChange,
   onToggleTerminalThumbnailAutoHide,
   onTerminalThumbnailSideChange,
   onTerminalLaunchPathsHeightChange,
   onConfirmTerminalCloseChange,
+  onAgentCapacityChange,
+  onAgentLayoutPresetChange,
+  onToggleAgentThumbnailAutoHide,
+  onAgentThumbnailSideChange,
   onConfirm,
   layoutMode,
   canvasPinned,
@@ -113,7 +131,7 @@ export function AppNavigationRail({
   useEffect(() => {
     if (
       terminalSettingsOpen &&
-      (layoutMode !== "canvas" || navigation.workspaceMode !== "terminal" || navigation.railPage !== "terminal")
+      (layoutMode !== "canvas" || (navigation.workspaceMode !== "terminal" && navigation.workspaceMode !== "agent") || navigation.railPage !== navigation.workspaceMode)
     ) {
       closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
     }
@@ -161,8 +179,17 @@ export function AppNavigationRail({
        onToggleTerminalThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
       onTerminalThumbnailSideChange={onTerminalThumbnailSideChange}
       onTerminalLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
-      onConfirmTerminalCloseChange={onConfirmTerminalCloseChange}
-      terminalContent={
+       onConfirmTerminalCloseChange={onConfirmTerminalCloseChange}
+       agentCapacity={agentCapacity}
+       agentLayoutCount={agentLayoutCount}
+       agentLayoutPreset={agentLayoutPreset}
+       agentThumbnailsAutoHide={agentThumbnailsAutoHide}
+       agentThumbnailSide={agentThumbnailSide}
+       onAgentCapacityChange={onAgentCapacityChange}
+       onAgentLayoutPresetChange={onAgentLayoutPresetChange}
+       onToggleAgentThumbnailAutoHide={onToggleAgentThumbnailAutoHide}
+       onAgentThumbnailSideChange={onAgentThumbnailSideChange}
+       terminalContent={
         <WorkspaceList
           workspaces={terminal.workspaces}
           launchPaths={terminal.launchPaths}

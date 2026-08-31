@@ -39,11 +39,14 @@ const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
 const CANVAS_RAIL_ID = "canvas-navigation-rail";
 const CANVAS_RAIL_CLOSE_DELAY_MS = 120;
 const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
+const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
+const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
+const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v1";
 type TerminalThumbnailSide = "left" | "right";
 
-function initialTerminalThumbnailSide(): TerminalThumbnailSide {
+function initialThumbnailSide(storageKey = TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY): TerminalThumbnailSide {
   try {
-    return localStorage.getItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY) === "right" ? "right" : "left";
+    return localStorage.getItem(storageKey) === "right" ? "right" : "left";
   } catch {
     return "left";
   }
@@ -65,12 +68,13 @@ function getFocusableRailElements(rail: HTMLElement) {
   });
 }
 
-function initialTerminalCapacity(): TerminalWorkspaceCapacity {
+function initialCapacity(storageKey = TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY): TerminalWorkspaceCapacity {
   try {
-    const stored = localStorage.getItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY) ?? localStorage.getItem(TERMINAL_ROWS_STORAGE_KEY) ?? "1";
+    const legacy = storageKey === TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY ? localStorage.getItem(TERMINAL_ROWS_STORAGE_KEY) : null;
+    const stored = localStorage.getItem(storageKey) ?? legacy ?? "1";
     const capacity = clampTerminalWorkspaceCapacity(Number(stored));
-    localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(capacity));
-    localStorage.removeItem(TERMINAL_ROWS_STORAGE_KEY);
+    localStorage.setItem(storageKey, String(capacity));
+    if (storageKey === TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY) localStorage.removeItem(TERMINAL_ROWS_STORAGE_KEY);
     return capacity;
   } catch {
     return 1;
@@ -117,15 +121,25 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
-  const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialTerminalCapacity);
+  const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialCapacity);
   const [terminalThumbnailsHidden, setTerminalThumbnailsHidden] = useState(false);
   const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(false);
-  const [terminalThumbnailSide, setTerminalThumbnailSideState] = useState<TerminalThumbnailSide>(initialTerminalThumbnailSide);
+  const [terminalThumbnailSide, setTerminalThumbnailSideState] = useState<TerminalThumbnailSide>(initialThumbnailSide);
   const [terminalLayoutCount, setTerminalLayoutCount] = useState<TerminalLayoutCount | null>(null);
   const [terminalWorkspaceLayouts, setTerminalWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(readTerminalWorkspaceLayouts);
+  const [agentCapacity, setAgentCapacityState] = useState<TerminalWorkspaceCapacity>(() => initialCapacity(AGENT_WORKSPACE_CAPACITY_STORAGE_KEY));
+  const [agentThumbnailsHidden, setAgentThumbnailsHidden] = useState(false);
+  const [agentThumbnailsAutoHide, setAgentThumbnailsAutoHide] = useState(false);
+  const [agentThumbnailSide, setAgentThumbnailSideState] = useState<TerminalThumbnailSide>(() => initialThumbnailSide(AGENT_THUMBNAIL_SIDE_STORAGE_KEY));
+  const [agentLayoutCount, setAgentLayoutCount] = useState<TerminalLayoutCount | null>(null);
+  const [agentWorkspaceLayouts, setAgentWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(() => readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY));
   const setTerminalThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
     setTerminalThumbnailSideState(side);
     try { localStorage.setItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
+  }, []);
+  const setAgentThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
+    setAgentThumbnailSideState(side);
+    try { localStorage.setItem(AGENT_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
   }, []);
   const updateTerminalWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
     setTerminalWorkspaceLayouts((current) => {
@@ -134,36 +148,50 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       return next;
     });
   }, []);
+  const updateAgentWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
+    setAgentWorkspaceLayouts((current) => {
+      const next = { ...current, [workspaceId]: update(current[workspaceId] ?? { presets: {}, ratios: {} }) };
+      writeTerminalWorkspaceLayouts(next, AGENT_WORKSPACE_LAYOUT_STORAGE_KEY);
+      return next;
+    });
+  }, []);
   const terminalCapacityTransitionRef = useRef<ViewTransition | null>(null);
-  const setTerminalCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
-    const update = () => setTerminalCapacityState(value);
-    const activeTransition = terminalCapacityTransitionRef.current;
+  const agentCapacityTransitionRef = useRef<ViewTransition | null>(null);
+  const setWorkspaceCapacity = useCallback((value: TerminalWorkspaceCapacity, setValue: (value: TerminalWorkspaceCapacity) => void, transitionRef: { current: ViewTransition | null }, storageKey: string, transitionClass: string) => {
+    const update = () => setValue(value);
+    const activeTransition = transitionRef.current;
     if (activeTransition) {
       try { activeTransition.skipTransition(); } catch { void activeTransition.finished.catch(() => undefined); }
-      terminalCapacityTransitionRef.current = null;
-      document.documentElement.classList.remove("terminal-stage-transition");
+      transitionRef.current = null;
+      document.documentElement.classList.remove(transitionClass);
       flushSync(update);
     } else {
       const startViewTransition = document.startViewTransition?.bind(document);
       if (!startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) update();
       else {
-        document.documentElement.classList.add("terminal-stage-transition");
+        document.documentElement.classList.add(transitionClass);
         try {
           const transition = startViewTransition(() => flushSync(update));
-          terminalCapacityTransitionRef.current = transition;
+          transitionRef.current = transition;
           void transition.finished.catch(() => undefined).finally(() => {
-            if (terminalCapacityTransitionRef.current !== transition) return;
-            terminalCapacityTransitionRef.current = null;
-            document.documentElement.classList.remove("terminal-stage-transition");
+            if (transitionRef.current !== transition) return;
+            transitionRef.current = null;
+            document.documentElement.classList.remove(transitionClass);
           });
         } catch {
-          document.documentElement.classList.remove("terminal-stage-transition");
+          document.documentElement.classList.remove(transitionClass);
           update();
         }
       }
     }
-    try { localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(value)); } catch { return; }
+    try { localStorage.setItem(storageKey, String(value)); } catch { return; }
   }, []);
+  const setTerminalCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
+    setWorkspaceCapacity(value, setTerminalCapacityState, terminalCapacityTransitionRef, TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, "terminal-stage-transition");
+  }, [setWorkspaceCapacity]);
+  const setAgentCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
+    setWorkspaceCapacity(value, setAgentCapacityState, agentCapacityTransitionRef, AGENT_WORKSPACE_CAPACITY_STORAGE_KEY, "agent-stage-transition");
+  }, [setWorkspaceCapacity]);
   useEffect(() => setDraftRailWidth(navigationRailWidthPx), [navigationRailWidthPx]);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 920px)");
@@ -354,6 +382,15 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     bumpFocus,
     onLaunched: closePicker,
   });
+  const agentLayoutPreset = agent.selectedAgentId && agentLayoutCount
+    ? agentWorkspaceLayouts[agent.selectedAgentId]?.presets[agentLayoutCount] ?? defaultTerminalLayoutPreset(agentLayoutCount)
+    : null;
+  const setAgentLayoutPreset = useCallback((preset: TerminalLayoutPreset) => {
+    if (!agent.selectedAgentId || !agentLayoutCount) return;
+    const workspaceId = agent.selectedAgentId;
+    const count = agentLayoutCount;
+    updateAgentWorkspaceLayout(workspaceId, (current) => ({ ...current, presets: { ...current.presets, [count]: preset } }));
+  }, [agent.selectedAgentId, agentLayoutCount, updateAgentWorkspaceLayout]);
   const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
   const skills = useSkillsWorkspace(
     navigation.workspaceMode === "skills" || navigation.workspaceMode === "agent",
@@ -531,6 +568,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
          terminalThumbnailSide={terminalThumbnailSide}
          terminalLaunchPathsHeight={agentLaunchPathsMaxHeightPx}
          confirmTerminalClose={confirmDelete}
+         agentCapacity={agentCapacity}
+         agentLayoutCount={agentLayoutCount}
+         agentLayoutPreset={agentLayoutPreset}
+         agentThumbnailsAutoHide={agentThumbnailsAutoHide}
+         agentThumbnailSide={agentThumbnailSide}
          onTerminalCapacityChange={setTerminalCapacity}
         onTerminalLayoutPresetChange={setTerminalLayoutPreset}
          onToggleTerminalThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
@@ -540,6 +582,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            setConfirmDelete(enabled);
            localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
          }}
+         onAgentCapacityChange={setAgentCapacity}
+         onAgentLayoutPresetChange={setAgentLayoutPreset}
+         onToggleAgentThumbnailAutoHide={() => setAgentThumbnailsAutoHide((autoHide) => !autoHide)}
+         onAgentThumbnailSideChange={setAgentThumbnailSide}
          onConfirm={setConfirmAction}
         layoutMode={layoutMode}
         canvasPinned={canvasPinned}
@@ -624,11 +670,22 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
              onToggleTerminalThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
              onTerminalThumbnailSideChange={setTerminalThumbnailSide}
              onTerminalLaunchPathsHeightChange={setAgentLaunchPathsMaxHeightPx}
-             onConfirmTerminalCloseChange={(enabled) => {
-               setConfirmDelete(enabled);
-               localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
-             }}
-             webAppRunning={Boolean(webApps.openDesign?.running)}
+              onConfirmTerminalCloseChange={(enabled) => {
+                setConfirmDelete(enabled);
+                localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
+              }}
+              agentCapacity={agentCapacity}
+              agentLayoutCount={agentLayoutCount}
+              agentLayoutPreset={agentLayoutPreset}
+              agentThumbnailsHidden={agentThumbnailsHidden}
+              agentThumbnailsAutoHide={agentThumbnailsAutoHide}
+              agentThumbnailSide={agentThumbnailSide}
+              onAgentCapacityChange={setAgentCapacity}
+              onAgentLayoutPresetChange={setAgentLayoutPreset}
+              onToggleAgentThumbnails={() => setAgentThumbnailsHidden((hidden) => !hidden)}
+              onToggleAgentThumbnailAutoHide={() => setAgentThumbnailsAutoHide((autoHide) => !autoHide)}
+              onAgentThumbnailSideChange={setAgentThumbnailSide}
+              webAppRunning={Boolean(webApps.openDesign?.running)}
             webAppOperation={webApps.operation}
             onStopWebApp={() => void webApps.stop()}
           />
@@ -646,18 +703,25 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           terminalCapacity={terminalCapacity}
           terminalThumbnailsHidden={terminalThumbnailsHidden}
           terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
-          terminalThumbnailSide={terminalThumbnailSide}
-          terminalWorkspaceLayouts={terminalWorkspaceLayouts}
-          error={error}
+           terminalThumbnailSide={terminalThumbnailSide}
+           terminalWorkspaceLayouts={terminalWorkspaceLayouts}
+           agentCapacity={agentCapacity}
+           agentThumbnailsHidden={agentThumbnailsHidden}
+           agentThumbnailsAutoHide={agentThumbnailsAutoHide}
+           agentThumbnailSide={agentThumbnailSide}
+           agentWorkspaceLayouts={agentWorkspaceLayouts}
+           error={error}
           skillsSection={skillsSection}
            settingsSection={settingsSection}
            onSelectSettingsSection={setSettingsSection}
            onCloseSession={requestClose}
           onPickAgentPath={() => setPickerPurpose("agent")}
           onPhaseChange={setPhase}
-          onTerminalLayoutCountChange={setTerminalLayoutCount}
-          onTerminalWorkspaceLayoutChange={updateTerminalWorkspaceLayout}
-          onError={reportError}
+           onTerminalLayoutCountChange={setTerminalLayoutCount}
+           onTerminalWorkspaceLayoutChange={updateTerminalWorkspaceLayout}
+           onAgentLayoutCountChange={setAgentLayoutCount}
+           onAgentWorkspaceLayoutChange={updateAgentWorkspaceLayout}
+           onError={reportError}
            onDismissError={() => setError(null)}
            onConfirm={setConfirmAction}
            onLogout={onLogout}

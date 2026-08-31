@@ -80,8 +80,8 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 }
 
 export function TerminalWorkspace({
-  visible, layoutMode, busy, launching, sessions, visibleSessions, workspace, phases, focusVersion, capacity, thumbnailsHidden, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
-  onActivate, onRename, onClose, onCreate, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onError, onDismissError,
+  visible, layoutMode, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsHidden, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, onError, onDismissError,
 }: {
   visible: boolean;
   layoutMode: LayoutMode;
@@ -89,7 +89,14 @@ export function TerminalWorkspace({
   launching: boolean;
   sessions: TerminalInfo[];
   visibleSessions: TerminalInfo[];
-  workspace: TerminalWorkspaceInfo | null;
+  workspace?: TerminalWorkspaceInfo | null;
+  workspaceKey?: string | null;
+  activeSessionId?: string | null;
+  workspaceLabel?: string;
+  sessionLabel?: string;
+  stageId?: string;
+  socketBase?: string;
+  emptyIcon?: React.ReactNode;
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
@@ -101,10 +108,13 @@ export function TerminalWorkspace({
   onActivate: (id: string) => void;
   onRename: (session: TerminalInfo, name: string) => Promise<boolean>;
   onClose: (session: TerminalInfo) => void;
-  onCreate: (cwd?: string) => void;
+  onCreate?: (cwd?: string) => void;
+  onChoosePath?: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
+  onRemoved?: (id: string) => void;
+  onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
@@ -130,8 +140,8 @@ export function TerminalWorkspace({
   const isMobile = useMediaQuery("(max-width: 640px)");
   const effectiveCapacity = isMobile ? 1 : capacity;
   const [workspaceStates, setWorkspaceStates] = useState<Map<string, TerminalWorkspaceDockState>>(() => new Map());
-  const workspaceId = workspace?.id ?? null;
-  const activeId = workspace?.activeTerminalId ?? null;
+  const workspaceId = workspaceKey === undefined ? workspace?.id ?? null : workspaceKey;
+  const activeId = activeSessionId === undefined ? workspace?.activeTerminalId ?? null : activeSessionId;
   const memberIds = useMemo(() => visibleSessions.map((session) => session.id), [visibleSessions]);
   const memberIdSet = useMemo(() => new Set(memberIds), [memberIds]);
   const thumbnailMemberIdsRef = useRef(memberIdSet);
@@ -324,7 +334,7 @@ export function TerminalWorkspace({
       } catch {
         void activeTransition.transition.finished.catch(() => undefined);
       }
-      document.documentElement.classList.remove("terminal-stage-transition");
+      document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
       flushSync(update);
       return;
     }
@@ -343,7 +353,7 @@ export function TerminalWorkspace({
     let caption: HTMLElement | null = null;
     const markCaption = () => {
       caption = thumbnailRefs.current.get(id)?.querySelector<HTMLElement>(".terminal-thumbnail-caption") ?? null;
-      if (caption) caption.style.viewTransitionName = "terminal-thumbnail-caption-flight";
+      if (caption) caption.style.viewTransitionName = `${stageId}-thumbnail-caption-flight`;
     };
     const clearCaption = () => {
       if (caption) caption.style.viewTransitionName = "";
@@ -357,7 +367,7 @@ export function TerminalWorkspace({
       flushSync(update);
       markCaption();
     };
-    document.documentElement.classList.add("terminal-stage-transition");
+    document.documentElement.classList.add(`${stageId}-stage-transition`);
     try {
       const transition = startViewTransition(applyUpdate);
       stageTransitionRef.current = { transition, generation, applyUpdate, clearCaption };
@@ -366,13 +376,13 @@ export function TerminalWorkspace({
       void transition.finished.catch(() => undefined).finally(() => {
         if (stageTransitionRef.current?.generation !== generation) return;
         stageTransitionRef.current = null;
-        document.documentElement.classList.remove("terminal-stage-transition");
+        document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
       });
     } catch {
       clearCaption();
       if (stageTransitionGenerationRef.current === generation) {
         stageTransitionRef.current = null;
-        document.documentElement.classList.remove("terminal-stage-transition");
+        document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
       }
       applyUpdate();
     }
@@ -480,8 +490,8 @@ export function TerminalWorkspace({
           onFocus={expandThumbnailDock}
           onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) scheduleThumbnailCollapse(); }}
         >
-          {thumbnailsAutoHide && <button className="terminal-thumbnail-edge-trigger" type="button" aria-label="Show terminal thumbnails" aria-expanded={thumbnailDockOpen} aria-controls="terminal-thumbnail-list" onClick={expandThumbnailDock}><ChevronRight className={thumbnailSide === "right" ? "point-left" : ""} /></button>}
-          <nav id="terminal-thumbnail-list" className="terminal-thumbnail-stack" aria-label="Terminal thumbnails" aria-hidden={!thumbnailDockOpen} inert={!thumbnailDockOpen ? true : undefined}>
+          {thumbnailsAutoHide && <button className="terminal-thumbnail-edge-trigger" type="button" aria-label={`Show ${sessionLabel} thumbnails`} aria-expanded={thumbnailDockOpen} aria-controls={`${stageId}-thumbnail-list`} onClick={expandThumbnailDock}><ChevronRight className={thumbnailSide === "right" ? "point-left" : ""} /></button>}
+          <nav id={`${stageId}-thumbnail-list`} className="terminal-thumbnail-stack" aria-label={`${sessionLabel} thumbnails`} aria-hidden={!thumbnailDockOpen} inert={!thumbnailDockOpen ? true : undefined}>
             {thumbnailSessions.map((session, index) => <button
               key={session.id}
               ref={(node) => { if (node) thumbnailRefs.current.set(session.id, node); else thumbnailRefs.current.delete(session.id); }}
@@ -489,7 +499,7 @@ export function TerminalWorkspace({
               tabIndex={session.id === thumbnailTabStopId ? 0 : -1}
               aria-label={`${session.name}, ${phases[session.id] ?? "connecting"}`}
               className="terminal-thumbnail"
-              style={{ viewTransitionName: terminalViewTransitionName(session.id) }}
+              style={{ viewTransitionName: `${stageId}-${terminalViewTransitionName(session.id)}` }}
               onClick={() => activateAndStage(session.id)}
               onKeyDown={(event) => activateThumbnailByKey(event, index)}
             >
@@ -503,10 +513,10 @@ export function TerminalWorkspace({
           </nav>
         </div>}
         {busy && <div className="empty-state">Starting DevHatch…</div>}
-        {!busy && !workspace && <div className="empty-state"><strong>No terminal workspace selected</strong><button disabled={launching} onClick={() => onCreate()}>Create terminal</button></div>}
-        {!busy && workspace && !visibleSessions.length && <div className="empty-state"><strong>No terminals in this workspace</strong><button disabled={launching} onClick={() => onCreate()}>Create terminal</button></div>}
-        {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a terminal thumbnail</div>}
-        <div ref={gridRef} className={`terminal-card-grid count-${currentState.stagedIds.length} ${layoutClassName} ${thumbnailsReserveSpace ? `with-thumbnails thumbnails-${thumbnailSide}` : ""}`} style={layoutStyle} role="list" aria-label="Staged terminals">
+        {!busy && !workspaceId && <div className="empty-state">{emptyIcon}<strong>No {workspaceLabel} selected</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
+        {!busy && workspaceId && !visibleSessions.length && <div className="empty-state">{emptyIcon}<strong>No {sessionLabel}s in this {workspaceLabel}</strong>{onChoosePath && <button disabled={launching} onClick={onChoosePath}>Choose launch path</button>}{onCreate && <button disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</button>}</div>}
+        {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a {sessionLabel} thumbnail</div>}
+        <div ref={gridRef} className={`terminal-card-grid count-${currentState.stagedIds.length} ${layoutClassName} ${thumbnailsReserveSpace ? `with-thumbnails thumbnails-${thumbnailSide}` : ""}`} style={layoutStyle} role="list" aria-label={`Staged ${sessionLabel}s`}>
           {orderedSessions.map((session) => {
             const shown = visible && workspaceId !== null && staged.has(session.id) && memberIds.includes(session.id);
             const thumbnailSource = visible && workspaceId !== null && !staged.has(session.id) && memberIds.includes(session.id);
@@ -517,7 +527,7 @@ export function TerminalWorkspace({
               ref={(node) => { if (node) cardRefs.current.set(session.id, node); else cardRefs.current.delete(session.id); }}
                className={`terminal-window terminal-card ${shown ? "shown" : ""} ${thumbnailSource ? "thumbnail-source" : ""} ${focused ? "focused" : ""}`}
                data-slot={shown ? index : undefined}
-               style={shown ? { order: index, viewTransitionName: terminalViewTransitionName(session.id) } : { viewTransitionName: "none" }}
+               style={shown ? { order: index, viewTransitionName: `${stageId}-${terminalViewTransitionName(session.id)}` } : { viewTransitionName: "none" }}
                role={shown ? "listitem" : undefined}
                inert={thumbnailSource ? true : undefined}
                aria-hidden={!shown}
@@ -537,7 +547,7 @@ export function TerminalWorkspace({
                 <button aria-label={`Minimize ${session.name}`} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
                 <button aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
               </header>
-               <TerminalSurface session={session} socketBase="/api/terminals" visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onError={onError} />
+               <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onError={onError} />
             </section>;
            })}
           {layoutCount && layoutPreset && !isMobile && terminalLayoutDescriptors(layoutCount, layoutPreset).map((descriptor) => {
@@ -546,7 +556,7 @@ export function TerminalWorkspace({
               key={`${descriptor.axis}-${descriptor.ratioIndex}`}
               className={`terminal-split-handle ${descriptor.className}`}
               role="separator"
-              aria-label={`Resize terminal ${descriptor.axis === "x" ? "columns" : "rows"}`}
+              aria-label={`Resize ${sessionLabel} ${descriptor.axis === "x" ? "columns" : "rows"}`}
               aria-orientation={descriptor.axis === "x" ? "vertical" : "horizontal"}
               aria-valuemin={0}
               aria-valuemax={100}

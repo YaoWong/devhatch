@@ -38,7 +38,6 @@ export function useAgentWorkspace({
     historyAgentId: selectedAgent?.supportsHistory ? selectedAgent.id : null,
   });
   const selectedConfig = configs.configs.find((config) => config.id === configs.selectedConfigId) ?? null;
-  const activeSession = sessionState.sessions.find((session) => session.id === sessionState.activeId) ?? null;
   const selectedPaths = catalog.paths.filter((path) => path.agentId === selectedAgent?.id);
   const selectedPath = selectedPaths.find((path) => path.id === catalog.selectedPathId) ?? null;
   const setSelectedPathId = catalog.setSelectedPathId;
@@ -61,6 +60,10 @@ export function useAgentWorkspace({
     () => substituteHistoryTitles(selectedSessions, sessionState.history),
     [selectedSessions, sessionState.history],
   );
+  const selectedActiveId = sessionState.activeId && selectedSessions.some((session) => session.id === sessionState.activeId)
+    ? sessionState.activeId
+    : (selectedSessions[0]?.id ?? null);
+  const activeSession = selectedDisplaySessions.find((session) => session.id === selectedActiveId) ?? null;
   const displaySessions = useMemo(() => {
     const selectedById = new Map(selectedDisplaySessions.map((session) => [session.id, session]));
     return sessionState.sessions.map((session) => selectedById.get(session.id) ?? session);
@@ -114,7 +117,7 @@ export function useAgentWorkspace({
     historyLoading: sessionState.historyLoading,
     historySettled: sessionState.historySettled,
     historyLoadError: sessionState.historyLoadError,
-    activeId: sessionState.activeId,
+    activeId: selectedActiveId,
     activeSession,
     selectedAgentId: catalog.selectedAgentId,
     selectedAgent,

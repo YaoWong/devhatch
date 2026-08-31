@@ -25,13 +25,13 @@
 
 .layout-canvas { position: relative; padding: 0; }
 .layout-canvas .shell { min-width: 0; width: auto; margin-right: 0; border: 0; border-radius: 0; box-shadow: none; grid-template-rows: minmax(0, 1fr); transition: margin-left 220ms cubic-bezier(.23, 1, .32, 1); }
-.layout-canvas.canvas-rail-pinned.mode-terminal .shell { margin-left: calc(12px + var(--navigation-rail-width, 288px) + 8px); background: var(--color-canvas); }
-.layout-canvas.canvas-rail-pinned.mode-terminal .rail { inset: 12px auto 12px 12px; border: 1px solid var(--color-border); border-radius: 18px; background: var(--color-surface); box-shadow: 0 12px 32px rgb(0 0 0 / 8%); backdrop-filter: blur(18px) saturate(120%); }
+.layout-canvas.canvas-rail-pinned:is(.mode-terminal, .mode-agent) .shell { margin-left: calc(12px + var(--navigation-rail-width, 288px) + 8px); background: var(--color-canvas); }
+.layout-canvas.canvas-rail-pinned:is(.mode-terminal, .mode-agent) .rail { inset: 12px auto 12px 12px; border: 1px solid var(--color-border); border-radius: 18px; background: var(--color-surface); box-shadow: 0 12px 32px rgb(0 0 0 / 8%); backdrop-filter: blur(18px) saturate(120%); }
 .layout-canvas .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 40; width: var(--navigation-rail-width, 288px); background: color-mix(in srgb, var(--color-surface) 92%, transparent); backdrop-filter: blur(18px) saturate(120%); }
 .layout-canvas.canvas-rail-auto .rail { transform: translateX(calc(-100% - 20px)); opacity: 0; pointer-events: none; transition: transform 220ms cubic-bezier(.23, 1, .32, 1), opacity 160ms ease, width 360ms cubic-bezier(.28, 0, .22, 1); }
 .layout-canvas.canvas-rail-auto.canvas-rail-open .rail { transform: translateX(0); opacity: 1; pointer-events: auto; }
 .layout-canvas .rail-resize-handle { position: fixed; z-index: 41; top: 12px; bottom: 12px; left: calc(12px + var(--navigation-rail-width, 288px)); width: 16px; }
-.layout-canvas.canvas-rail-pinned.mode-terminal .rail-resize-handle { top: 12px; bottom: 12px; left: calc(4px + var(--navigation-rail-width, 288px)); }
+.layout-canvas.canvas-rail-pinned:is(.mode-terminal, .mode-agent) .rail-resize-handle { top: 12px; bottom: 12px; left: calc(4px + var(--navigation-rail-width, 288px)); }
 .layout-canvas.canvas-rail-auto:not(.canvas-rail-open) .rail-resize-handle { display: none; }
 .layout-canvas .canvas-edge-trigger { position: fixed; z-index: 39; inset: 0 auto 0 0; width: 10px; display: block; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .layout-canvas.sidebar-hidden .rail { width: var(--navigation-rail-width, 288px); padding: 12px; border-inline-width: 1px; opacity: 1; pointer-events: auto; }

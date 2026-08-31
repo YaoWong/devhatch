@@ -30,6 +30,11 @@ type AppWorkspaceContentProps = {
   terminalThumbnailsAutoHide: boolean;
   terminalThumbnailSide: "left" | "right";
   terminalWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
+  agentCapacity: TerminalWorkspaceCapacity;
+  agentThumbnailsHidden: boolean;
+  agentThumbnailsAutoHide: boolean;
+  agentThumbnailSide: "left" | "right";
+  agentWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   skillsSection: SkillsSection;
   settingsSection: SettingsSection;
@@ -39,6 +44,8 @@ type AppWorkspaceContentProps = {
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onTerminalLayoutCountChange: (count: TerminalLayoutCount | null) => void;
   onTerminalWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
+  onAgentLayoutCountChange: (count: TerminalLayoutCount | null) => void;
+  onAgentWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
@@ -62,6 +69,11 @@ export function AppWorkspaceContent({
   terminalThumbnailsAutoHide,
   terminalThumbnailSide,
   terminalWorkspaceLayouts,
+  agentCapacity,
+  agentThumbnailsHidden,
+  agentThumbnailsAutoHide,
+  agentThumbnailSide,
+  agentWorkspaceLayouts,
   error,
   skillsSection,
   settingsSection,
@@ -71,6 +83,8 @@ export function AppWorkspaceContent({
   onPhaseChange,
   onTerminalLayoutCountChange,
   onTerminalWorkspaceLayoutChange,
+  onAgentLayoutCountChange,
+  onAgentWorkspaceLayoutChange,
   onError,
   onDismissError,
   onConfirm,
@@ -108,20 +122,28 @@ export function AppWorkspaceContent({
       />
       <AgentWorkspace
         visible={mode === "agent"}
+        layoutMode={layoutMode}
         busy={busy}
-        sessions={agent.sessions}
+        launching={agent.launching}
         displaySessions={agent.displaySessions}
+        selectedSessions={agent.selectedSessions}
         activeId={agent.activeId}
-        activeSession={agent.activeSession}
         selectedAgent={agent.selectedAgent}
         phases={phases}
         focusVersion={focusVersion}
+        capacity={agentCapacity}
+        thumbnailsHidden={agentThumbnailsHidden}
+        thumbnailsAutoHide={agentThumbnailsAutoHide}
+        thumbnailSide={agentThumbnailSide}
+        workspaceLayouts={agentWorkspaceLayouts}
         error={error}
         onActivate={agent.activateSession}
         onRename={agent.renameSession}
         onClose={(session) => onCloseSession(session, true)}
         onChoosePath={onPickAgentPath}
         onPhaseChange={onPhaseChange}
+        onLayoutCountChange={onAgentLayoutCountChange}
+        onWorkspaceLayoutChange={onAgentWorkspaceLayoutChange}
         onRemoved={agent.removeSession}
         onUpstreamSessionChange={agent.updateUpstreamSession}
         onError={onError}

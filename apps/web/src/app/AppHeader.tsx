@@ -25,6 +25,17 @@ export function AppHeader({
   onTerminalThumbnailSideChange,
   onTerminalLaunchPathsHeightChange,
   onConfirmTerminalCloseChange,
+  agentCapacity,
+  agentLayoutCount,
+  agentLayoutPreset,
+  agentThumbnailsHidden,
+  agentThumbnailsAutoHide,
+  agentThumbnailSide,
+  onAgentCapacityChange,
+  onAgentLayoutPresetChange,
+  onToggleAgentThumbnails,
+  onToggleAgentThumbnailAutoHide,
+  onAgentThumbnailSideChange,
   webAppRunning,
   webAppOperation,
   onStopWebApp,
@@ -48,11 +59,23 @@ export function AppHeader({
   onTerminalThumbnailSideChange: (side: "left" | "right") => void;
   onTerminalLaunchPathsHeightChange: (height: number) => void;
   onConfirmTerminalCloseChange: (enabled: boolean) => void;
+  agentCapacity: TerminalWorkspaceCapacity;
+  agentLayoutCount: TerminalLayoutCount | null;
+  agentLayoutPreset: TerminalLayoutPreset | null;
+  agentThumbnailsHidden: boolean;
+  agentThumbnailsAutoHide: boolean;
+  agentThumbnailSide: "left" | "right";
+  onAgentCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
+  onAgentLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
+  onToggleAgentThumbnails: () => void;
+  onToggleAgentThumbnailAutoHide: () => void;
+  onAgentThumbnailSideChange: (side: "left" | "right") => void;
   webAppRunning: boolean;
   webAppOperation: WebAppOperation | null;
   onStopWebApp: () => void;
 }) {
-  const thumbnailsLabel = terminalThumbnailsHidden ? "Show terminal thumbnails" : "Hide terminal thumbnails";
+  const terminalThumbnailsLabel = terminalThumbnailsHidden ? "Show terminal thumbnails" : "Hide terminal thumbnails";
+  const agentThumbnailsLabel = agentThumbnailsHidden ? "Show agent thumbnails" : "Hide agent thumbnails";
   return (
     <header className="topbar">
       <button className="icon-button menu-button" aria-label="Toggle navigation" onClick={onToggleNavigation}>
@@ -65,7 +88,7 @@ export function AppHeader({
       </div>
       {mode === "terminal" && (
         <div className="top-actions terminal-top-actions">
-          <button className="icon-button" type="button" aria-label={thumbnailsLabel} aria-pressed={!terminalThumbnailsHidden} title={thumbnailsLabel} onClick={onToggleTerminalThumbnails}>
+          <button className="icon-button" type="button" aria-label={terminalThumbnailsLabel} aria-pressed={!terminalThumbnailsHidden} title={terminalThumbnailsLabel} onClick={onToggleTerminalThumbnails}>
             {terminalThumbnailsHidden ? <EyeOff /> : <Eye />}
           </button>
           <details className="classic-terminal-settings">
@@ -83,6 +106,33 @@ export function AppHeader({
                 onLayoutPresetChange={onTerminalLayoutPresetChange}
                 onToggleThumbnailAutoHide={onToggleTerminalThumbnailAutoHide}
                 onThumbnailSideChange={onTerminalThumbnailSideChange}
+                onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
+                onConfirmCloseChange={onConfirmTerminalCloseChange}
+              />
+            </div>
+          </details>
+        </div>
+      )}
+      {mode === "agent" && (
+        <div className="top-actions terminal-top-actions">
+          <button className="icon-button" type="button" aria-label={agentThumbnailsLabel} aria-pressed={!agentThumbnailsHidden} title={agentThumbnailsLabel} onClick={onToggleAgentThumbnails}>
+            {agentThumbnailsHidden ? <EyeOff /> : <Eye />}
+          </button>
+          <details className="classic-terminal-settings">
+            <summary className="icon-button" aria-label="Agent settings" title="Agent settings"><SlidersHorizontal /></summary>
+            <div className="classic-terminal-settings-panel" role="group" aria-label="Agent settings">
+              <TerminalSettingsControls
+                capacity={agentCapacity}
+                layoutCount={agentLayoutCount}
+                layoutPreset={agentLayoutPreset}
+                thumbnailsAutoHide={agentThumbnailsAutoHide}
+                thumbnailSide={agentThumbnailSide}
+                launchPathsHeight={terminalLaunchPathsHeight}
+                confirmClose={confirmTerminalClose}
+                onCapacityChange={onAgentCapacityChange}
+                onLayoutPresetChange={onAgentLayoutPresetChange}
+                onToggleThumbnailAutoHide={onToggleAgentThumbnailAutoHide}
+                onThumbnailSideChange={onAgentThumbnailSideChange}
                 onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
                 onConfirmCloseChange={onConfirmTerminalCloseChange}
               />

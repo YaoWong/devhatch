@@ -10,6 +10,8 @@ export function TerminalSettingsControls({
   thumbnailSide,
   launchPathsHeight,
   confirmClose,
+  showLaunchPathsHeight = true,
+  showConfirmClose = true,
   onCapacityChange,
   onLayoutPresetChange,
   onToggleThumbnailAutoHide,
@@ -24,6 +26,8 @@ export function TerminalSettingsControls({
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
   confirmClose: boolean;
+  showLaunchPathsHeight?: boolean;
+  showConfirmClose?: boolean;
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onToggleThumbnailAutoHide: () => void;
@@ -42,15 +46,15 @@ export function TerminalSettingsControls({
       <span>Layout</span>
       <TerminalLayoutPresetControl count={layoutCount} value={layoutPreset} onChange={onLayoutPresetChange} />
     </div>}
-    <label className="terminal-setting-row terminal-setting-range">
+    {showLaunchPathsHeight && <label className="terminal-setting-row terminal-setting-range">
       <span>Launch paths height</span>
       <input type="range" min="160" max="480" step="8" value={launchPathsHeight} aria-label="Launch paths height" onChange={(event) => onLaunchPathsHeightChange(event.target.valueAsNumber)} />
       <output>{launchPathsHeight}px</output>
-    </label>
-    <label className="terminal-setting-row">
+    </label>}
+    {showConfirmClose && <label className="terminal-setting-row">
       <span>Confirm close</span>
       <input type="checkbox" role="switch" checked={confirmClose} onChange={(event) => onConfirmCloseChange(event.target.checked)} />
-    </label>
+    </label>}
     <label className="terminal-setting-row">
       <span>Auto-hide thumbnails</span>
       <input type="checkbox" role="switch" checked={thumbnailsAutoHide} onChange={onToggleThumbnailAutoHide} />

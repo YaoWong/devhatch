@@ -234,19 +234,21 @@ export function useAgentSessions({
   );
 
   const renameSession = useCallback(
-    async (session: AgentSession) => {
-      const name = window.prompt("Session name", session.name)?.trim();
-      if (!name || name === session.name) return;
+    async (session: AgentSession, name: string) => {
+      const nextName = name.trim();
+      if (!nextName || nextName === session.name) return true;
       try {
-        const result = await renameRemoteSession("/api/agent-sessions", session.id, name);
+        const result = await renameRemoteSession("/api/agent-sessions", session.id, nextName);
         const updated = Object.values(result)[0] as AgentSession;
         const normalized = {
           ...updated,
           cwd: logicalPath(updated.cwd, homePaths?.home, homePaths?.resolvedHome),
         };
         setSessions((current) => current.map((item) => (item.id === normalized.id ? normalized : item)));
+        return true;
       } catch (reason) {
         reportError(errorMessage(reason));
+        return false;
       }
     },
     [homePaths, reportError],

@@ -130,15 +130,15 @@
 .status-path { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer-backdrop { display: none; }
 
-html.terminal-stage-transition { view-transition-name: none; }
-html.terminal-stage-transition::view-transition-group(*) { z-index: 20; overflow: clip; border-radius: 12px; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
-html.terminal-stage-transition::view-transition-image-pair(*) { isolation: isolate; overflow: clip; border-radius: inherit; }
-html.terminal-stage-transition::view-transition-old(*), html.terminal-stage-transition::view-transition-new(*) { height: 100%; object-fit: cover; mix-blend-mode: normal; backface-visibility: hidden; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
-html.terminal-stage-transition::view-transition-old(*) { animation-name: terminal-pane-out; }
-html.terminal-stage-transition::view-transition-new(*) { animation-name: terminal-pane-in; }
-html.terminal-stage-transition::view-transition-group(terminal-thumbnail-caption-flight) { z-index: 21; overflow: clip; border-radius: 0; }
-html.terminal-stage-transition::view-transition-old(terminal-thumbnail-caption-flight) { animation: terminal-caption-out 90ms ease-out both; }
-html.terminal-stage-transition::view-transition-new(terminal-thumbnail-caption-flight) { animation: terminal-caption-in 100ms 280ms ease-out both; }
+html:is(.terminal-stage-transition, .agent-stage-transition) { view-transition-name: none; }
+html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-group(*) { z-index: 20; overflow: clip; border-radius: 12px; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-image-pair(*) { isolation: isolate; overflow: clip; border-radius: inherit; }
+html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-old(*), html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-new(*) { height: 100%; object-fit: cover; mix-blend-mode: normal; backface-visibility: hidden; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-old(*) { animation-name: terminal-pane-out; }
+html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-new(*) { animation-name: terminal-pane-in; }
+html.terminal-stage-transition::view-transition-group(terminal-thumbnail-caption-flight), html.agent-stage-transition::view-transition-group(agent-thumbnail-caption-flight) { z-index: 21; overflow: clip; border-radius: 0; }
+html.terminal-stage-transition::view-transition-old(terminal-thumbnail-caption-flight), html.agent-stage-transition::view-transition-old(agent-thumbnail-caption-flight) { animation: terminal-caption-out 90ms ease-out both; }
+html.terminal-stage-transition::view-transition-new(terminal-thumbnail-caption-flight), html.agent-stage-transition::view-transition-new(agent-thumbnail-caption-flight) { animation: terminal-caption-in 100ms 280ms ease-out both; }
 @keyframes terminal-pane-out { 0%, 38% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes terminal-pane-in { 0%, 30% { opacity: 0; } 100% { opacity: 1; } }
 @keyframes terminal-caption-out { to { opacity: 0; } }
