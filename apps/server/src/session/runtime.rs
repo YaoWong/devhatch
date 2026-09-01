@@ -76,6 +76,7 @@ impl Session {
         F: FnOnce(&Arc<Self>),
     {
         let cleanup_path = spawn.cleanup_path.clone();
+        let exit_cleanup = spawn.exit_cleanup;
         let pair = NativePtySystem::default().openpty(PtySize {
             rows: spawn.rows,
             cols: spawn.cols,
@@ -134,7 +135,13 @@ impl Session {
             sessions.remove_if_same(session.id(), &session);
             return Err(error.into());
         }
-        let waiter = match Self::start_waiter(&session, child, sessions.clone(), cleanup_path) {
+        let waiter = match Self::start_waiter(
+            &session,
+            child,
+            sessions.clone(),
+            cleanup_path,
+            exit_cleanup,
+        ) {
             Ok(waiter) => waiter,
             Err(error) => {
                 sessions.remove_if_same(session.id(), &session);
@@ -155,8 +162,25 @@ impl Session {
         self.deleting.load(Ordering::Acquire)
     }
 
+    pub(crate) fn is_live(&self) -> bool {
+        !self.is_deleting()
+            && self.state.lock().expect("session lock poisoned").status == SessionStatus::Running
+    }
+
     pub(crate) fn mark_deleting(&self) {
         self.deleting.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn finish_exit(&self, code: Option<u32>) {
+        self.input.lock().expect("input lock poisoned").take();
+        {
+            let mut state = self.state.lock().expect("session lock poisoned");
+            state.status = SessionStatus::Exited;
+            state.exit_code = code;
+            state.updated_at = now();
+        }
+        let _ = self.events.send(SessionEvent::Exit(code));
+        self.mark_deleting();
     }
 
     pub(crate) fn write_input(&self, data: &str) -> bool {
@@ -285,6 +309,7 @@ impl Session {
         child: SpawnedChild,
         sessions: Arc<SessionRegistry>,
         cleanup_path: Option<PathBuf>,
+        exit_cleanup: Option<super::model::SessionExitCleanup>,
     ) -> std::io::Result<std::sync::mpsc::Sender<()>> {
         let weak = Arc::downgrade(session);
         let completion = session.completion.clone();
@@ -309,18 +334,23 @@ impl Session {
                 }
                 if let Some(session) = weak.upgrade() {
                     let code = status.ok().map(|status| status.exit_code());
-                    session.input.lock().expect("input lock poisoned").take();
-                    {
-                        let mut state = session.state.lock().expect("session lock poisoned");
-                        state.status = SessionStatus::Exited;
-                        state.exit_code = code;
-                        state.updated_at = now();
-                    }
-                    let _ = session.events.send(SessionEvent::Exit(code));
                     if kind == SessionKind::Agent {
-                        sessions.remove_if_same(&id, &session);
-                        session.mark_deleting();
-                        let _ = session.events.send(SessionEvent::Removed(code));
+                        if let Some(cleanup) = exit_cleanup {
+                            cleanup(session.clone(), code);
+                        } else {
+                            session.finish_exit(code);
+                            sessions.remove_if_same(&id, &session);
+                            session.publish_removed(code);
+                        }
+                    } else {
+                        session.input.lock().expect("input lock poisoned").take();
+                        {
+                            let mut state = session.state.lock().expect("session lock poisoned");
+                            state.status = SessionStatus::Exited;
+                            state.exit_code = code;
+                            state.updated_at = now();
+                        }
+                        let _ = session.events.send(SessionEvent::Exit(code));
                     }
                 }
                 completion.complete();

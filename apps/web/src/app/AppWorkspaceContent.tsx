@@ -45,6 +45,7 @@ type AppWorkspaceContentProps = {
   onError: (message: string) => void;
   onDismissError: () => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
+  onOpenTerminalLink: (url: string) => void;
   onLogout: () => Promise<void>;
   logoutBusy: boolean;
   logoutError: string | null;
@@ -81,6 +82,7 @@ export function AppWorkspaceContent({
   onError,
   onDismissError,
   onConfirm,
+  onOpenTerminalLink,
   onLogout,
   logoutBusy,
   logoutError,
@@ -108,6 +110,7 @@ export function AppWorkspaceContent({
         onPhaseChange={onPhaseChange}
         onLayoutCountChange={onTerminalLayoutCountChange}
         onWorkspaceLayoutChange={onTerminalWorkspaceLayoutChange}
+        onOpenLink={onOpenTerminalLink}
         onError={onError}
         onDismissError={onDismissError}
       />
@@ -116,7 +119,8 @@ export function AppWorkspaceContent({
         busy={busy}
         launching={agent.launching}
         displaySessions={agent.displaySessions}
-        selectedSessions={agent.selectedSessions}
+        workspaceSessions={agent.workspaceSessions}
+        selectedAgentWorkspaceId={agent.selectedAgentWorkspaceId}
         activeId={agent.activeId}
         selectedAgent={agent.selectedAgent}
         phases={phases}
@@ -135,6 +139,7 @@ export function AppWorkspaceContent({
         onWorkspaceLayoutChange={onAgentWorkspaceLayoutChange}
         onRemoved={agent.removeSession}
         onUpstreamSessionChange={agent.updateUpstreamSession}
+        onOpenLink={onOpenTerminalLink}
         onError={onError}
         onDismissError={onDismissError}
       />

@@ -252,20 +252,22 @@ export function useTerminalWorkspace(
     }
   }, [applyAuthoritativeWorkspace, applyWorkspaces, closeSidebar, mutateWorkspace, reportError]);
 
-  const renameWorkspace = useCallback(async (workspace: TerminalWorkspace) => {
-    const name = window.prompt("Workspace name", workspace.name ?? "")?.trim();
-    if (name === undefined || name === (workspace.name ?? "")) return;
+  const renameWorkspace = useCallback(async (workspace: TerminalWorkspace, name: string) => {
+    const normalizedName = name.trim();
+    if (normalizedName === (workspace.name ?? "").trim()) return true;
     const mutation = mutateWorkspace(workspace.id, async () => {
-      const saved = await updateTerminalWorkspace(workspace.id, { name: name || null });
+      const saved = await updateTerminalWorkspace(workspace.id, { name: normalizedName || null });
       applyAuthoritativeWorkspace(saved.terminalWorkspace);
       return saved;
     });
     try {
       const saved = await mutation.result;
-      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return;
+      if (!workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) return true;
       applyWorkspaces(workspacesRef.current.map((item) => item.id === workspace.id ? saved.terminalWorkspace : item));
+      return true;
     } catch (reason) {
       if (workspaceMutationsRef.current.isLatest(workspace.id, mutation.generation)) reportError(reason instanceof Error ? reason.message : String(reason));
+      return false;
     }
   }, [applyAuthoritativeWorkspace, applyWorkspaces, mutateWorkspace, reportError]);
 

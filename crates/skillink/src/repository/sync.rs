@@ -1,14 +1,16 @@
 use super::{
-    SyncPlan, SyncResult,
+    ProgressReporter, SyncPlan, SyncResult,
     discovery::{DiscoveredSkill, discover_repository},
     git::valid_commit,
     links::materialize_internal_file_links,
     plan::build_plan,
+    report,
 };
 use crate::{Error, Repository, Result, Skillink, filesystem::publish_directory};
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use uuid::Uuid;
 
@@ -29,22 +31,54 @@ impl Drop for PreparedSync {
 
 impl Skillink {
     pub async fn preview_repository_sync(&self, id: &str) -> Result<SyncPlan> {
-        Ok(self.prepare_repository_sync(id, false).await?.plan.clone())
+        self.preview_repository_sync_with_progress(id, |_| {}).await
+    }
+
+    pub async fn preview_repository_sync_with_progress<F>(
+        &self,
+        id: &str,
+        progress: F,
+    ) -> Result<SyncPlan>
+    where
+        F: Fn(super::RepositoryProgress) + Send + Sync + 'static,
+    {
+        let progress: ProgressReporter = Arc::new(progress);
+        Ok(self
+            .prepare_repository_sync(id, false, Some(progress))
+            .await?
+            .plan
+            .clone())
     }
 
     pub async fn sync_repository(&self, id: &str) -> Result<SyncResult> {
-        self.sync_repository_with_transport(id, false).await
+        self.sync_repository_with_progress(id, |_| {}).await
+    }
+
+    pub async fn sync_repository_with_progress<F>(
+        &self,
+        id: &str,
+        progress: F,
+    ) -> Result<SyncResult>
+    where
+        F: Fn(super::RepositoryProgress) + Send + Sync + 'static,
+    {
+        self.sync_repository_with_transport(id, false, Some(Arc::new(progress)))
+            .await
     }
 
     pub(super) async fn sync_repository_with_transport(
         &self,
         id: &str,
         local: bool,
+        progress: Option<ProgressReporter>,
     ) -> Result<SyncResult> {
-        let mut prepared = self.prepare_repository_sync(id, local).await?;
+        let mut prepared = self
+            .prepare_repository_sync(id, local, progress.clone())
+            .await?;
         if prepared.plan.noop {
             return Ok(prepared.plan.clone());
         }
+        report_if(&progress, "publishing", 90);
         let checkout = prepared
             .checkout
             .take()
@@ -57,6 +91,7 @@ impl Skillink {
                 return Err(error);
             }
         };
+        report_if(&progress, "saving", 95);
         let result = self
             .reconcile_repository(&prepared.repository, &prepared.discovered, &prepared.plan)
             .await;
@@ -84,12 +119,19 @@ impl Skillink {
         &self,
         id: &str,
         local: bool,
+        progress: Option<ProgressReporter>,
     ) -> Result<PreparedSync> {
         let repository = self.get_repository(id).await?;
         let existing = self.repository_skills(id).await?;
         let (new_commit, checkout) = self
-            .clone_repository(&repository.url, repository.git_ref.as_deref(), local)
+            .clone_repository(
+                &repository.url,
+                repository.git_ref.as_deref(),
+                local,
+                progress.clone(),
+            )
             .await?;
+        report_if(&progress, "discovering", 80);
         let discovered = match materialize_internal_file_links(&checkout)
             .and_then(|()| discover_repository(&checkout))
         {
@@ -99,6 +141,7 @@ impl Skillink {
                 return Err(error);
             }
         };
+        report_if(&progress, "planning", 85);
         let plan = build_plan(
             id,
             Some(repository.commit_hash.clone()),
@@ -133,5 +176,11 @@ impl Skillink {
             fs::remove_dir_all(revision)?;
         }
         Ok(())
+    }
+}
+
+fn report_if(progress: &Option<ProgressReporter>, stage: &'static str, percent: u8) {
+    if let Some(progress) = progress {
+        report(progress, stage, percent);
     }
 }

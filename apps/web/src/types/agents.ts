@@ -7,6 +7,20 @@ export type AgentSession = TerminalInfo & {
   upstreamSessionId?: string;
 };
 
+export type AgentWorkspace = {
+  id: string;
+  name: string | null;
+  activeAgentSessionId: string | null;
+  members: { agentSessionId: string }[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type AgentWorkspaceSnapshot = {
+  agentWorkspaces: AgentWorkspace[];
+  agentSessions: AgentSession[];
+};
+
 export type Agent = {
   id: string;
   name: string;
@@ -25,7 +39,6 @@ export type Agent = {
 
 export type AgentLaunchPath = {
   id: string;
-  agentId: string;
   path: string;
   alias: string | null;
   pinned: boolean;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteAgentHistorySession, agentSessions, history as getHistory } from "../../../api/agents";
+import { deleteAgentHistorySession, history as getHistory } from "../../../api/agents";
 import { deleteRemoteSession, renameRemoteSession } from "../../../api/terminals";
 import type { DeleteTarget } from "../../../types/app";
 import type { AgentSession, HistoryResponse } from "../../../types/agents";
@@ -48,7 +48,6 @@ export function useAgentSessions({
   const historySelection = useRef(0);
   const historyVersions = useRef(new Map<string, number>());
   const historyRefreshes = useRef(new Map<string, { selection: number; request: Promise<void> }>());
-  const sessionRefresh = useRef<Promise<void> | null>(null);
   historyAgentIdRef.current = historyAgentId;
   const historyMatches =
     historyState.agentId === historyAgentId && historyState.selection === historySelection.current;
@@ -111,30 +110,6 @@ export function useAgentSessions({
   );
   const retryHistory = useCallback(() => refreshHistory(true), [refreshHistory]);
 
-  const refreshSessions = useCallback(() => {
-    if (sessionRefresh.current) return sessionRefresh.current;
-    const version = mutationVersion.current;
-    const request = agentSessions()
-      .then(({ agentSessions }) => {
-        if (version !== mutationVersion.current) return;
-        const normalized = agentSessions.map((session) => ({
-          ...session,
-          cwd: logicalPath(session.cwd, homePaths?.home, homePaths?.resolvedHome),
-        }));
-        sessionsRef.current = normalized;
-        setSessions(normalized);
-        setActiveId((current) =>
-          current && normalized.some((session) => session.id === current) ? current : (normalized[0]?.id ?? null),
-        );
-      })
-      .catch((reason) => reportError(errorMessage(reason)))
-      .finally(() => {
-        if (sessionRefresh.current === request) sessionRefresh.current = null;
-      });
-    sessionRefresh.current = request;
-    return request;
-  }, [homePaths, reportError]);
-
   useEffect(() => {
     historySelection.current += 1;
     setHistoryState({
@@ -155,25 +130,37 @@ export function useAgentSessions({
         ? 1000
         : 10000;
     const timer = window.setInterval(() => {
-      if (active) {
-        if (historyAgentId) void Promise.all([refreshHistory(), refreshSessions()]);
-        else void refreshSessions();
-      }
+      if (active && historyAgentId) void refreshHistory();
     }, delay);
     return () => window.clearInterval(timer);
-  }, [active, historyAgentId, refreshHistory, refreshSessions, sessions]);
+  }, [active, historyAgentId, refreshHistory, sessions]);
 
-  const initializeSessions = useCallback(
-    (data: Awaited<ReturnType<typeof agentSessions>>, initialHomePaths: HomePaths) => {
-      const normalized = data.agentSessions.map((session) => ({
+  const applySessions = useCallback(
+    (nextSessions: AgentSession[], paths: HomePaths) => {
+      mutationVersion.current += 1;
+      const normalized = nextSessions.map((session) => ({
         ...session,
-        cwd: logicalPath(session.cwd, initialHomePaths?.home, initialHomePaths?.resolvedHome),
+        cwd: logicalPath(session.cwd, paths?.home, paths?.resolvedHome),
       }));
       sessionsRef.current = normalized;
       setSessions(normalized);
-      setActiveId(normalized[0]?.id ?? null);
+      setActiveId((current) =>
+        current && normalized.some((session) => session.id === current) ? current : (normalized[0]?.id ?? null),
+      );
     },
     [],
+  );
+
+  const initializeSessions = useCallback(
+    (nextSessions: AgentSession[], initialHomePaths: HomePaths) => {
+      applySessions(nextSessions, initialHomePaths);
+    },
+    [applySessions],
+  );
+
+  const applyAuthoritativeSessions = useCallback(
+    (nextSessions: AgentSession[]) => applySessions(nextSessions, homePaths),
+    [applySessions, homePaths],
   );
 
   const removeSession = useCallback(
@@ -280,6 +267,7 @@ export function useAgentSessions({
     historyLoadError,
     activeId,
     initializeSessions,
+    applyAuthoritativeSessions,
     refreshHistory,
     retryHistory,
     removeSession,

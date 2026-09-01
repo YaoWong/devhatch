@@ -1,3 +1,4 @@
+use super::{ProgressReporter, RepositoryProgress};
 use crate::{Error, Result, Skillink};
 use std::{
     env, fs,
@@ -22,6 +23,7 @@ impl Skillink {
         url: &str,
         git_ref: Option<&str>,
         local: bool,
+        progress: Option<ProgressReporter>,
     ) -> Result<(String, PathBuf)> {
         let timeout = git_timeout();
         let deadline = tokio::time::Instant::now() + timeout;
@@ -63,7 +65,7 @@ impl Skillink {
                     "protocol.ssh.allow=always",
                 ]);
         }
-        command.args(["clone", "--no-tags"]);
+        command.args(["clone", "--no-tags", "--progress"]);
         if !local && git_shallow() {
             command.args(["--depth", "1"]);
         }
@@ -71,8 +73,16 @@ impl Skillink {
             command.args(["--branch", git_ref]);
         }
         command.arg("--").arg(url).arg(&checkout);
+        if let Some(progress) = &progress {
+            progress(RepositoryProgress {
+                stage: "cloning",
+                progress: 0,
+                downloaded_bytes: None,
+                total_bytes: None,
+            });
+        }
         let duration = remaining(deadline)?;
-        let output = run_git_command(&mut command, duration).await;
+        let output = run_git_command_with_progress(&mut command, duration, progress).await;
         let output = match output {
             Ok(output) => output,
             Err(error) => {
@@ -154,6 +164,14 @@ fn remaining(deadline: tokio::time::Instant) -> Result<Duration> {
 }
 
 async fn run_git_command(command: &mut Command, duration: Duration) -> Result<Output> {
+    run_git_command_with_progress(command, duration, None).await
+}
+
+async fn run_git_command_with_progress(
+    command: &mut Command,
+    duration: Duration,
+    progress: Option<ProgressReporter>,
+) -> Result<Output> {
     command.env_remove("DEVHATCH_ADMIN_PASSWORD");
     command.env_remove("DEVHATCH_ADMIN_PASSWORD_FILE");
     #[cfg(unix)]
@@ -166,7 +184,7 @@ async fn run_git_command(command: &mut Command, duration: Duration) -> Result<Ou
     let mut child = command.spawn()?;
     let pid = child.id();
     let mut stdout = tokio::spawn(read_limited(child.stdout.take()));
-    let mut stderr = tokio::spawn(read_limited(child.stderr.take()));
+    let mut stderr = tokio::spawn(read_git_stderr(child.stderr.take(), progress));
     let collection = async {
         let status = child.wait().await?;
         let (stdout, stderr) = tokio::join!(&mut stdout, &mut stderr);
@@ -198,6 +216,112 @@ async fn run_git_command(command: &mut Command, duration: Duration) -> Result<Ou
     }
 }
 
+async fn read_git_stderr<R>(
+    reader: Option<R>,
+    progress: Option<ProgressReporter>,
+) -> Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let Some(mut reader) = reader else {
+        return Ok(Vec::new());
+    };
+    let mut output = Vec::new();
+    let mut record = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        append_bounded(&mut output, &buffer[..count]);
+        for &byte in &buffer[..count] {
+            if matches!(byte, b'\r' | b'\n') {
+                emit_progress(&record, progress.as_ref());
+                record.clear();
+            } else if record.len() < 4096 {
+                record.push(byte);
+            }
+        }
+    }
+    emit_progress(&record, progress.as_ref());
+    Ok(output)
+}
+
+fn emit_progress(record: &[u8], reporter: Option<&ProgressReporter>) {
+    if let Some(reporter) = reporter
+        && let Some(progress) = parse_git_progress(&String::from_utf8_lossy(record))
+    {
+        reporter(progress);
+    }
+}
+
+fn parse_git_progress(record: &str) -> Option<RepositoryProgress> {
+    let record = record.trim();
+    let (label, stage, start, span) = [
+        ("Counting objects:", "counting", 0_u8, 10_u8),
+        ("Compressing objects:", "compressing", 10, 10),
+        ("Receiving objects:", "receiving", 20, 45),
+        ("Resolving deltas:", "resolving", 65, 10),
+        ("Updating files:", "updating-files", 75, 5),
+    ]
+    .into_iter()
+    .find(|(label, _, _, _)| record.contains(label))?;
+    let phase = record.split_once(label)?.1;
+    let percent = phase
+        .split_whitespace()
+        .find_map(|part| part.strip_suffix('%')?.parse::<u8>().ok())?
+        .min(100);
+    let downloaded_bytes = (stage == "receiving")
+        .then(|| parse_downloaded_bytes(record))
+        .flatten();
+    let total_bytes = downloaded_bytes
+        .filter(|_| percent > 0)
+        .map(|bytes| bytes.saturating_mul(100) / u64::from(percent));
+    Some(RepositoryProgress {
+        stage,
+        progress: start + (u16::from(span) * u16::from(percent) / 100) as u8,
+        downloaded_bytes,
+        total_bytes,
+    })
+}
+
+fn parse_downloaded_bytes(record: &str) -> Option<u64> {
+    let before_rate = record.split('|').next()?;
+    let mut values = before_rate.split_whitespace().rev();
+    let unit = values.next()?.trim_end_matches(',');
+    let amount = values.next()?.trim_end_matches(',');
+    parse_git_size(amount, unit)
+}
+
+fn parse_git_size(amount: &str, unit: &str) -> Option<u64> {
+    let amount: f64 = amount.parse().ok()?;
+    let multiplier = match unit {
+        "bytes" | "B" => 1_f64,
+        "KiB" => 1024_f64,
+        "MiB" => 1024_f64 * 1024_f64,
+        "GiB" => 1024_f64 * 1024_f64 * 1024_f64,
+        _ => return None,
+    };
+    Some((amount * multiplier) as u64)
+}
+
+fn append_bounded(output: &mut Vec<u8>, bytes: &[u8]) {
+    if bytes.len() >= GIT_OUTPUT_LIMIT {
+        output.clear();
+        output.extend_from_slice(&bytes[bytes.len() - GIT_OUTPUT_LIMIT..]);
+        return;
+    }
+    let excess = output
+        .len()
+        .saturating_add(bytes.len())
+        .saturating_sub(GIT_OUTPUT_LIMIT);
+    if excess > 0 {
+        output.drain(..excess);
+    }
+    output.extend_from_slice(bytes);
+}
+
 async fn read_limited<R>(reader: Option<R>) -> Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
@@ -212,8 +336,7 @@ where
         if count == 0 {
             break;
         }
-        let remaining = GIT_OUTPUT_LIMIT.saturating_sub(output.len());
-        output.extend_from_slice(&buffer[..count.min(remaining)]);
+        append_bounded(&mut output, &buffer[..count]);
     }
     Ok(output)
 }
@@ -246,6 +369,57 @@ pub(super) fn valid_commit(commit: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_supported_git_progress_records() {
+        assert_eq!(
+            parse_git_progress("remote: Counting objects:  50% (10/20)"),
+            Some(RepositoryProgress {
+                stage: "counting",
+                progress: 5,
+                downloaded_bytes: None,
+                total_bytes: None,
+            })
+        );
+        assert_eq!(
+            parse_git_progress("Receiving objects:  50% (100/200), 12.50 MiB | 2.00 MiB/s"),
+            Some(RepositoryProgress {
+                stage: "receiving",
+                progress: 42,
+                downloaded_bytes: Some(13_107_200),
+                total_bytes: Some(26_214_400),
+            })
+        );
+        assert_eq!(
+            parse_git_progress("Resolving deltas: 100% (20/20), done."),
+            Some(RepositoryProgress {
+                stage: "resolving",
+                progress: 75,
+                downloaded_bytes: None,
+                total_bytes: None,
+            })
+        );
+        assert!(parse_git_progress("Cloning into 'repo'...").is_none());
+    }
+
+    #[tokio::test]
+    async fn parses_cr_and_lf_terminated_records() {
+        use std::sync::{Arc, Mutex};
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let sink = observed.clone();
+        let reporter: ProgressReporter =
+            Arc::new(move |progress| sink.lock().unwrap().push(progress));
+        let bytes =
+            b"Counting objects: 100% (1/1)\rReceiving objects: 100% (1/1), 1 KiB | 1 KiB/s\n";
+        read_git_stderr(Some(&bytes[..]), Some(reporter))
+            .await
+            .unwrap();
+        let observed = observed.lock().unwrap();
+        assert_eq!(observed.len(), 2);
+        assert_eq!(observed[0].stage, "counting");
+        assert_eq!(observed[1].stage, "receiving");
+    }
 
     #[cfg(unix)]
     #[tokio::test]

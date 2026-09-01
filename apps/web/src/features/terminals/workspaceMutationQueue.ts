@@ -67,7 +67,7 @@ export class WorkspaceMutationQueue {
   }
 
   isLatest(key: string, generation: number) {
-    return this.generations.get(key) === generation;
+    return (this.generations.get(key) ?? 0) === generation;
   }
 
   snapshot() {
@@ -92,6 +92,30 @@ export class WorkspaceMutationQueue {
       if (this.queues.get(key) === tail) this.queues.delete(key);
     });
     return { generation, result };
+  }
+
+  read<T>(key: string, task: () => Promise<T>) {
+    const previous = this.queues.get(key) ?? Promise.resolve();
+    const result = previous.then(async () => {
+      const generation = this.generations.get(key) ?? 0;
+      return { generation, value: await task() };
+    }, async () => {
+      const generation = this.generations.get(key) ?? 0;
+      return { generation, value: await task() };
+    });
+    const tail = result.then(() => undefined, () => undefined);
+    this.queues.set(key, tail);
+    void tail.then(() => {
+      if (this.queues.get(key) === tail) this.queues.delete(key);
+    });
+    return result;
+  }
+
+  async readLatest<T>(key: string, task: () => Promise<T>): Promise<T> {
+    for (;;) {
+      const { generation, value } = await this.read(key, task);
+      if (this.isLatest(key, generation)) return value;
+    }
   }
 
   runLatest<T, R>(key: string, read: () => T, task: (latest: T) => Promise<R>) {

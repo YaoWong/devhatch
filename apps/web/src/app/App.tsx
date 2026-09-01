@@ -39,7 +39,8 @@ const CANVAS_RAIL_CLOSE_DELAY_MS = 120;
 const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
 const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
-const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v1";
+const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v2";
+const LEGACY_AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v1";
 const TERMINAL_PATH_DISPLAY_STORAGE_KEY = "devhatch-terminal-path-display";
 const AGENT_PATH_DISPLAY_STORAGE_KEY = "devhatch-agent-path-display";
 type TerminalThumbnailSide = "left" | "right";
@@ -87,6 +88,11 @@ function initialCapacity(storageKey = TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY): 
   } catch {
     return 1;
   }
+}
+
+function initialAgentWorkspaceLayouts() {
+  try { localStorage.removeItem(LEGACY_AGENT_WORKSPACE_LAYOUT_STORAGE_KEY); } catch { return {}; }
+  return readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY);
 }
 
 function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<void>; logoutBusy: boolean; logoutError: string | null }) {
@@ -139,7 +145,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [agentThumbnailsAutoHide, setAgentThumbnailsAutoHide] = useState(false);
   const [agentThumbnailSide, setAgentThumbnailSideState] = useState<TerminalThumbnailSide>(() => initialThumbnailSide(AGENT_THUMBNAIL_SIDE_STORAGE_KEY));
   const [agentLayoutCount, setAgentLayoutCount] = useState<TerminalLayoutCount | null>(null);
-  const [agentWorkspaceLayouts, setAgentWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(() => readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY));
+  const [agentWorkspaceLayouts, setAgentWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(initialAgentWorkspaceLayouts);
   const setPathDisplay = useCallback((mode: LaunchPathDisplay, storageKey: string, setValue: (mode: LaunchPathDisplay) => void) => {
     setValue(mode);
     try { localStorage.setItem(storageKey, mode); } catch { return; }
@@ -391,25 +397,26 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     bumpFocus,
     onLaunched: closePicker,
   });
-  const agentLayoutPreset = agent.selectedAgentId && agentLayoutCount
-    ? agentWorkspaceLayouts[agent.selectedAgentId]?.presets[agentLayoutCount] ?? defaultTerminalLayoutPreset(agentLayoutCount)
+  const agentLayoutPreset = agent.selectedAgentWorkspaceId && agentLayoutCount
+    ? agentWorkspaceLayouts[agent.selectedAgentWorkspaceId]?.presets[agentLayoutCount] ?? defaultTerminalLayoutPreset(agentLayoutCount)
     : null;
   const setAgentLayoutPreset = useCallback((preset: TerminalLayoutPreset) => {
-    if (!agent.selectedAgentId || !agentLayoutCount) return;
-    const workspaceId = agent.selectedAgentId;
+    if (!agent.selectedAgentWorkspaceId || !agentLayoutCount) return;
+    const workspaceId = agent.selectedAgentWorkspaceId;
     const count = agentLayoutCount;
     updateAgentWorkspaceLayout(workspaceId, (current) => ({ ...current, presets: { ...current.presets, [count]: preset } }));
-  }, [agent.selectedAgentId, agentLayoutCount, updateAgentWorkspaceLayout]);
+  }, [agent.selectedAgentWorkspaceId, agentLayoutCount, updateAgentWorkspaceLayout]);
   const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
   const skills = useSkillsWorkspace(
     navigation.workspaceMode === "skills" || navigation.workspaceMode === "agent",
     reportError,
+    navigation.workspaceMode === "skills",
   );
 
   const {
     initializeAgents,
     initializePaths,
-    initializeSessions,
+    initializeWorkspaces: initializeAgentWorkspaces,
     deleteSession: deleteAgentSession,
   } = agent;
   const {
@@ -425,7 +432,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     initializeTerminalLaunchPaths,
     initializeTerminalWorkspaces,
     initializeAgents,
-    initializeSessions,
+    initializeAgentWorkspaces,
     initializePaths,
     onError: reportError,
     onReady: markReady,
@@ -470,6 +477,33 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     [confirmDelete, deleteSession],
   );
 
+  const requestOpenTerminalLink = useCallback((url: string) => {
+    if (!/^https?:\/\//i.test(url)) {
+      setError(`Blocked terminal link: ${url}`);
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      setError(`Invalid terminal link: ${url}`);
+      return;
+    }
+    if (!/^https?:$/.test(parsed.protocol)) {
+      setError(`Blocked terminal link: ${url}`);
+      return;
+    }
+    setConfirmAction({
+      title: "Open terminal link?",
+      description: url,
+      confirmLabel: "Open link",
+      action: () => {
+        window.open(parsed.href, "_blank", "noopener,noreferrer");
+        return true;
+      },
+    });
+  }, []);
+
   const runConfirmAction = async () => {
     if (!confirmAction) return;
     setActionBusy(true);
@@ -501,7 +535,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         pickerPurpose={pickerPurpose}
         pickerInitialPath={
           pickerPurpose === "agent"
-            ? (agent.activeSession?.cwd ?? terminal.activeSession?.cwd ?? undefined)
+            ? (agent.launcherActiveSession?.cwd ?? terminal.activeSession?.cwd ?? undefined)
             : (terminal.activeSession?.cwd ?? undefined)
         }
         onClosePicker={closePicker}
@@ -678,8 +712,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            onAgentWorkspaceLayoutChange={updateAgentWorkspaceLayout}
            onError={reportError}
            onDismissError={() => setError(null)}
-           onConfirm={setConfirmAction}
-           onLogout={onLogout}
+            onConfirm={setConfirmAction}
+            onOpenTerminalLink={requestOpenTerminalLink}
+            onLogout={onLogout}
           logoutBusy={logoutBusy}
           logoutError={logoutError}
         />

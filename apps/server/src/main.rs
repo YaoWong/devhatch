@@ -1,4 +1,5 @@
 mod agent;
+mod agent_workspace;
 mod api;
 mod auth;
 mod clock;

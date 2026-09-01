@@ -84,6 +84,64 @@ describe("WorkspaceMutationQueue", () => {
     expect(queue.isLatest("b", other.generation)).toBe(true);
   });
 
+  it("captures a queued read version when the read starts", async () => {
+    const queue = new WorkspaceMutationQueue();
+    let releaseMutation!: () => void;
+    let releaseRead!: () => void;
+    const mutation = queue.run("workspace", () => new Promise<void>((resolve) => { releaseMutation = resolve; }));
+    const read = queue.read("workspace", () => new Promise<string>((resolve) => { releaseRead = () => resolve("state"); }));
+    await Promise.resolve();
+    releaseMutation();
+    await mutation.result;
+    await Promise.resolve();
+    const concurrent = queue.run("workspace", async () => undefined);
+    releaseRead();
+    const result = await read;
+    expect(queue.isLatest("workspace", result.generation)).toBe(false);
+    await concurrent.result;
+  });
+
+  it("applies the first poll once as the latest generation", async () => {
+    const queue = new WorkspaceMutationQueue();
+    let polls = 0;
+    let applies = 0;
+    const value = await queue.readLatest("workspace", async () => {
+      polls += 1;
+      return "state";
+    });
+    applies += 1;
+    expect(value).toBe("state");
+    expect(queue.isLatest("workspace", 0)).toBe(true);
+    expect(polls).toBe(1);
+    expect(applies).toBe(1);
+  });
+
+  it("retries an overtaken read and returns only the latest value", async () => {
+    const queue = new WorkspaceMutationQueue();
+    let releaseRead!: () => void;
+    let reads = 0;
+    const latest = queue.readLatest("workspace", async () => {
+      reads += 1;
+      if (reads === 1) await new Promise<void>((resolve) => { releaseRead = resolve; });
+      return reads;
+    });
+    await Promise.resolve();
+    const mutation = queue.run("workspace", async () => undefined);
+    releaseRead();
+    await mutation.result;
+    await expect(latest).resolves.toBe(2);
+  });
+
+  it("returns a current version when no mutation overtakes a queued read", async () => {
+    const queue = new WorkspaceMutationQueue();
+    const mutation = queue.run("workspace", async () => undefined);
+    const read = queue.read("workspace", async () => "state");
+    await mutation.result;
+    const result = await read;
+    expect(result.value).toBe("state");
+    expect(queue.isLatest("workspace", result.generation)).toBe(true);
+  });
+
   it("merges members from a stale create response without replacing newer workspace state", () => {
     const member = (terminalId: string) => ({ terminalId });
     const current = {

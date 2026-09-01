@@ -36,6 +36,7 @@ export function TerminalSurface({
   thumbnailIntervalMs = 500,
   onThumbnail,
   onTransitionPrepareAvailable,
+  onOpenLink,
   onError,
 }: {
   session: TerminalInfo;
@@ -53,6 +54,7 @@ export function TerminalSurface({
   thumbnailIntervalMs?: number;
   onThumbnail?: (id: string, blob: Blob) => void;
   onTransitionPrepareAvailable?: (id: string, prepare: () => Promise<Blob | null>) => void;
+  onOpenLink: (url: string) => void;
   onError: (message: string) => void;
 }) {
   const { themeId } = useTheme();
@@ -140,6 +142,7 @@ export function TerminalSurface({
         fontWeight: "normal",
         fontWeightBold: "bold",
         lineHeight: 1,
+        linkHandler: { activate: (_event, url) => onOpenLink(url) },
         scrollback: 5000,
         theme: terminalThemes[initialThemeRef.current],
       });
@@ -380,7 +383,7 @@ export function TerminalSurface({
       requestThumbnailRef.current = null;
       onTransitionPrepareAvailableRef.current?.(session.id, () => Promise.resolve(null));
     };
-  }, [session.id, socketBase, onPhaseChange, onError]);
+  }, [session.id, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
       ref={containerRef}

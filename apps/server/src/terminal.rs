@@ -216,6 +216,7 @@ pub(crate) fn spawn_with_cwd(
             agent_id: None,
             agent_name: None,
             cleanup_path: None,
+            exit_cleanup: None,
         },
         |_| {},
     )
@@ -235,20 +236,6 @@ fn cleanup_failed_spawn(state: &AppState, session: &Arc<Session>) {
     state.remove_session(session.id(), SessionKind::Terminal);
     session.mark_deleting();
     session.terminate();
-}
-
-pub(crate) fn remove_session(
-    state: &AppState,
-    id: &str,
-    kind: SessionKind,
-    not_found: &str,
-) -> Response {
-    let Some(session) = state.remove_session(id, kind) else {
-        return error(StatusCode::NOT_FOUND, not_found);
-    };
-    session.mark_deleting();
-    session.terminate();
-    StatusCode::NO_CONTENT.into_response()
 }
 
 pub(crate) fn invalid_cwd(value: Option<&serde_json::Value>) -> bool {

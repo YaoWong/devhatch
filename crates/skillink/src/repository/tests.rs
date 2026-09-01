@@ -59,7 +59,10 @@ async fn initialized_repository(temp: &TempDir, manifest: &str) -> (Skillink, Pa
         .unwrap();
     let id = Uuid::new_v4().to_string();
     let url = source.to_str().unwrap();
-    let (revision, checkout) = app.clone_repository(url, Some("main"), true).await.unwrap();
+    let (revision, checkout) = app
+        .clone_repository(url, Some("main"), true, None)
+        .await
+        .unwrap();
     let discovered = discover_repository(&checkout).unwrap();
     app.publish_revision(&checkout, &app.repository_revision(&id, &revision))
         .unwrap();

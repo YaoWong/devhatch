@@ -4,6 +4,8 @@ import type {
   AgentLaunchConfigInput,
   AgentLaunchPath,
   AgentSession,
+  AgentWorkspace,
+  AgentWorkspaceSnapshot,
   HistoryResponse,
 } from "../types/agents";
 import { requestEmpty, requestJson } from "./client";
@@ -22,8 +24,28 @@ export function agentLaunchConfigs(agentId = "opencode") {
   );
 }
 
-export function agentSessions() {
-  return requestJson<{ agentSessions: AgentSession[] }>("/api/agent-sessions");
+export function agentWorkspaces() {
+  return requestJson<AgentWorkspaceSnapshot>("/api/agent-workspaces");
+}
+
+export function createAgentWorkspace(options: { name?: string | null; agentSessionIds: string[] }) {
+  return requestJson<{ agentWorkspace: AgentWorkspace }>(
+    "/api/agent-workspaces",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(options) },
+    "Unable to create agent workspace",
+  );
+}
+
+export function updateAgentWorkspace(id: string, update: { name?: string | null; activeAgentSessionId?: string | null }) {
+  return requestJson<{ agentWorkspace: AgentWorkspace }>(
+    `/api/agent-workspaces/${id}`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(update) },
+    "Unable to update agent workspace",
+  );
+}
+
+export function deleteAgentWorkspace(id: string) {
+  return requestEmpty(`/api/agent-workspaces/${id}`, { method: "DELETE" }, "Unable to disband agent workspace");
 }
 
 export function history(agentId: string) {
@@ -36,8 +58,9 @@ export function createAgentSession(options: {
   upstreamSessionId?: string;
   launchConfigId?: string;
   skillProfileId?: string;
+  workspaceId?: string | null;
 }) {
-  return requestJson<{ agentSession: AgentSession }>(
+  return requestJson<{ agentSession: AgentSession; agentWorkspace: AgentWorkspace }>(
     "/api/agent-sessions",
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(options) },
     "Unable to launch agent session",
@@ -64,7 +87,7 @@ export function deleteAgentLaunchConfig(id: string) {
   return requestEmpty(`/api/agent-launch-configs/${id}`, { method: "DELETE" }, "Unable to delete launch config");
 }
 
-export function createAgentLaunchPath(options: { agentId: string; path: string; alias: null; pinned: false }) {
+export function createAgentLaunchPath(options: { path: string; alias: null; pinned: false }) {
   return requestJson<{ agentLaunchPath: AgentLaunchPath }>(
     "/api/agent-launch-paths",
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(options) },

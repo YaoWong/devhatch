@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { flushSync } from "react-dom";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
+import { TextInputDialog } from "../../shared/ui/TextInputDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
   minimizeTerminal,
@@ -79,8 +80,8 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 }
 
 export function TerminalWorkspace({
-  visible, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
-  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, onError, onDismissError,
+  visible, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", sessionIdentity, stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, onOpenLink, onError, onDismissError,
 }: {
   visible: boolean;
   busy: boolean;
@@ -92,6 +93,7 @@ export function TerminalWorkspace({
   activeSessionId?: string | null;
   workspaceLabel?: string;
   sessionLabel?: string;
+  sessionIdentity?: (session: TerminalInfo) => string;
   stageId?: string;
   socketBase?: string;
   emptyIcon?: React.ReactNode;
@@ -112,6 +114,7 @@ export function TerminalWorkspace({
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
+  onOpenLink: (url: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
@@ -126,12 +129,8 @@ export function TerminalWorkspace({
   const thumbnailDockRef = useRef<HTMLDivElement | null>(null);
   const thumbnailCollapseTimerRef = useRef<number | null>(null);
   const [thumbnailDockExpanded, setThumbnailDockExpanded] = useState(!thumbnailsAutoHide);
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-  const [renameSaving, setRenameSaving] = useState(false);
+  const [renamingSession, setRenamingSession] = useState<TerminalInfo | null>(null);
   const showInitialLoading = useDelayedLoading(busy);
-  const renameSavingRef = useRef(false);
-  const renameCancelledRef = useRef(false);
   const stageTransitionRef = useRef<{ transition: ViewTransition; generation: number; applyUpdate: () => void; clearCaption: () => void } | null>(null);
   const stageTransitionGenerationRef = useRef(0);
   const stageTransitionRequestRef = useRef(0);
@@ -398,27 +397,13 @@ export function TerminalWorkspace({
     });
   };
   const minimize = (id: string) => {
-    if (renamingSessionId === id) setRenamingSessionId(null);
+    if (renamingSession?.id === id) setRenamingSession(null);
     void runStageTransition(id, () => {
       const { activeId, currentState } = latestContextRef.current;
       const remaining = currentState.stagedIds.filter((item) => item !== id);
       updateCurrent((state) => minimizeTerminal(state, id));
       if (id === activeId && remaining.length) onActivate(remaining.at(-1)!);
     }, true);
-  };
-  const saveRename = async (session: TerminalInfo) => {
-    const name = renameDraft.trim();
-    if (!name || renameSavingRef.current || renameCancelledRef.current) return;
-    if (name === session.name) {
-      setRenamingSessionId(null);
-      return;
-    }
-    renameSavingRef.current = true;
-    setRenameSaving(true);
-    const saved = await onRename(session, name);
-    renameSavingRef.current = false;
-    setRenameSaving(false);
-    if (saved) setRenamingSessionId(null);
   };
   const updateThumbnail = useCallback((id: string, blob: Blob) => {
     if (!thumbnailMemberIdsRef.current.has(id)) return;
@@ -476,8 +461,11 @@ export function TerminalWorkspace({
     requestAnimationFrame(() => cardRefs.current.get(id)?.focus());
   };
 
+  const sessionDisplayName = (session: TerminalInfo) => sessionIdentity ? `${sessionIdentity(session)} · ${session.name}` : session.name;
+
   return (
     <div className={`terminal-workspace ${visible ? "" : "workspace-hidden"}`}>
+      {renamingSession && <TextInputDialog title={`Rename ${sessionLabel}`} label="Name" initialValue={renamingSession.name} onSubmit={(name) => onRename(renamingSession, name)} onClose={() => setRenamingSession(null)} />}
       <div className="stage terminal-stage">
         {hasThumbnailDock && <div
           ref={thumbnailDockRef}
@@ -494,7 +482,7 @@ export function TerminalWorkspace({
               ref={(node) => { if (node) thumbnailRefs.current.set(session.id, node); else thumbnailRefs.current.delete(session.id); }}
               type="button"
               tabIndex={session.id === thumbnailTabStopId ? 0 : -1}
-              aria-label={`${session.name}, ${phases[session.id] ?? "connecting"}`}
+              aria-label={`${sessionDisplayName(session)}, ${phases[session.id] ?? "connecting"}`}
               className="terminal-thumbnail"
               style={{ viewTransitionName: `${stageId}-${terminalViewTransitionName(session.id)}` }}
               onClick={() => activateAndStage(session.id)}
@@ -505,7 +493,7 @@ export function TerminalWorkspace({
                 alt=""
                 aria-hidden="true"
               />
-              <span className="terminal-thumbnail-caption"><span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />{session.name}</span>
+              <span className="terminal-thumbnail-caption"><span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />{sessionDisplayName(session)}</span>
             </button>)}
           </nav>
         </div>}
@@ -529,22 +517,20 @@ export function TerminalWorkspace({
                inert={thumbnailSource ? true : undefined}
                aria-hidden={!shown}
                tabIndex={shown ? 0 : -1}
-              aria-label={`${session.name} terminal`}
+              aria-label={`${sessionDisplayName(session)} terminal`}
               aria-current={focused ? "true" : undefined}
               onClick={() => activateAndStage(session.id)}
               onKeyDown={(event) => activateCardByKey(event, index)}
             >
                <header className="terminal-window-titlebar">
                  <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />
-                 {renamingSessionId === session.id ? <form className="terminal-title-rename" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void saveRename(session); }}>
-                   <input autoFocus aria-label={`Rename ${session.name}`} maxLength={120} value={renameDraft} disabled={renameSaving} onChange={(event) => setRenameDraft(event.target.value)} onFocus={(event) => event.currentTarget.select()} onBlur={() => void saveRename(session)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); renameCancelledRef.current = true; setRenamingSessionId(null); } }} />
-                 </form> : <strong>{session.name}</strong>}
-                 <small>{session.cwd}</small>
-                 <button aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); renameCancelledRef.current = false; setRenameDraft(session.name); setRenamingSessionId(session.id); }}><Pencil /></button>
+                  <strong>{sessionDisplayName(session)}</strong>
+                  <small>{session.cwd}</small>
+                  <button aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); setRenamingSession(session); }}><Pencil /></button>
                 <button aria-label={`Minimize ${session.name}`} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
                 <button aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
               </header>
-               <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onError={onError} />
+               <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
             </section>;
            })}
           {layoutCount && layoutPreset && !isMobile && terminalLayoutDescriptors(layoutCount, layoutPreset).map((descriptor) => {

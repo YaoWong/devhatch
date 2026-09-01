@@ -8,7 +8,7 @@ async fn noop_and_dry_run_leave_state_and_staging_unchanged() {
     let temp = TempDir::new().unwrap();
     let (app, source, repository) = initialized_repository(&temp, "---\nname: alpha\n---\n").await;
     let plan = app
-        .prepare_repository_sync(&repository.id, true)
+        .prepare_repository_sync(&repository.id, true, None)
         .await
         .unwrap();
     assert!(plan.plan.noop);
@@ -22,7 +22,7 @@ async fn noop_and_dry_run_leave_state_and_staging_unchanged() {
     write_skill(&source, "skills/alpha", "---\nname: beta\n---\n");
     let new_commit = commit(&source, "preview");
     let preview = app
-        .prepare_repository_sync(&repository.id, true)
+        .prepare_repository_sync(&repository.id, true, None)
         .await
         .unwrap();
     assert!(!preview.plan.noop);
@@ -55,13 +55,13 @@ async fn sync_preserves_identity_on_slug_rename() {
     write_skill(&source, "skills/alpha", "---\nname: renamed\n---\n");
     let new_commit = commit(&source, "rename");
     let result = app
-        .sync_repository_with_transport(&repository.id, true)
+        .sync_repository_with_transport(&repository.id, true, None)
         .await
         .unwrap();
     assert_eq!(result.new_commit, new_commit);
     assert_eq!(result.update.len(), 1);
     let preview = app
-        .prepare_repository_sync(&repository.id, true)
+        .prepare_repository_sync(&repository.id, true, None)
         .await
         .unwrap();
     assert!(preview.plan.noop);
@@ -92,7 +92,7 @@ async fn path_move_in_use_is_atomic() {
     fs::rename(source.join("skills/alpha"), source.join("skills/moved")).unwrap();
     commit(&source, "move");
     let error = app
-        .sync_repository_with_transport(&repository.id, true)
+        .sync_repository_with_transport(&repository.id, true, None)
         .await
         .unwrap_err();
     assert!(matches!(error, Error::RepositorySkillInUse { .. }));
@@ -113,7 +113,7 @@ async fn discovery_failure_and_stale_snapshot_do_not_mutate_database() {
     fs::write(source.join("skills/alpha/SKILL.md"), "---\nname: bad").unwrap();
     commit(&source, "invalid");
     assert!(matches!(
-        app.sync_repository_with_transport(&repository.id, true)
+        app.sync_repository_with_transport(&repository.id, true, None)
             .await,
         Err(Error::Manifest { .. })
     ));
@@ -127,7 +127,7 @@ async fn discovery_failure_and_stale_snapshot_do_not_mutate_database() {
     write_skill(&source, "skills/alpha", "---\nname: beta\n---\n");
     commit(&source, "valid");
     let prepared = app
-        .prepare_repository_sync(&repository.id, true)
+        .prepare_repository_sync(&repository.id, true, None)
         .await
         .unwrap();
     sqlx::query("UPDATE repositories SET sync_version = sync_version + 1 WHERE id = ?")

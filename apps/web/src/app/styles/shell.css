@@ -157,8 +157,8 @@
 .path-add { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--color-border-strong); border-radius: 12px; background: transparent; color: var(--color-text-subtle); font-size: 12px; font-weight: 600; cursor: pointer; }
 .path-add:hover { border-color: var(--color-text-faint); background: var(--color-canvas); }
 .path-add svg { width: 16px; height: 16px; }
-.agent-detail { flex: 1; gap: 16px; overflow: hidden; }
-.agent-rail-layout { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto fit-content(var(--agent-launch-paths-max-height, 286px)) minmax(0, 1fr); gap: 16px; flex: 1; }
+.agent-detail { flex: 1; gap: 16px; overflow-x: hidden; overflow-y: auto; }
+.agent-rail-layout { min-width: 0; min-height: min-content; display: grid; grid-template-rows: auto auto fit-content(var(--agent-launch-paths-max-height, 286px)) minmax(220px, 1fr); gap: 16px; flex: 1 0 auto; }
 .agent-rail-layout > .menu-section { min-width: 0; min-height: 0; }
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .paths-section { max-height: var(--agent-launch-paths-max-height, 286px); }
@@ -291,11 +291,4 @@
   .path-actions button:not(.pinned) { opacity: 1; pointer-events: auto; }
   .session-main, .agent-session-row:hover .session-main, .agent-session-row:focus-within .session-main { padding-right: 74px; }
   .session-actions { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
-}
-
-@media (max-height: 640px) {
-  .agent-detail { overflow-x: hidden; overflow-y: auto; }
-  .agent-rail-layout { min-height: min-content; grid-template-rows: auto auto auto; flex: none; }
-  .paths-section { max-height: min(var(--agent-launch-paths-max-height, 286px), 35dvh); }
-  .sessions-section { min-height: min(220px, 45dvh); }
 }

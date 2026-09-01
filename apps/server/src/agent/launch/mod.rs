@@ -151,6 +151,7 @@ pub(super) fn spawn_codex(
             agent_id: Some(CODEX_ID),
             agent_name: Some(CODEX_NAME),
             cleanup_path: Some(cleanup_path),
+            exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
             if let Some((id, path)) = &runtime {
@@ -283,6 +284,7 @@ pub(super) fn spawn_opencode(
             agent_id: Some(OPENCODE_ID),
             agent_name: Some(OPENCODE_NAME),
             cleanup_path: Some(cleanup_path),
+            exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
             if let Some((port, password)) = endpoint {
@@ -376,6 +378,7 @@ pub(super) fn spawn_traecli(
             agent_id: Some(TRAECLI_ID),
             agent_name: Some(TRAECLI_NAME),
             cleanup_path: Some(cleanup_path),
+            exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
             if let Some(path) = resume_path {
@@ -520,6 +523,7 @@ pub(super) fn spawn_pi(
             agent_id: Some(PI_ID),
             agent_name: Some(PI_NAME),
             cleanup_path: Some(cleanup_path),
+            exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| start_pi_identity_watcher(session, state, identity_state),
     );

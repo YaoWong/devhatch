@@ -2,6 +2,7 @@ import { Bot } from "lucide-react";
 import type { Agent, AgentSession } from "../../types/agents";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { TerminalWorkspace } from "../terminals/TerminalWorkspace";
+import { agentWorkspaceKey } from "./agentWorkspaceState";
 import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
 
@@ -10,7 +11,8 @@ export function AgentWorkspace({
   busy,
   launching,
   displaySessions,
-  selectedSessions,
+  workspaceSessions,
+  selectedAgentWorkspaceId,
   activeId,
   selectedAgent,
   phases,
@@ -29,6 +31,7 @@ export function AgentWorkspace({
   onWorkspaceLayoutChange,
   onRemoved,
   onUpstreamSessionChange,
+  onOpenLink,
   onError,
   onDismissError,
 }: {
@@ -36,7 +39,8 @@ export function AgentWorkspace({
   busy: boolean;
   launching: boolean;
   displaySessions: AgentSession[];
-  selectedSessions: AgentSession[];
+  workspaceSessions: AgentSession[];
+  selectedAgentWorkspaceId: string | null;
   activeId: string | null;
   selectedAgent: Agent | null;
   phases: Record<string, ConnectionPhase>;
@@ -55,10 +59,11 @@ export function AgentWorkspace({
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onRemoved: (id: string) => void;
   onUpstreamSessionChange: (id: string, upstreamSessionId: string, cwd?: string) => void;
+  onOpenLink: (url: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
 }) {
-  const selectedIds = new Set(selectedSessions.map((session) => session.id));
+  const selectedIds = new Set(workspaceSessions.map((session) => session.id));
   const visibleSessions = displaySessions.filter((session) => selectedIds.has(session.id));
   const selectedActiveId = activeId && selectedIds.has(activeId) ? activeId : (visibleSessions[0]?.id ?? null);
   return <TerminalWorkspace
@@ -67,10 +72,11 @@ export function AgentWorkspace({
     launching={launching}
     sessions={displaySessions}
     visibleSessions={visibleSessions}
-    workspaceKey={selectedAgent?.id ?? null}
+    workspaceKey={agentWorkspaceKey(selectedAgentWorkspaceId)}
     activeSessionId={selectedActiveId}
     workspaceLabel="agent workspace"
     sessionLabel="agent session"
+    sessionIdentity={(session) => (session as AgentSession).agentName}
     stageId="agent"
     socketBase="/api/agent-sessions"
     emptyIcon={<Bot />}
@@ -90,6 +96,7 @@ export function AgentWorkspace({
     onWorkspaceLayoutChange={onWorkspaceLayoutChange}
     onRemoved={onRemoved}
     onUpstreamSessionChange={onUpstreamSessionChange}
+    onOpenLink={onOpenLink}
     onError={onError}
     onDismissError={onDismissError}
   />;

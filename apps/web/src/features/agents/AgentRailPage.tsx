@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Code2, Layers3 } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { AgentIcon } from "../../shared/branding/Branding";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
+import { TextInputDialog } from "../../shared/ui/TextInputDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type {
   Agent,
@@ -9,12 +10,14 @@ import type {
   AgentLaunchConfigInput,
   AgentLaunchPath,
   AgentSession,
+  AgentWorkspace,
 } from "../../types/agents";
 import type { ConfirmAction, LaunchPathDisplay } from "../../types/app";
 import type { SkillProfile } from "../../types/skills";
 import { AgentConfigDialog } from "./AgentConfigDialog";
 import { LaunchPaths } from "./LaunchPaths";
 import { AgentSessionList } from "./AgentSessionList";
+import { AgentWorkspaceList } from "./AgentWorkspaceList";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRows = Parameters<typeof AgentSessionList>[0]["rows"];
@@ -23,6 +26,8 @@ export function AgentRailPage({
   busy,
   launching,
   agents,
+  workspaces,
+  selectedWorkspaceId,
   selectedAgentId,
   selectedAgent,
   agentName,
@@ -47,6 +52,10 @@ export function AgentRailPage({
   homePaths,
   pathDisplay,
   onSelectAgent,
+  onSelectWorkspace,
+  onRenameWorkspace,
+  onDeleteWorkspace,
+  onCreateWorkspace,
   onSelectConfig,
   onSelectProfile,
   onCreateConfig,
@@ -70,6 +79,8 @@ export function AgentRailPage({
   busy: boolean;
   launching: boolean;
   agents: Agent[];
+  workspaces: AgentWorkspace[];
+  selectedWorkspaceId: string | null;
   selectedAgentId: string | null;
   selectedAgent: Agent | null;
   agentName: string;
@@ -94,6 +105,10 @@ export function AgentRailPage({
   homePaths: HomePaths;
   pathDisplay: LaunchPathDisplay;
   onSelectAgent: (id: string) => void;
+  onSelectWorkspace: (id: string) => void;
+  onRenameWorkspace: (workspace: AgentWorkspace, name: string) => Promise<boolean>;
+  onDeleteWorkspace: (workspace: AgentWorkspace) => Promise<boolean>;
+  onCreateWorkspace: () => void;
   onSelectConfig: (id: string) => void;
   onSelectProfile: (id: string | null) => void;
   onCreateConfig: (input: AgentLaunchConfigInput) => Promise<boolean>;
@@ -116,7 +131,7 @@ export function AgentRailPage({
 }) {
   const [page, setPage] = useState(1);
   const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
-  const [renameAlias, setRenameAlias] = useState("");
+  const [renameWorkspace, setRenameWorkspace] = useState<AgentWorkspace | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const showAgentLoading = useDelayedLoading(busy);
   const launchSetupStorageKey = selectedAgentId
@@ -159,39 +174,18 @@ export function AgentRailPage({
           onClose={() => setConfigOpen(false)}
         />
       )}
-      {renamePath && (
-        <div
-          className="dialog-backdrop"
-          onMouseDown={(event) => event.target === event.currentTarget && setRenamePath(null)}
-        >
-          <div className="rename-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-title">
-            <h2 id="rename-title">Rename launch path</h2>
-            <p>{renamePath.path}</p>
-            <label>
-              Alias
-              <input
-                autoFocus
-                value={renameAlias}
-                maxLength={120}
-                onChange={(event) => setRenameAlias(event.target.value)}
-              />
-            </label>
-            <div className="dialog-buttons">
-              <button onClick={() => setRenamePath(null)}>Cancel</button>
-              <button
-                className="primary"
-                onClick={() =>
-                  void onRenamePath(renamePath, renameAlias).then((saved) => {
-                    if (saved) setRenamePath(null);
-                  })
-                }
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renameWorkspace && <TextInputDialog title="Rename workspace" label="Name" initialValue={renameWorkspace.name ?? ""} onSubmit={(name) => onRenameWorkspace(renameWorkspace, name)} onClose={() => setRenameWorkspace(null)} />}
+      {renamePath && <TextInputDialog title="Rename launch path" description={renamePath.path} label="Alias" initialValue={renamePath.alias ?? ""} onSubmit={(alias) => onRenamePath(renamePath, alias)} onClose={() => setRenamePath(null)} />}
+      <AgentWorkspaceList
+        workspaces={workspaces}
+        selectedWorkspaceId={selectedWorkspaceId}
+        launching={launching}
+        onSelect={onSelectWorkspace}
+        onRename={setRenameWorkspace}
+        onDelete={onDeleteWorkspace}
+        onCreate={onCreateWorkspace}
+        onConfirm={onConfirm}
+      />
       <div className="menu-section">
         <p className="menu-label">Agent CLI</p>
         {busy ? (
@@ -278,7 +272,7 @@ export function AgentRailPage({
         paths={paths}
         selectedPathId={selectedPathId}
         available={Boolean(selectedAgent?.available)}
-        canAdd={Boolean(selectedAgentId)}
+        canAdd
         launching={launching}
         homePaths={homePaths}
         pathDisplay={pathDisplay}
@@ -288,10 +282,7 @@ export function AgentRailPage({
         onSelect={(path) => onSelectPath(path.id)}
         onLaunch={onLaunch}
         onPin={(path) => void onPinPath(path)}
-        onRename={(path) => {
-          setRenamePath(path);
-          setRenameAlias(path.alias ?? "");
-        }}
+        onRename={setRenamePath}
         onDelete={deletePath}
       />
       <AgentSessionList

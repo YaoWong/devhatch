@@ -28,3 +28,28 @@ export type SkillSyncPlan = {
   remove: SkillSyncItem[];
 };
 export type SkillSyncResult = SkillSyncPlan;
+export type SkillRepositoryOperationStage =
+  | "queued"
+  | "cloning"
+  | "counting"
+  | "compressing"
+  | "receiving"
+  | "resolving"
+  | "updating-files"
+  | "discovering"
+  | "planning"
+  | "publishing"
+  | "saving";
+export type SkillRepositoryOperation = {
+  id: string;
+  kind: "add" | "preview" | "sync";
+  repositoryId: string | null;
+  stage: SkillRepositoryOperationStage;
+  progress: number;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+};
+export type SkillRepositoryOperationStatus = {
+  operation: SkillRepositoryOperation | null;
+  revision: number;
+};

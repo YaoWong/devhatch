@@ -208,7 +208,7 @@ export function AppNavigationRail({
             terminal.activateWorkspace(id);
             sessionSelected();
           }}
-          onRenameWorkspace={(workspace) => void terminal.renameWorkspace(workspace)}
+           onRenameWorkspace={terminal.renameWorkspace}
           onDeleteWorkspace={terminal.removeWorkspace}
           onNewWorkspace={onNewWorkspace}
           onLaunch={(path) => void terminal.addTerminal(path)}
@@ -224,6 +224,8 @@ export function AppNavigationRail({
           busy={busy}
           launching={agent.launching}
           agents={agent.agents}
+          workspaces={agent.workspaces}
+          selectedWorkspaceId={agent.selectedAgentWorkspaceId}
           selectedAgentId={agent.selectedAgentId}
           selectedAgent={agent.selectedAgent}
           agentName={agent.selectedAgent?.name ?? "Agent CLI"}
@@ -231,10 +233,10 @@ export function AppNavigationRail({
           selectedConfigId={agent.selectedConfigId}
           profiles={skills.profiles}
           selectedProfileId={agent.selectedSkillProfileId}
-          paths={agent.selectedPaths}
+          paths={agent.paths}
           selectedPathId={agent.selectedPathId}
           includeSubdirectories={agent.includeSubdirectories}
-          activeSession={agent.activeSession}
+          activeSession={agent.launcherActiveSession}
           sessions={agent.selectedSessions}
           historyCount={agent.selectedAgent?.supportsHistory ? agent.history.sessions.length : 0}
           supportsHistory={Boolean(agent.selectedAgent?.supportsHistory)}
@@ -248,6 +250,13 @@ export function AppNavigationRail({
           homePaths={homePaths}
           pathDisplay={agentPathDisplay}
           onSelectAgent={agent.setSelectedAgentId}
+          onSelectWorkspace={(id) => {
+            agent.activateWorkspace(id);
+            sessionSelected();
+          }}
+           onRenameWorkspace={agent.renameWorkspace}
+          onDeleteWorkspace={agent.removeWorkspace}
+          onCreateWorkspace={() => void agent.createWorkspace()}
           onSelectConfig={agent.setSelectedConfigId}
           onSelectProfile={agent.setSelectedSkillProfileId}
           onCreateConfig={agent.createConfig}
@@ -256,7 +265,9 @@ export function AppNavigationRail({
           onChoosePath={onPickAgentPath}
           onSelectPath={(id) => agent.setSelectedPathId(agent.selectedPathId === id ? null : id)}
           onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
-          onLaunch={(path) => void agent.launch({ cwd: path.path, pathId: path.id })}
+          onLaunch={(path) => {
+            void agent.launch({ cwd: path.path, pathId: path.id });
+          }}
           onPinPath={agent.pinPath}
           onRenamePath={agent.renamePath}
           onDeletePath={agent.deletePath}

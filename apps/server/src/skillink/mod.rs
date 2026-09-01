@@ -16,9 +16,20 @@ pub(crate) use profiles::{
 };
 pub(crate) use repositories::{
     create_repository, list_repositories, preview_repository_sync, remove_repository,
-    sync_repository, update_repository,
+    repository_operation, sync_repository, update_repository,
 };
 pub(crate) use skills::{create_skill, import_skill, list_skills, remove_skill, skill_manifest};
+
+pub(crate) fn operation_conflict() -> Response {
+    (
+        StatusCode::CONFLICT,
+        Json(serde_json::json!({
+            "error": "SKILL_REPOSITORY_OPERATION_IN_PROGRESS",
+            "message": "a Skills repository operation is already in progress"
+        })),
+    )
+        .into_response()
+}
 
 pub(crate) fn skillink_error(error: Error) -> Response {
     let (status, code) = match &error {

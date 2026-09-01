@@ -5,6 +5,7 @@ import {
   createSkillRepository,
   deleteSkill,
   deleteSkillRepository,
+  getSkillRepositoryOperation,
   getSkillProfile,
   listSkillProfiles,
   listSkillRepositories,
@@ -14,9 +15,10 @@ import {
   syncSkillRepository,
   updateSkillRepository,
 } from "../../api/skills";
-import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan } from "../../types/skills";
+import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillRepositoryOperation, SkillRepositoryOperationStatus, SkillSyncPlan } from "../../types/skills";
+import { shouldRefreshForRepositoryOperation } from "./repositoryOperation";
 
-export function useSkillsWorkspace(active: boolean, reportError: (message: string) => void) {
+export function useSkillsWorkspace(active: boolean, reportError: (message: string) => void, repositoryOperationsActive = active) {
   const [repositories, setRepositories] = useState<SkillRepository[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [profiles, setProfiles] = useState<SkillProfile[]>([]);
@@ -26,8 +28,12 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [repositoryOperation, setRepositoryOperation] = useState<SkillRepositoryOperation | null>(null);
   const syncGeneration = useRef(0);
   const refreshGeneration = useRef(0);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshQueued = useRef(false);
+  const repositoryOperationStatus = useRef<SkillRepositoryOperationStatus | null>(null);
   const profileGeneration = useRef(0);
   const selectedProfileIdRef = useRef<string | null>(null);
   const mutationRef = useRef(false);
@@ -44,23 +50,36 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
   }, []);
 
   const refresh = useCallback(async () => {
-    const generation = ++refreshGeneration.current;
-    const [repositoryData, skillData, profileData] = await Promise.all([
-      listSkillRepositories(),
-      listSkills(),
-      listSkillProfiles(),
-    ]);
-    if (!mounted.current || refreshGeneration.current !== generation) return;
-    setRepositories(repositoryData.skillRepositories);
-    setSkills(skillData.skills);
-    setProfiles(profileData.skillProfiles);
-    setSelectedProfileId((current) => {
-      const next = current && profileData.skillProfiles.some((profile) => profile.id === current)
-        ? current
-        : (profileData.skillProfiles[0]?.id ?? null);
-      selectedProfileIdRef.current = next;
-      return next;
-    });
+    refreshQueued.current = true;
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const request = (async () => {
+      while (refreshQueued.current && mounted.current) {
+        refreshQueued.current = false;
+        const generation = ++refreshGeneration.current;
+        const [repositoryData, skillData, profileData] = await Promise.all([
+          listSkillRepositories(),
+          listSkills(),
+          listSkillProfiles(),
+        ]);
+        if (!mounted.current || refreshGeneration.current !== generation) return;
+        setRepositories(repositoryData.skillRepositories);
+        setSkills(skillData.skills);
+        setProfiles(profileData.skillProfiles);
+        setSelectedProfileId((current) => {
+          const next = current && profileData.skillProfiles.some((profile) => profile.id === current)
+            ? current
+            : (profileData.skillProfiles[0]?.id ?? null);
+          selectedProfileIdRef.current = next;
+          return next;
+        });
+      }
+    })();
+    refreshInFlight.current = request;
+    try {
+      await request;
+    } finally {
+      if (refreshInFlight.current === request) refreshInFlight.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -69,6 +88,35 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
       if (mounted.current) reportError(reason instanceof Error ? reason.message : String(reason));
     });
   }, [active, refresh, reportError]);
+
+  const pollRepositoryOperation = repositoryOperationsActive || busy || repositoryOperation !== null;
+  useEffect(() => {
+    if (!pollRepositoryOperation) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      try {
+        const status = await getSkillRepositoryOperation();
+        if (cancelled || !mounted.current) return;
+        const previous = repositoryOperationStatus.current;
+        repositoryOperationStatus.current = status;
+        setRepositoryOperation(status.operation);
+        if (shouldRefreshForRepositoryOperation(previous, status)) {
+          void refresh().catch((reason) => {
+            if (!cancelled && mounted.current) reportError(reason instanceof Error ? reason.message : String(reason));
+          });
+        }
+      } catch {
+        if (cancelled || !mounted.current) return;
+      }
+      if (!cancelled) timer = setTimeout(() => void poll(), 850);
+    };
+    timer = setTimeout(() => void poll(), 100);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pollRepositoryOperation, refresh, reportError]);
 
   useEffect(() => {
     selectedProfileIdRef.current = selectedProfileId;
@@ -142,7 +190,8 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
     syncPlan,
     profileError,
     dismissProfileError: () => setProfileError(null),
-    busy,
+    busy: busy || repositoryOperation !== null,
+    repositoryOperation,
     selectProfile,
     addRepository: (url: string, gitRef: string) => mutate(() => createSkillRepository({ url, gitRef: gitRef || undefined })),
     renameRepository: (id: string, name: string) => mutate(() => updateSkillRepository(id, { name })),

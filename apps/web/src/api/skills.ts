@@ -1,4 +1,4 @@
-import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan, SkillSyncResult } from "../types/skills";
+import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillRepositoryOperationStatus, SkillSyncPlan, SkillSyncResult } from "../types/skills";
 import { requestEmpty, requestJson } from "./client";
 
 export function deleteSkillProfileSkill(profileId: string, skillId: string) {
@@ -22,6 +22,14 @@ export function replaceSkillProfileSkills(profileId: string, skillIds: string[])
     `/api/skill-profiles/${encodeURIComponent(profileId)}/skills`,
     { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ skillIds }) },
     "Unable to save profile",
+  );
+}
+
+export function getSkillRepositoryOperation() {
+  return requestJson<SkillRepositoryOperationStatus>(
+    "/api/skill-repository-operation",
+    undefined,
+    "Unable to load repository operation",
   );
 }
 

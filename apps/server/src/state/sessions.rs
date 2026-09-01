@@ -163,6 +163,17 @@ impl SessionRegistry {
             .collect()
     }
 
+    pub(crate) fn live_snapshot(&self, kind: SessionKind) -> (HashSet<String>, Vec<SessionView>) {
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
+        let views = sessions
+            .values()
+            .filter(|session| session.kind() == kind)
+            .filter_map(|session| session.live_view())
+            .collect::<Vec<_>>();
+        let ids = views.iter().map(|view| view.id().to_string()).collect();
+        (ids, views)
+    }
+
     #[cfg(test)]
     pub(crate) fn terminal_cwds(&self) -> HashSet<String> {
         self.sessions
@@ -180,6 +191,25 @@ impl SessionRegistry {
             .expect("sessions lock poisoned")
             .get(session.id())
             .is_some_and(|current| Arc::ptr_eq(current, session))
+    }
+
+    pub(crate) fn live_ids_if_contains(
+        &self,
+        session: &Arc<Session>,
+        kind: SessionKind,
+    ) -> Option<HashSet<String>> {
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
+        let current = sessions.get(session.id())?;
+        if current.kind() != kind || !Arc::ptr_eq(current, session) || !current.is_live() {
+            return None;
+        }
+        Some(
+            sessions
+                .values()
+                .filter(|session| session.kind() == kind && session.is_live())
+                .map(|session| session.id().to_string())
+                .collect(),
+        )
     }
 
     pub(crate) fn remove(&self, id: &str, kind: SessionKind) -> Option<Arc<Session>> {
@@ -203,7 +233,7 @@ impl SessionRegistry {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::{collections::HashSet, sync::Arc, time::Duration};
 
     use portable_pty::CommandBuilder;
 
@@ -241,6 +271,7 @@ mod tests {
                 agent_id: None,
                 agent_name: None,
                 cleanup_path: Some(cleanup_path.clone()),
+                exit_cleanup: None,
             },
             |_| {},
         )
@@ -262,6 +293,7 @@ mod tests {
                     agent_id: None,
                     agent_name: None,
                     cleanup_path: None,
+                    exit_cleanup: None,
                 },
                 |_| {},
             )
@@ -272,6 +304,87 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn live_snapshot_rejects_deleting_and_exited_registry_entries() {
+        let registry = Arc::new(SessionRegistry::default());
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        let session = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        let (ids, views) = registry.live_snapshot(SessionKind::Agent);
+        assert_eq!(ids, HashSet::from([session.id().to_string()]));
+        assert_eq!(
+            views.iter().map(|view| view.id()).collect::<Vec<_>>(),
+            vec![session.id()]
+        );
+        assert!(
+            registry
+                .live_ids_if_contains(&session, SessionKind::Agent)
+                .is_some_and(|ids| ids.contains(session.id()))
+        );
+        session.mark_deleting();
+        let (ids, views) = registry.live_snapshot(SessionKind::Agent);
+        assert!(ids.is_empty());
+        assert!(views.is_empty());
+        assert!(
+            registry
+                .live_ids_if_contains(&session, SessionKind::Agent)
+                .is_none()
+        );
+        registry.remove_if_same(session.id(), &session);
+        session.terminate();
+        session.wait_for_completion().await;
+
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        let exited = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        exited.terminate();
+        exited.finish_exit(Some(0));
+        assert!(
+            registry
+                .live_ids_if_contains(&exited, SessionKind::Agent)
+                .is_none()
+        );
+        registry.remove_if_same(exited.id(), &exited);
+        exited.terminate();
+        exited.wait_for_completion().await;
     }
 
     #[test]

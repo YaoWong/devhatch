@@ -1,4 +1,4 @@
-import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillSyncPlan } from "../../types/skills";
+import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillRepositoryOperation, SkillSyncPlan } from "../../types/skills";
 
 export type SkillsController = {
   repositories: SkillRepository[];
@@ -11,6 +11,7 @@ export type SkillsController = {
   profileError: string | null;
   dismissProfileError: () => void;
   busy: boolean;
+  repositoryOperation: SkillRepositoryOperation | null;
   selectProfile: (id: string) => Promise<void>;
   addRepository: (url: string, gitRef: string) => Promise<boolean>;
   renameRepository: (id: string, name: string) => Promise<boolean>;

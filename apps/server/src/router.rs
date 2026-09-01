@@ -11,8 +11,8 @@ use axum::{
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    agent, auth, filesystem, history, launch_config, launch_path, settings, skillink,
-    state::AppState, terminal, terminal_launch_path, terminal_workspace, web_app,
+    agent, agent_workspace, auth, filesystem, history, launch_config, launch_path, settings,
+    skillink, state::AppState, terminal, terminal_launch_path, terminal_workspace, web_app,
 };
 
 pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
@@ -32,6 +32,10 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             patch(launch_config::update).delete(launch_config::remove),
         )
         .route("/api/agents/{agentId}/history", get(history::list))
+        .route(
+            "/api/skill-repository-operation",
+            get(skillink::repository_operation),
+        )
         .route(
             "/api/skill-repositories",
             get(skillink::list_repositories).post(skillink::create_repository),
@@ -113,6 +117,14 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             patch(terminal::rename).delete(terminal::remove),
         )
         .route("/api/terminals/{id}/socket", get(terminal::socket))
+        .route(
+            "/api/agent-workspaces",
+            get(agent_workspace::list).post(agent_workspace::create),
+        )
+        .route(
+            "/api/agent-workspaces/{id}",
+            patch(agent_workspace::update).delete(agent_workspace::remove),
+        )
         .route("/api/agent-sessions", get(agent::list).post(agent::create))
         .route(
             "/api/agent-sessions/{id}",

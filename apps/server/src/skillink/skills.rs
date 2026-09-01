@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use super::{invalid_request, skillink_error, views::SkillView};
+use super::{invalid_request, operation_conflict, skillink_error, views::SkillView};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -88,6 +88,22 @@ pub(crate) async fn remove_skill(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Response {
+    let repository_id = match state.skillink().skill_repository_id(&id).await {
+        Ok(repository_id) => repository_id,
+        Err(error) => return skillink_error(error),
+    };
+    if let Some(repository_id) = repository_id {
+        let Some(_deletion) = state
+            .skill_repository_operations()
+            .begin_deletion(Some(repository_id))
+        else {
+            return operation_conflict();
+        };
+        return match state.skillink().remove_skill(&id).await {
+            Ok(()) => StatusCode::NO_CONTENT.into_response(),
+            Err(error) => skillink_error(error),
+        };
+    }
     match state.skillink().remove_skill(&id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => skillink_error(error),

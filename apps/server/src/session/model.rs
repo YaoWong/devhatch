@@ -1,6 +1,6 @@
 use std::{
     path::PathBuf,
-    sync::{Mutex, atomic::AtomicBool, mpsc::SyncSender},
+    sync::{Arc, Mutex, atomic::AtomicBool, mpsc::SyncSender},
 };
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
@@ -55,6 +55,8 @@ pub(crate) struct Session {
     pub(super) agent_name: Option<&'static str>,
 }
 
+pub(crate) type SessionExitCleanup = Box<dyn FnOnce(Arc<Session>, Option<u32>) + Send>;
+
 pub(crate) struct SessionSpawn {
     pub command: CommandBuilder,
     pub shell: String,
@@ -67,6 +69,7 @@ pub(crate) struct SessionSpawn {
     pub agent_id: Option<&'static str>,
     pub agent_name: Option<&'static str>,
     pub cleanup_path: Option<PathBuf>,
+    pub exit_cleanup: Option<SessionExitCleanup>,
 }
 
 pub(super) struct SessionIdentity {
@@ -119,6 +122,12 @@ pub(crate) struct SessionView {
     #[serde(skip_serializing_if = "Option::is_none")]
     upstream_session_id: Option<String>,
     kind: &'static str,
+}
+
+impl SessionView {
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
 }
 
 pub(crate) struct SessionSnapshot {
@@ -255,6 +264,16 @@ impl Session {
         self.view_from_state(&state, &identity)
     }
 
+    pub(crate) fn live_view(&self) -> Option<SessionView> {
+        let identity = self
+            .identity
+            .lock()
+            .expect("session identity lock poisoned");
+        let state = self.state.lock().expect("session lock poisoned");
+        (!self.is_deleting() && state.status == SessionStatus::Running)
+            .then(|| self.view_from_state(&state, &identity))
+    }
+
     pub(crate) fn snapshot_and_subscribe(
         &self,
     ) -> (SessionSnapshot, broadcast::Receiver<SessionEvent>) {
@@ -275,6 +294,10 @@ impl Session {
 
     pub(crate) fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
         self.events.subscribe()
+    }
+
+    pub(crate) fn publish_removed(&self, code: Option<u32>) {
+        let _ = self.events.send(SessionEvent::Removed(code));
     }
 
     pub(crate) async fn wait_for_completion(&self) {

@@ -1,8 +1,10 @@
-import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type UIEvent } from "react";
+import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { SkillsSection } from "./SkillsRailPage";
 import type { SkillsController } from "./controller";
 import { Profiles } from "./Profiles";
+import { formatRepositoryOperationBytes, repositoryOperationLabel, repositoryOperationPercentage } from "./repositoryOperation";
 import { Repositories } from "./Repositories";
 import { SkillLibrary } from "./SkillLibrary";
 
@@ -14,6 +16,10 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollEdges, setScrollEdges] = useState({ top: true, bottom: false });
+  const operation = controller.repositoryOperation;
+  const showBusy = useDelayedLoading(controller.busy);
+  const percentage = operation ? repositoryOperationPercentage(operation.progress) : 0;
+  const bytes = operation ? formatRepositoryOperationBytes(operation.downloadedBytes, operation.totalBytes) : null;
   const updateScrollEdges = (element: HTMLDivElement) => setScrollEdges({
     top: element.scrollTop <= 1,
     bottom: element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
@@ -40,7 +46,16 @@ export function SkillsWorkspace({ section, controller, error, onDismissError }: 
   }, [section]);
   return (
     <div className="skills-workspace" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
-      <div className="skills-section-transition" key={section}>
+      {showBusy && (
+        operation ? (
+          <div className="skills-loading skills-operation-progress" role="status" aria-label={`${repositoryOperationLabel(operation)}, ${percentage}%`}>
+            <div><LoaderCircle className="spin" /><strong>{repositoryOperationLabel(operation)}…</strong><span>{percentage}%</span></div>
+            <progress max="100" value={percentage} aria-label="Repository operation progress" />
+            {bytes && <small>{bytes}</small>}
+          </div>
+        ) : <div className="skills-loading" role="status"><LoaderCircle className="spin" />Working…</div>
+      )}
+      <div className="skills-section-transition" key={section} aria-busy={controller.busy}>
         {section === "repositories" && <Repositories controller={controller} />}
         {section === "skills" && <SkillLibrary controller={controller} />}
         {section === "profiles" && <Profiles controller={controller} />}

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { agentPaths, agents as listAgents, createAgentLaunchPath, deleteAgentLaunchPath, updateAgentLaunchPath } from "../../../api/agents";
 import type { Agent, AgentLaunchPath } from "../../../types/agents";
+import { findAgentLaunchPath } from "../agentLaunchState";
 import { readDefaultAgentId, writeDefaultAgentId } from "../defaultAgentPreference";
 import { errorMessage } from "./shared";
 
@@ -43,13 +44,13 @@ export function useAgentCatalog({
 
   const choosePath = useCallback(
     async (path: string) => {
-      if (!selectedAgentId || mutationRef.current) return false;
+      if (mutationRef.current) return false;
       mutationRef.current = true;
       refreshGeneration.current += 1;
       try {
-        let item = paths.find((entry) => entry.agentId === selectedAgentId && entry.path === path);
+        let item = findAgentLaunchPath(paths, path);
         if (!item) {
-          const result = await createAgentLaunchPath({ agentId: selectedAgentId, path, alias: null, pinned: false });
+          const result = await createAgentLaunchPath({ path, alias: null, pinned: false });
           item = result.agentLaunchPath;
         }
         setSelectedPathId(item.id);
@@ -63,7 +64,7 @@ export function useAgentCatalog({
         mutationRef.current = false;
       }
     },
-    [closeSidebar, paths, reportError, selectedAgentId],
+    [closeSidebar, paths, reportError],
   );
 
   const pinPath = useCallback(

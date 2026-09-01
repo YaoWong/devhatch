@@ -9,11 +9,12 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
+    agent_workspace,
     history::PreparedLaunch,
     launch_config::{self},
     session::{SessionKind, socket},
     state::AppState,
-    terminal::{CreateRequest, RenameRequest, error, invalid_cwd, remove_session},
+    terminal::{CreateRequest, RenameRequest, error, invalid_cwd},
 };
 
 use super::{
@@ -33,6 +34,7 @@ pub(crate) struct AgentCreateRequest {
     upstream_session_id: Option<String>,
     launch_config_id: Option<String>,
     skill_profile_id: Option<String>,
+    workspace_id: Option<String>,
 }
 
 fn default_agent_id() -> String {
@@ -117,6 +119,15 @@ pub async fn create(
     if !available(kind) {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     }
+    let workspace_id = request.workspace_id.clone();
+    let _workspace_lifecycle = state.agent_workspace_lifecycle().lock().await;
+    if let Some(workspace_id) = workspace_id.as_deref() {
+        match agent_workspace::exists(state.pool(), workspace_id).await {
+            Ok(true) => {}
+            Ok(false) => return error(StatusCode::NOT_FOUND, "AGENT_WORKSPACE_NOT_FOUND"),
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        }
+    }
     let launch_config =
         match launch_config::resolve(&state, kind.as_str(), request.launch_config_id.as_deref())
             .await
@@ -162,8 +173,8 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            start_codex_reconciler(&session, state, home, baseline);
-            created_session(Ok(session))
+            start_codex_reconciler(&session, state.clone(), home, baseline);
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::CodexResume {
             home,
@@ -175,7 +186,7 @@ pub async fn create(
                 cwd.to_string_lossy().into_owned(),
             ));
             let session = match spawn_codex(
-                state,
+                state.clone(),
                 terminal_request,
                 home,
                 Some((id, path)),
@@ -185,59 +196,75 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            created_session(Ok(session))
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::TraeNew { id } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
-            created_session(spawn_traecli(
-                state,
+            let session = match spawn_traecli(
+                state.clone(),
                 terminal_request,
                 id,
                 None,
                 launch_config,
                 skill_generation.as_deref(),
-            ))
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::TraeResume { id, path, cwd } => {
             terminal_request.cwd = Some(serde_json::Value::String(
                 cwd.to_string_lossy().into_owned(),
             ));
-            created_session(spawn_traecli(
-                state,
+            let session = match spawn_traecli(
+                state.clone(),
                 terminal_request,
                 id,
                 Some(&path),
                 launch_config,
                 skill_generation.as_deref(),
-            ))
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::PiNew { id } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
-            created_session(spawn_pi(
-                state,
+            let session = match spawn_pi(
+                state.clone(),
                 terminal_request,
                 id,
                 None,
                 launch_config,
                 skill_generation.as_deref(),
-            ))
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::PiResume { id, path, cwd } => {
             terminal_request.cwd = Some(serde_json::Value::String(
                 cwd.to_string_lossy().into_owned(),
             ));
-            created_session(spawn_pi(
-                state,
+            let session = match spawn_pi(
+                state.clone(),
                 terminal_request,
                 id,
                 Some(&path),
                 launch_config,
                 skill_generation.as_deref(),
-            ))
+            ) {
+                Ok(session) => session,
+                Err(error) => return spawn_error(error),
+            };
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::OpenCodeNew { baseline } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
@@ -254,8 +281,8 @@ pub async fn create(
                 Err(error) => return spawn_error(error),
             };
             start_history_reconciler(&session, state.clone(), baseline);
-            start_fork_reconciler(&session, state);
-            created_session(Ok(session))
+            start_fork_reconciler(&session, state.clone());
+            created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::OpenCodeResume { id, cwd } => {
             terminal_request.cwd = Some(serde_json::Value::String(cwd));
@@ -272,8 +299,8 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            start_fork_reconciler(&session, state);
-            created_session(Ok(session))
+            start_fork_reconciler(&session, state.clone());
+            created_session(&state, workspace_id.as_deref(), session).await
         }
     }
 }
@@ -289,24 +316,51 @@ fn spawn_error(error: Box<dyn std::error::Error>) -> Response {
         .into_response()
 }
 
-fn created_session(
-    result: Result<Arc<crate::session::Session>, Box<dyn std::error::Error>>,
+async fn created_session(
+    state: &Arc<AppState>,
+    workspace_id: Option<&str>,
+    session: Arc<crate::session::Session>,
 ) -> Response {
-    match result {
-        Ok(session) => (
+    let Some(live) = state.live_agent_ids_if_contains(&session) else {
+        cleanup_failed_spawn(state, &session).await;
+        return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_SESSION_NOT_LIVE");
+    };
+    match agent_workspace::reconcile_and_attach_agent_session(
+        state.pool(),
+        &live,
+        workspace_id,
+        session.id(),
+    )
+    .await
+    {
+        Ok(Some(workspace)) => (
             StatusCode::CREATED,
-            Json(serde_json::json!({ "agentSession": session.view() })),
-        )
-            .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
-                "error": "AGENT_SPAWN_FAILED",
-                "message": error.to_string()
+                "agentSession": session.view(),
+                "agentWorkspace": workspace
             })),
         )
             .into_response(),
+        Ok(None) => {
+            cleanup_failed_spawn(state, &session).await;
+            if workspace_id.is_some() {
+                error(StatusCode::NOT_FOUND, "AGENT_WORKSPACE_NOT_FOUND")
+            } else {
+                error(StatusCode::INTERNAL_SERVER_ERROR, "AGENT_SPAWN_FAILED")
+            }
+        }
+        Err(_) => {
+            cleanup_failed_spawn(state, &session).await;
+            error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
+        }
     }
+}
+
+async fn cleanup_failed_spawn(state: &AppState, session: &Arc<crate::session::Session>) {
+    state.remove_session(session.id(), SessionKind::Agent);
+    session.mark_deleting();
+    let _ = agent_workspace::remove_agent_session(state.pool(), session.id()).await;
+    session.terminate();
 }
 
 pub async fn rename(
@@ -331,7 +385,23 @@ pub async fn rename(
 }
 
 pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    remove_session(&state, &id, SessionKind::Agent, "AGENT_SESSION_NOT_FOUND")
+    let _lifecycle = state.agent_workspace_lifecycle().lock().await;
+    let Some(session) = state.session(&id, SessionKind::Agent) else {
+        return error(StatusCode::NOT_FOUND, "AGENT_SESSION_NOT_FOUND");
+    };
+    match agent_workspace::remove_agent_session(state.pool(), &id).await {
+        Ok(_) => {}
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+    };
+    let Some(removed) = state.remove_session(&id, SessionKind::Agent) else {
+        return error(StatusCode::NOT_FOUND, "AGENT_SESSION_NOT_FOUND");
+    };
+    if !Arc::ptr_eq(&session, &removed) {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "SESSION_REGISTRY_ERROR");
+    }
+    removed.mark_deleting();
+    removed.terminate();
+    StatusCode::NO_CONTENT.into_response()
 }
 
 pub async fn socket(
@@ -341,4 +411,153 @@ pub async fn socket(
     upgrade: WebSocketUpgrade,
 ) -> Response {
     socket::upgrade(state, id, identity, upgrade, SessionKind::Agent)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use portable_pty::CommandBuilder;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::{created_session, remove};
+    use crate::{
+        session::{Session, SessionEvent, SessionKind, SessionSpawn},
+        state::{AppState, OpenCodeHistoryPool},
+    };
+
+    async fn state() -> (tempfile::TempDir, Arc<AppState>) {
+        let temp = tempfile::tempdir().unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let skillink = skillink::Skillink::open(Some(temp.path().join("skillink")))
+            .await
+            .unwrap();
+        let state = Arc::new(AppState::new(
+            temp.path().to_owned(),
+            pool,
+            OpenCodeHistoryPool::new(temp.path().join("history.db")),
+            skillink,
+            None,
+            false,
+        ));
+        (temp, state)
+    }
+
+    fn spawn_session(state: &Arc<AppState>, cwd: &std::path::Path) -> Arc<Session> {
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        Session::spawn(
+            state.session_registry(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                cwd: cwd.to_owned(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                exit_cleanup: Some(state.agent_exit_cleanup()),
+            },
+            |_| {},
+        )
+        .unwrap()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn successful_delete_returns_no_content() {
+        let (temp, state) = state().await;
+        let session = spawn_session(&state, temp.path());
+        let response = remove(
+            axum::extract::State(state.clone()),
+            axum::extract::Path(session.id().to_string()),
+        )
+        .await;
+        assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fast_exit_is_rejected_and_cannot_be_attached() {
+        let temp = tempfile::tempdir().unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let skillink = skillink::Skillink::open(Some(temp.path().join("skillink")))
+            .await
+            .unwrap();
+        let state = Arc::new(AppState::new(
+            temp.path().to_owned(),
+            pool,
+            OpenCodeHistoryPool::new(temp.path().join("history.db")),
+            skillink,
+            None,
+            false,
+        ));
+        let lifecycle = state.agent_workspace_lifecycle().lock().await;
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "read _; exit 0"]);
+        let session = Session::spawn(
+            state.session_registry(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                cwd: temp.path().to_owned(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                exit_cleanup: Some(state.agent_exit_cleanup()),
+            },
+            |_| {},
+        )
+        .unwrap();
+        let mut events = session.subscribe();
+        sqlx::query("INSERT INTO agent_workspaces (id, name, active_agent_session_id, created_at, updated_at) VALUES ('workspace', NULL, NULL, 0, 0)")
+            .execute(state.pool())
+            .await
+            .unwrap();
+        assert!(session.write_input("\n"));
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if matches!(events.recv().await.unwrap(), SessionEvent::Exit(Some(0))) {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let response = created_session(&state, Some("workspace"), session.clone()).await;
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert!(state.session(session.id(), SessionKind::Agent).is_none());
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_workspace_members")
+            .fetch_one(state.pool())
+            .await
+            .unwrap();
+        assert_eq!(members, 0);
+        drop(lifecycle);
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+    }
 }

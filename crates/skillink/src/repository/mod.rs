@@ -17,16 +17,50 @@ use address::parse_repository_address;
 pub use address::repository_name;
 use discovery::discover_repository;
 use links::materialize_internal_file_links;
-use std::fs;
+use std::{fs, sync::Arc};
 use uuid::Uuid;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RepositoryProgress {
+    pub stage: &'static str,
+    pub progress: u8,
+    pub downloaded_bytes: Option<u64>,
+    pub total_bytes: Option<u64>,
+}
+
+pub(super) type ProgressReporter = Arc<dyn Fn(RepositoryProgress) + Send + Sync>;
+
+pub(super) fn report(progress: &ProgressReporter, stage: &'static str, percent: u8) {
+    progress(RepositoryProgress {
+        stage,
+        progress: percent,
+        downloaded_bytes: None,
+        total_bytes: None,
+    });
+}
 
 impl Skillink {
     pub async fn add_repository(&self, url: &str, git_ref: Option<&str>) -> Result<Repository> {
+        self.add_repository_with_progress(url, git_ref, |_| {})
+            .await
+    }
+
+    pub async fn add_repository_with_progress<F>(
+        &self,
+        url: &str,
+        git_ref: Option<&str>,
+        progress: F,
+    ) -> Result<Repository>
+    where
+        F: Fn(RepositoryProgress) + Send + Sync + 'static,
+    {
+        let progress: ProgressReporter = Arc::new(progress);
         let address = parse_repository_address(url)?;
         let id = Uuid::new_v4().to_string();
         let (commit, checkout) = self
-            .clone_repository(&address.clone_url, git_ref, false)
+            .clone_repository(&address.clone_url, git_ref, false, Some(progress.clone()))
             .await?;
+        report(&progress, "discovering", 80);
         let discovered = match materialize_internal_file_links(&checkout)
             .and_then(|()| discover_repository(&checkout))
         {
@@ -36,7 +70,9 @@ impl Skillink {
                 return Err(error);
             }
         };
+        report(&progress, "planning", 85);
         let destination = self.repository_revision(&id, &commit);
+        report(&progress, "publishing", 90);
         let published = match self.publish_revision(&checkout, &destination) {
             Ok(published) => published,
             Err(error) => {
@@ -44,6 +80,7 @@ impl Skillink {
                 return Err(error);
             }
         };
+        report(&progress, "saving", 95);
         let result = self
             .insert_repository(
                 &id,

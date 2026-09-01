@@ -13,7 +13,7 @@ impl HistoryBackend {
             Self::Codex => codex::list(state).await,
             Self::OpenCode => opencode::list(state).await,
             Self::Pi => {
-                let mut workspaces = crate::launch_path::paths_for_agent(state, agent::PI_ID)
+                let mut workspaces = crate::launch_path::paths(state)
                     .await
                     .map_err(|_| "PI_HISTORY_UNAVAILABLE")?;
                 let (active_ids, active_files, owned_pids) = {
@@ -53,7 +53,7 @@ impl HistoryBackend {
             Self::Codex => codex::prepare(requested_id).await,
             Self::OpenCode => opencode::prepare(state, requested_id).await,
             Self::Pi => {
-                let mut workspaces = crate::launch_path::paths_for_agent(state, agent::PI_ID)
+                let mut workspaces = crate::launch_path::paths(state)
                     .await
                     .map_err(|_| HistoryError::Unavailable)?;
                 workspaces.extend(state.active_agent_cwds_for(agent::PI_ID));
@@ -68,7 +68,7 @@ impl HistoryBackend {
             Self::Codex => codex::delete(state, id).await,
             Self::OpenCode => opencode::delete(state, id).await,
             Self::Pi => {
-                let mut workspaces = crate::launch_path::paths_for_agent(state, agent::PI_ID)
+                let mut workspaces = crate::launch_path::paths(state)
                     .await
                     .map_err(|_| DeleteError::History(HistoryError::Unavailable))?;
                 workspaces.extend(state.active_agent_cwds_for(agent::PI_ID));

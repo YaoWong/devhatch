@@ -12,5 +12,5 @@ mod validation;
 pub use app::Skillink;
 pub use error::{Error, Result};
 pub use model::{Profile, ProfileDetail, Repository, Skill};
-pub use repository::{SyncItem, SyncPlan, SyncResult, repository_name};
+pub use repository::{RepositoryProgress, SyncItem, SyncPlan, SyncResult, repository_name};
 pub use validation::validate_slug;

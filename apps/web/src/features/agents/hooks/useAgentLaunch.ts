@@ -9,12 +9,14 @@ export function useAgentLaunch({
   selectedAgentId,
   selectedConfigId,
   selectedSkillProfileId,
+  selectedAgentWorkspaceId,
   homePaths,
   reportError,
   closeSidebar,
   bumpFocus,
   onLaunched,
   addSession,
+  launchSession,
   refreshHistory,
   refreshData,
 }: {
@@ -22,12 +24,18 @@ export function useAgentLaunch({
   selectedAgentId: string | null;
   selectedConfigId: string | null;
   selectedSkillProfileId: string | null;
+  selectedAgentWorkspaceId: string | null;
   homePaths: HomePaths;
   reportError: (message: string) => void;
   closeSidebar: () => void;
   bumpFocus: () => void;
   onLaunched: () => void;
   addSession: (session: Awaited<ReturnType<typeof createAgentSession>>["agentSession"]) => void;
+  launchSession: (
+    options: Parameters<typeof createAgentSession>[0],
+    targetWorkspaceId: string | null,
+    onCreated: (session: Awaited<ReturnType<typeof createAgentSession>>["agentSession"]) => void,
+  ) => Promise<Awaited<ReturnType<typeof createAgentSession>> | null>;
   refreshHistory: () => Promise<void>;
   refreshData: () => Promise<void>;
 }) {
@@ -45,6 +53,7 @@ export function useAgentLaunch({
         setLaunching(false);
         return false;
       }
+      const targetWorkspaceId = selectedAgentWorkspaceId;
       try {
         if (upstreamSessionId && !selectedAgent.supportsResume) {
           reportError(`${selectedAgent.name} does not support resuming sessions`);
@@ -57,19 +66,22 @@ export function useAgentLaunch({
               agentId: selectedAgent.id,
               upstreamSessionId,
               launchConfigId: selectedConfigId ?? undefined,
+              workspaceId: selectedAgentWorkspaceId,
               ...(skillProfileId ? { skillProfileId } : {}),
             }
           : {
               agentId: selectedAgent.id,
               cwd,
               launchConfigId: selectedConfigId ?? undefined,
+              workspaceId: selectedAgentWorkspaceId,
               ...(skillProfileId ? { skillProfileId } : {}),
             };
-        const { agentSession } = await createAgentSession(launchOptions);
-        addSession({
+        const normalizeAndAdd = (agentSession: Awaited<ReturnType<typeof createAgentSession>>["agentSession"]) => addSession({
           ...agentSession,
           cwd: logicalPath(agentSession.cwd, homePaths?.home, homePaths?.resolvedHome),
         });
+        const result = await launchSession(launchOptions, targetWorkspaceId, normalizeAndAdd);
+        if (!result) return false;
         onLaunched();
         closeSidebar();
         bumpFocus();
@@ -89,6 +101,7 @@ export function useAgentLaunch({
     },
     [
       addSession,
+      launchSession,
       agents,
       bumpFocus,
       closeSidebar,
@@ -98,6 +111,7 @@ export function useAgentLaunch({
       refreshHistory,
       reportError,
       selectedAgentId,
+      selectedAgentWorkspaceId,
       selectedConfigId,
       selectedSkillProfileId,
     ],

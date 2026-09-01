@@ -15,6 +15,10 @@ impl Skillink {
         .await?)
     }
 
+    pub async fn skill_repository_id(&self, identifier: &str) -> Result<Option<String>> {
+        Ok(self.resolve_skill(identifier).await?.repository_id)
+    }
+
     pub async fn read_skill_manifest(&self, identifier: &str) -> Result<String> {
         let skill = self.resolve_skill(identifier).await?;
         let directory = self.skill_path(&skill)?;
