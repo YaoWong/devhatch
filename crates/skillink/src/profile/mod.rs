@@ -41,6 +41,11 @@ impl Skillink {
         store::list_profiles(self).await
     }
 
+    pub async fn rename_profile(&self, id: &str, slug: &str) -> Result<Profile> {
+        validate_slug(slug)?;
+        store::rename_profile(self, id, slug).await
+    }
+
     pub async fn show_profile(&self, identifier: &str) -> Result<ProfileDetail> {
         let profile = store::resolve_profile(self, identifier).await?;
         let skills = store::profile_skills(self, &profile.id).await?;
@@ -283,6 +288,47 @@ mod tests {
                 .unwrap()
                 .next()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn renames_profile_without_changing_identity_or_skills() {
+        let temp = TempDir::new().unwrap();
+        let app = Skillink::open(Some(temp.path().to_owned())).await.unwrap();
+        let skill = app.create_skill("first", "First skill").await.unwrap();
+        let profile = app.create_profile("default").await.unwrap();
+        app.enable_skill(&profile.id, &skill.id).await.unwrap();
+
+        let renamed = app.rename_profile(&profile.id, "renamed").await.unwrap();
+
+        assert_eq!(renamed.id, profile.id);
+        assert_eq!(renamed.slug, "renamed");
+        let detail = app.show_profile(&profile.id).await.unwrap();
+        assert_eq!(detail.profile.id, renamed.id);
+        assert_eq!(detail.profile.slug, renamed.slug);
+        assert_eq!(detail.skills.len(), 1);
+        assert!(temp.path().join("profiles").join(profile.id).is_dir());
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_duplicate_and_missing_profile_renames() {
+        let temp = TempDir::new().unwrap();
+        let app = Skillink::open(Some(temp.path().to_owned())).await.unwrap();
+        let profile = app.create_profile("default").await.unwrap();
+        app.create_profile("other").await.unwrap();
+
+        assert!(matches!(
+            app.rename_profile(&profile.id, "Invalid").await,
+            Err(Error::InvalidSlug(_))
+        ));
+        assert!(app.rename_profile(&profile.id, "other").await.is_err());
+        assert!(matches!(
+            app.rename_profile("missing", "renamed").await,
+            Err(Error::NotFound(_))
+        ));
+        assert_eq!(
+            app.show_profile(&profile.id).await.unwrap().profile.slug,
+            "default"
         );
     }
 

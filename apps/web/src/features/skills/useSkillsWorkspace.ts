@@ -13,6 +13,7 @@ import {
   previewSkillRepositorySync,
   replaceSkillProfileSkills,
   syncSkillRepository,
+  updateSkillProfile,
   updateSkillRepository,
 } from "../../api/skills";
 import type { Skill, SkillProfile, SkillProfileDetail, SkillRepository, SkillRepositoryOperation, SkillRepositoryOperationStatus, SkillSyncPlan } from "../../types/skills";
@@ -255,6 +256,24 @@ export function useSkillsWorkspace(active: boolean, reportError: (message: strin
          setSelectedProfileId(id);
        }
        return saved;
+     },
+     renameProfile: async (id: string, slug: string) => {
+       setProfileError(null);
+       const saved = await mutate(
+         async () => {
+           const { skillProfile } = await updateSkillProfile(id, { slug });
+           if (!mounted.current) return;
+           setProfiles((current) => current
+             .map((profile) => profile.id === id ? skillProfile : profile)
+             .sort((left, right) => left.slug.localeCompare(right.slug)));
+           setProfileDetail((current) => current?.profile.id === id
+             ? { ...current, profile: skillProfile }
+             : current);
+         },
+         async () => {},
+         setProfileError,
+       );
+       return saved && selectedProfileIdRef.current === id;
      },
      saveProfile: async (skillIds: string[]) => {
        const targetId = selectedProfileIdRef.current;

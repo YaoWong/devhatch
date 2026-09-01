@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { flushSync } from "react-dom";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
-import { TextInputDialog } from "../../shared/ui/TextInputDialog";
+import { InlineRename } from "../../shared/ui/InlineRename";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
   minimizeTerminal,
@@ -465,7 +465,6 @@ export function TerminalWorkspace({
 
   return (
     <div className={`terminal-workspace ${visible ? "" : "workspace-hidden"}`}>
-      {renamingSession && <TextInputDialog title={`Rename ${sessionLabel}`} label="Name" initialValue={renamingSession.name} onSubmit={(name) => onRename(renamingSession, name)} onClose={() => setRenamingSession(null)} />}
       <div className="stage terminal-stage">
         {hasThumbnailDock && <div
           ref={thumbnailDockRef}
@@ -524,11 +523,11 @@ export function TerminalWorkspace({
             >
                <header className="terminal-window-titlebar">
                  <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} />
-                  <strong>{sessionDisplayName(session)}</strong>
-                  <small>{session.cwd}</small>
-                  <button aria-label={`Rename ${session.name}`} onClick={(event) => { event.stopPropagation(); setRenamingSession(session); }}><Pencil /></button>
-                <button aria-label={`Minimize ${session.name}`} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
-                <button aria-label={`Close ${session.name}`} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
+                   {renamingSession?.id === session.id ? <InlineRename initialValue={session.name} label={`${sessionLabel} name`} onSubmit={(name) => onRename(session, name)} onCancel={() => setRenamingSession(null)} /> : <strong>{sessionDisplayName(session)}</strong>}
+                   <small>{session.cwd}</small>
+                   <button aria-label={`Rename ${session.name}`} disabled={renamingSession?.id === session.id} onClick={(event) => { event.stopPropagation(); setRenamingSession(session); }}><Pencil /></button>
+                 <button aria-label={`Minimize ${session.name}`} disabled={renamingSession?.id === session.id} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
+                 <button aria-label={`Close ${session.name}`} disabled={renamingSession?.id === session.id} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
               </header>
                <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
             </section>;

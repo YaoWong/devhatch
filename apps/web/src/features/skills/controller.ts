@@ -21,5 +21,6 @@ export type SkillsController = {
   createSkill: (slug: string, description: string) => Promise<boolean>;
   deleteSkill: (id: string) => Promise<boolean>;
   createProfile: (slug: string) => Promise<boolean>;
+  renameProfile: (id: string, slug: string) => Promise<boolean>;
   saveProfile: (skillIds: string[]) => Promise<boolean>;
 };

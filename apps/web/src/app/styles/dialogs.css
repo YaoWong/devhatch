@@ -55,11 +55,11 @@
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 24px; background: rgb(var(--overlay-color) / 36%); backdrop-filter: blur(12px) saturate(120%); animation: dialog-backdrop-in 180ms ease both; }
 .config-backdrop { z-index: 1000; }
-.action-dialog, .rename-dialog { width: min(420px, 100%); padding: 22px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 28px 80px rgb(0 0 0 / 24%); }
-.action-dialog h2, .rename-dialog h2 { margin: 0; font-size: 17px; }
-.action-dialog p, .rename-dialog p { margin: 8px 0 16px; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
-.rename-dialog label, .config-editor > label { display: grid; gap: 6px; color: var(--color-text-muted); font-size: 10px; }
-.rename-dialog input, .config-editor > label input { height: 36px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; font-size: 11px; }
+.action-dialog { width: min(420px, 100%); padding: 22px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 28px 80px rgb(0 0 0 / 24%); }
+.action-dialog h2 { margin: 0; font-size: 17px; }
+.action-dialog p { margin: 8px 0 16px; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.config-editor > label { display: grid; gap: 6px; color: var(--color-text-muted); font-size: 10px; }
+.config-editor > label input { height: 36px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; font-size: 11px; }
 .dialog-buttons { display: flex; justify-content: flex-end; gap: 7px; margin-top: 18px; }
 .dialog-buttons button { min-height: 36px; padding: 0 13px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); font-size: 11px; font-weight: 600; }
 .dialog-buttons .primary { border-color: var(--color-text); background: var(--color-text); color: var(--color-on-solid); }

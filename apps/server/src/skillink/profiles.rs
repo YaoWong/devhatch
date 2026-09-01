@@ -22,6 +22,12 @@ pub(crate) struct CreateProfileRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct UpdateProfileRequest {
+    slug: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ReplaceProfileSkillsRequest {
     skill_ids: Vec<String>,
 }
@@ -50,6 +56,24 @@ pub(crate) async fn create_profile(
             Json(serde_json::json!({ "skillProfile": ProfileView::from(profile) })),
         )
             .into_response(),
+        Err(error) => skillink_error(error),
+    }
+}
+
+pub(crate) async fn update_profile(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    request: Result<Json<UpdateProfileRequest>, JsonRejection>,
+) -> Response {
+    let Json(request) = match request {
+        Ok(request) => request,
+        Err(_) => return invalid_request(),
+    };
+    match state.skillink().rename_profile(&id, &request.slug).await {
+        Ok(profile) => Json(serde_json::json!({
+            "skillProfile": ProfileView::from(profile)
+        }))
+        .into_response(),
         Err(error) => skillink_error(error),
     }
 }

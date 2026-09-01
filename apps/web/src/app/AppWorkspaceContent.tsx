@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentWorkspace } from "../features/agents/AgentWorkspace";
-import { SettingsView, type SettingsSection } from "../features/settings/SettingsView";
+import { SettingsView } from "../features/settings/SettingsView";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
@@ -33,8 +33,6 @@ type AppWorkspaceContentProps = {
   agentWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   skillsSection: SkillsSection;
-  settingsSection: SettingsSection;
-  onSelectSettingsSection: (section: SettingsSection) => void;
   onCloseSession: (session: TerminalInfo, isAgent: boolean) => void;
   onPickAgentPath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
@@ -70,8 +68,6 @@ export function AppWorkspaceContent({
   agentWorkspaceLayouts,
   error,
   skillsSection,
-  settingsSection,
-  onSelectSettingsSection,
   onCloseSession,
   onPickAgentPath,
   onPhaseChange,
@@ -169,8 +165,6 @@ export function AppWorkspaceContent({
       )}
       {mode === "settings" && (
         <SettingsView
-          section={settingsSection}
-          onSelectSection={onSelectSettingsSection}
           onLogout={onLogout}
           logoutBusy={logoutBusy}
           logoutError={logoutError}

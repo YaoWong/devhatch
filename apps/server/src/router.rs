@@ -69,7 +69,10 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             "/api/skill-profiles",
             get(skillink::list_profiles).post(skillink::create_profile),
         )
-        .route("/api/skill-profiles/{id}", get(skillink::profile_detail))
+        .route(
+            "/api/skill-profiles/{id}",
+            get(skillink::profile_detail).patch(skillink::update_profile),
+        )
         .route(
             "/api/skill-profiles/{id}/skills",
             axum::routing::put(skillink::replace_profile_skills),

@@ -2,7 +2,6 @@ import { ChevronDown, ChevronRight, Code2, Layers3 } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { AgentIcon } from "../../shared/branding/Branding";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
-import { TextInputDialog } from "../../shared/ui/TextInputDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type {
   Agent,
@@ -174,14 +173,15 @@ export function AgentRailPage({
           onClose={() => setConfigOpen(false)}
         />
       )}
-      {renameWorkspace && <TextInputDialog title="Rename workspace" label="Name" initialValue={renameWorkspace.name ?? ""} onSubmit={(name) => onRenameWorkspace(renameWorkspace, name)} onClose={() => setRenameWorkspace(null)} />}
-      {renamePath && <TextInputDialog title="Rename launch path" description={renamePath.path} label="Alias" initialValue={renamePath.alias ?? ""} onSubmit={(alias) => onRenamePath(renamePath, alias)} onClose={() => setRenamePath(null)} />}
       <AgentWorkspaceList
         workspaces={workspaces}
         selectedWorkspaceId={selectedWorkspaceId}
         launching={launching}
+        renamingId={renameWorkspace?.id ?? null}
         onSelect={onSelectWorkspace}
         onRename={setRenameWorkspace}
+        onRenameSubmit={onRenameWorkspace}
+        onRenameCancel={() => setRenameWorkspace(null)}
         onDelete={onDeleteWorkspace}
         onCreate={onCreateWorkspace}
         onConfirm={onConfirm}
@@ -277,12 +277,15 @@ export function AgentRailPage({
         homePaths={homePaths}
         pathDisplay={pathDisplay}
         page={page}
+        renamingId={renamePath?.id ?? null}
         onPageChange={setPage}
         onChoose={onChoosePath}
         onSelect={(path) => onSelectPath(path.id)}
         onLaunch={onLaunch}
         onPin={(path) => void onPinPath(path)}
         onRename={setRenamePath}
+        onRenameSubmit={onRenamePath}
+        onRenameCancel={() => setRenamePath(null)}
         onDelete={deletePath}
       />
       <AgentSessionList

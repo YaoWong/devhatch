@@ -12,7 +12,7 @@ use skillink::Error;
 
 pub(crate) use profiles::{
     create_profile, disable_profile_skill, enable_profile_skill, list_profiles, profile_detail,
-    replace_profile_skills,
+    replace_profile_skills, update_profile,
 };
 pub(crate) use repositories::{
     create_repository, list_repositories, preview_repository_sync, remove_repository,

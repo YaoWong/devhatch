@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight, Folder, FolderGit2, Plus, RotateCcw, Save, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderGit2, Pencil, Plus, RotateCcw, Save, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { Skill } from "../../types/skills";
+import { InlineRename } from "../../shared/ui/InlineRename";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
@@ -14,14 +15,17 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   const [draft, setDraft] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [renamingProfileId, setRenamingProfileId] = useState<string | null>(null);
   const saveRef = useRef(false);
   const showProfileLoading = useDelayedLoading(controller.profileLoading);
+  const detailProfileId = controller.profileDetail?.profile.id;
+  const detailSkills = controller.profileDetail?.skills;
   useLayoutEffect(() => {
-    if (!controller.profileDetail || controller.profileDetail.profile.id !== controller.selectedProfileId) return;
-    const next = new Set(controller.profileDetail.skills.map((skill) => skill.id));
+    if (!detailProfileId || detailProfileId !== controller.selectedProfileId || !detailSkills) return;
+    const next = new Set(detailSkills.map((skill) => skill.id));
     setDraft(next);
     setSaved(new Set(next));
-  }, [controller.profileDetail, controller.selectedProfileId]);
+  }, [detailProfileId, detailSkills, controller.selectedProfileId]);
   const dirty = !sameSet(draft, saved);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -83,8 +87,15 @@ export function Profiles({ controller }: { controller: SkillsController }) {
         <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
           <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
             <div className="profile-skills-header">
-              <span>
-                <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
+              <span className="profile-title">
+                {selectedProfile && renamingProfileId === selectedProfile.id ? (
+                  <InlineRename initialValue={selectedProfile.slug} label="profile slug" maxLength={64} onSubmit={(nextSlug) => controller.renameProfile(selectedProfile.id, nextSlug)} onCancel={() => setRenamingProfileId(null)} />
+                ) : (
+                  <span className="profile-title-row">
+                    <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
+                    {selectedProfile && <button className="profile-rename" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil /></button>}
+                  </span>
+                )}
                 <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
               </span>
               <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />

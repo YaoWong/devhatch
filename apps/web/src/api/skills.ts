@@ -117,6 +117,14 @@ export function createSkillProfile(input: { slug: string }) {
   );
 }
 
+export function updateSkillProfile(id: string, input: { slug: string }) {
+  return requestJson<{ skillProfile: SkillProfile }>(
+    `/api/skill-profiles/${encodeURIComponent(id)}`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
+    "Unable to rename profile",
+  );
+}
+
 export function getSkillProfile(id: string) {
   return requestJson<{ skillProfileDetail: SkillProfileDetail }>(
     `/api/skill-profiles/${encodeURIComponent(id)}`,

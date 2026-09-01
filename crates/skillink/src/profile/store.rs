@@ -22,6 +22,15 @@ pub(super) async fn list_profiles(app: &Skillink) -> Result<Vec<Profile>> {
     )
 }
 
+pub(super) async fn rename_profile(app: &Skillink, id: &str, slug: &str) -> Result<Profile> {
+    sqlx::query_as::<_, Profile>("UPDATE profiles SET slug = ? WHERE id = ? RETURNING id, slug")
+        .bind(slug)
+        .bind(id)
+        .fetch_optional(app.pool())
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("profile {id}")))
+}
+
 pub(super) async fn resolve_profile(app: &Skillink, identifier: &str) -> Result<Profile> {
     sqlx::query_as::<_, Profile>(
         "SELECT id, slug FROM profiles WHERE id = ? OR slug = ? COLLATE NOCASE",

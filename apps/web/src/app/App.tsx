@@ -9,7 +9,6 @@ import { useInitialWorkspaceData } from "./useInitialWorkspaceData";
 import { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { useNavigation } from "../features/navigation/useNavigation";
 import { readCanvasSidebarPinned, writeCanvasSidebarPinned } from "../features/navigation/canvasSidebarPreference";
-import type { SettingsSection } from "../features/settings/SettingsView";
 import { useTheme } from "../shared/theme/ThemeContext";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
@@ -133,7 +132,6 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialCapacity);
   const [terminalPathDisplay, setTerminalPathDisplayState] = useState<LaunchPathDisplay>(() => initialPathDisplay(TERMINAL_PATH_DISPLAY_STORAGE_KEY));
   const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(false);
@@ -700,10 +698,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            agentThumbnailSide={agentThumbnailSide}
            agentWorkspaceLayouts={agentWorkspaceLayouts}
            error={error}
-          skillsSection={skillsSection}
-           settingsSection={settingsSection}
-           onSelectSettingsSection={setSettingsSection}
-           onCloseSession={requestClose}
+           skillsSection={skillsSection}
+            onCloseSession={requestClose}
           onPickAgentPath={() => setPickerPurpose("agent")}
           onPhaseChange={setPhase}
            onTerminalLayoutCountChange={setTerminalLayoutCount}

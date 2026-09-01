@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Folder, Pencil, Pin, Play, Plus, Trash2 } fr
 import type { AgentLaunchPath } from "../../types/agents";
 import type { LaunchPathDisplay } from "../../types/app";
 import { displayPath, workspaceName } from "../../shared/lib/utils";
+import { InlineRename } from "../../shared/ui/InlineRename";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
@@ -14,12 +15,15 @@ export function LaunchPaths({
   homePaths,
   pathDisplay,
   page,
+  renamingId,
   onPageChange,
   onChoose,
   onSelect,
   onLaunch,
   onPin,
   onRename,
+  onRenameSubmit,
+  onRenameCancel,
   onDelete,
 }: {
   paths: AgentLaunchPath[];
@@ -30,12 +34,15 @@ export function LaunchPaths({
   homePaths: HomePaths;
   pathDisplay: LaunchPathDisplay;
   page: number;
+  renamingId: string | null;
   onPageChange: (page: number) => void;
   onChoose: () => void;
   onSelect: (path: AgentLaunchPath) => void;
   onLaunch: (path: AgentLaunchPath) => void;
   onPin: (path: AgentLaunchPath) => void;
   onRename: (path: AgentLaunchPath) => void;
+  onRenameSubmit: (path: AgentLaunchPath, alias: string) => Promise<boolean>;
+  onRenameCancel: () => void;
   onDelete: (path: AgentLaunchPath) => void;
 }) {
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
@@ -57,7 +64,14 @@ export function LaunchPaths({
               className={`agent-path-row ${selectedPathId === item.id ? "active" : ""}`}
             >
               <Folder />
-              <button
+              {renamingId === item.id ? (
+                <div className="path-main">
+                  <span>
+                    <InlineRename initialValue={item.alias || workspaceName(item.path)} label="launch path alias" allowEmpty onSubmit={(alias) => onRenameSubmit(item, alias)} onCancel={onRenameCancel} />
+                    {pathDisplay === "folder" && <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>}
+                  </span>
+                </div>
+              ) : <button
                 type="button"
                 className="path-main"
                 title={item.path}
@@ -73,13 +87,14 @@ export function LaunchPaths({
                     <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>
                   )}
                 </span>
-              </button>
+              </button>}
               <span className="path-actions">
                 <button
                   className={item.pinned ? "pinned" : ""}
                   aria-label={item.pinned ? "Unpin path" : "Pin path"}
                   aria-pressed={item.pinned}
                   title={item.pinned ? "Pinned" : "Pin path"}
+                  disabled={renamingId === item.id}
                   onClick={(event) => {
                     onPin(item);
                     if (event.detail > 0) event.currentTarget.blur();
@@ -89,7 +104,7 @@ export function LaunchPaths({
                 </button>
                 <button
                   aria-label="Launch path"
-                  disabled={!available || launching}
+                  disabled={!available || launching || renamingId === item.id}
                   onClick={(event) => {
                     onLaunch(item);
                     if (event.detail > 0) event.currentTarget.blur();
@@ -99,6 +114,7 @@ export function LaunchPaths({
                 </button>
                 <button
                   aria-label="Rename alias"
+                  disabled={renamingId === item.id}
                   onClick={(event) => {
                     onRename(item);
                     if (event.detail > 0) event.currentTarget.blur();
@@ -108,6 +124,7 @@ export function LaunchPaths({
                 </button>
                 <button
                   aria-label="Delete path"
+                  disabled={renamingId === item.id}
                   onClick={(event) => {
                     onDelete(item);
                     if (event.detail > 0) event.currentTarget.blur();
