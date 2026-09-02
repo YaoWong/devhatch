@@ -67,10 +67,10 @@ export function createAgentSession(options: {
   );
 }
 
-export function pasteAgentImage(id: string, image: Blob) {
+export function pasteAgentImage(id: string, image: Blob, signal?: AbortSignal) {
   return requestEmpty(
     `/api/agent-sessions/${encodeURIComponent(id)}/image-paste`,
-    { method: "POST", headers: { "content-type": image.type }, body: image },
+    { method: "POST", headers: { "content-type": image.type }, body: image, signal },
     "Unable to paste image",
   );
 }

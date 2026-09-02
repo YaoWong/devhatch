@@ -43,6 +43,19 @@ pub(super) fn prepare_opencode(
     Ok(())
 }
 
+pub(super) fn configure_pi_endpoint(
+    run_dir: &Path,
+    command: &mut CommandBuilder,
+) -> std::io::Result<crate::session::RuntimeEndpoint> {
+    let password = Uuid::new_v4().to_string();
+    command.env(
+        "DEVHATCH_PI_IMAGE_ENDPOINT",
+        run_dir.join("pi-image-endpoint.json"),
+    );
+    command.env("DEVHATCH_PI_IMAGE_PASSWORD", &password);
+    Ok(crate::session::RuntimeEndpoint { port: 0, password })
+}
+
 pub(crate) async fn paste_image(
     client: &reqwest::Client,
     session: &Session,
@@ -55,8 +68,65 @@ pub(crate) async fn paste_image(
         .ok_or(PasteImageError::Unsupported)?;
     match kind {
         AgentKind::OpenCode => paste_opencode_image(client, session, content_type, bytes).await,
-        AgentKind::Codex | AgentKind::TraeCli | AgentKind::Pi => Err(PasteImageError::Unsupported),
+        AgentKind::Pi => paste_pi_image(client, session, content_type, bytes).await,
+        AgentKind::Codex | AgentKind::TraeCli => Err(PasteImageError::Unsupported),
     }
+}
+
+async fn paste_pi_image(
+    client: &reqwest::Client,
+    session: &Session,
+    content_type: &str,
+    bytes: &[u8],
+) -> Result<(), PasteImageError> {
+    validate_png(content_type, bytes)?;
+    let _runtime_input = session.runtime_input.lock().await;
+    if !session.is_live() {
+        return Err(PasteImageError::Unavailable);
+    }
+    let endpoint = session
+        .runtime_endpoint()
+        .ok_or(PasteImageError::Unavailable)?;
+    let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
+    let endpoint_file = run_dir.join("pi-image-endpoint.json");
+    let request_id = Uuid::new_v4().simple().to_string();
+    for _ in 0..50 {
+        if !session.is_live() {
+            return Err(PasteImageError::Unavailable);
+        }
+        let port = std::fs::read(&endpoint_file)
+            .ok()
+            .filter(|bytes| bytes.len() <= 128)
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|value| value.get("port")?.as_u64())
+            .and_then(|port| u16::try_from(port).ok())
+            .filter(|port| *port != 0);
+        let Some(port) = port else {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            continue;
+        };
+        let url = format!("http://127.0.0.1:{port}/image-paste");
+        match client
+            .post(&url)
+            .timeout(std::time::Duration::from_secs(18))
+            .basic_auth("pi", Some(&endpoint.password))
+            .header(reqwest::header::CONTENT_TYPE, "image/png")
+            .header("x-devhatch-request-id", &request_id)
+            .body(bytes.to_vec())
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => return Ok(()),
+            Ok(response) if response.status() == reqwest::StatusCode::CONFLICT => {
+                return Err(PasteImageError::Busy);
+            }
+            Ok(response) if response.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY => {
+                return Err(PasteImageError::InvalidImage);
+            }
+            _ => return Err(PasteImageError::Unavailable),
+        }
+    }
+    Err(PasteImageError::Unavailable)
 }
 
 async fn paste_opencode_image(
@@ -263,7 +333,7 @@ mod tests {
 
     use portable_pty::CommandBuilder;
 
-    use super::{PasteImageError, prepare_opencode, validate_png};
+    use super::{PasteImageError, configure_pi_endpoint, prepare_opencode, validate_png};
 
     fn png(width: u32, height: u32) -> Vec<u8> {
         fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
@@ -311,6 +381,15 @@ mod tests {
             validate_png("image/png", &png(10_000, 10_000)),
             Err(PasteImageError::InvalidImage)
         );
+    }
+
+    #[test]
+    fn configures_private_pi_image_endpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut command = CommandBuilder::new("pi");
+        let endpoint = configure_pi_endpoint(temp.path(), &mut command).unwrap();
+        assert_eq!(endpoint.port, 0);
+        assert!(!endpoint.password.is_empty());
     }
 
     #[test]

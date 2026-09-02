@@ -114,7 +114,7 @@ export function TerminalWorkspace({
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
-  runtimeImagePaste?: (session: TerminalInfo) => ((image: Blob) => Promise<void>) | undefined;
+  runtimeImagePaste?: (session: TerminalInfo) => ((image: Blob, signal?: AbortSignal) => Promise<void>) | undefined;
   onOpenLink: (url: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;

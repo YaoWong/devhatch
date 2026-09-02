@@ -101,7 +101,7 @@ export function AgentWorkspace({
     runtimeImagePaste={(session) => {
       const agentSession = session as AgentSession;
       if (!supportsRuntimeImagePaste(agentSession.agentId)) return undefined;
-      return (image) => pasteAgentImage(session.id, image);
+      return (image, signal) => pasteAgentImage(session.id, image, signal);
     }}
     onOpenLink={onOpenLink}
     onError={onError}

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type ITheme } from "@xterm/xterm";
@@ -8,7 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import type { ThemeId } from "../../types/settings";
 import { SocketConnection } from "./socketConnection";
-import { clipboardImage, pngImage } from "./runtimeImagePaste";
+import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
 import { terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 
 const terminalThemes: Record<ThemeId, ITheme> = {
@@ -52,7 +53,7 @@ export function TerminalSurface({
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
-  onPasteImage?: (image: Blob) => Promise<void>;
+  onPasteImage?: (image: Blob, signal?: AbortSignal) => Promise<void>;
   thumbnailEnabled?: boolean;
   thumbnailIntervalMs?: number;
   onThumbnail?: (id: string, blob: Blob) => void;
@@ -61,6 +62,7 @@ export function TerminalSurface({
   onError: (message: string) => void;
 }) {
   const { themeId } = useTheme();
+  const [imagePastePhase, setImagePastePhase] = useState<ImagePastePhase>(null);
   const initialThemeRef = useRef(themeId);
   const themeIdRef = useRef(themeId);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -358,6 +360,7 @@ export function TerminalSurface({
       else inputBuffer = (inputBuffer + data).slice(-64 * 1024);
     });
     let pasteInProgress = false;
+    let pasteController: AbortController | null = null;
     const paste = (event: ClipboardEvent) => {
       const pasteImage = onPasteImageRef.current;
       if (!pasteImage) return;
@@ -367,10 +370,20 @@ export function TerminalSurface({
       event.stopPropagation();
       if (pasteInProgress) return;
       pasteInProgress = true;
-      void pngImage(image)
-        .then(pasteImage)
-        .catch((reason) => onError(reason instanceof Error ? reason.message : String(reason)))
-        .finally(() => { pasteInProgress = false; });
+      pasteController = new AbortController();
+      void runImagePaste(
+        image,
+        pasteImage,
+        (phase) => { if (!disposed) setImagePastePhase(phase); },
+        pasteController,
+      )
+        .catch((reason) => {
+          if (!disposed) onError(reason instanceof Error ? reason.message : String(reason));
+        })
+        .finally(() => {
+          pasteInProgress = false;
+          pasteController = null;
+        });
     };
     container.addEventListener("paste", paste, true);
     const observer = new ResizeObserver(scheduleResize);
@@ -386,6 +399,8 @@ export function TerminalSurface({
       });
     }
     return () => {
+      pasteController?.abort();
+      setImagePastePhase(null);
       disposed = true;
       connection.stop();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
@@ -408,9 +423,16 @@ export function TerminalSurface({
   }, [session.id, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
-      ref={containerRef}
       className={`terminal-surface ${rendered ? "active" : ""} ${focused ? "focused" : ""} ${className ?? ""}`}
       onPointerDown={onFocus}
-    />
+    >
+      <div ref={containerRef} className="terminal-xterm-host" />
+      {imagePastePhase && (
+        <div className="terminal-image-paste-status" role="status" aria-live="polite">
+          <LoaderCircle className="spin" />
+          {imagePastePhase === "preparing" ? "Preparing image…" : "Pasting image…"}
+        </div>
+      )}
+    </div>
   );
 }

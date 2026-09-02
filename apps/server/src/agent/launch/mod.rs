@@ -14,7 +14,9 @@ mod workspace;
 
 use super::{
     AgentKind, CODEX_ID, CODEX_NAME, OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID,
-    TRAECLI_NAME, runtime::events::start_event_watcher, runtime_input::prepare_opencode,
+    TRAECLI_NAME,
+    runtime::events::start_event_watcher,
+    runtime_input::{configure_pi_endpoint, prepare_opencode},
 };
 use crate::{
     filesystem::{default_cwd, resolve_path},
@@ -516,6 +518,13 @@ pub(super) fn spawn_pi(
         command.arg(argument);
     }
     configure_environment(&mut command, &cwd);
+    let runtime_endpoint = match configure_pi_endpoint(&run_dir, &mut command) {
+        Ok(endpoint) => Some(endpoint),
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&run_dir);
+            return Err(error.into());
+        }
+    };
     command.env("DEVHATCH_AGENT_ID", PI_ID);
     command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
@@ -537,7 +546,7 @@ pub(super) fn spawn_pi(
             agent_id: Some(PI_ID),
             agent_name: Some(PI_NAME),
             cleanup_path: Some(cleanup_path),
-            runtime_endpoint: None,
+            runtime_endpoint,
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| start_pi_identity_watcher(session, state, identity_state),

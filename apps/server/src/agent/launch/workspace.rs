@@ -100,25 +100,178 @@ fn link_codex_entry(
     symlink(source, runtime_home.join(name.as_ref()))
 }
 
-const PI_IDENTITY_EXTENSION: &str = r#"import { open, rename } from "node:fs/promises"
+const PI_IDENTITY_EXTENSION: &str = r#"import { open, rename, unlink } from "node:fs/promises"
+import { createServer } from "node:http"
+import { resizeImage } from "@earendil-works/pi-coding-agent"
+
+const imageMarker = /\[\[devhatch-image:([0-9a-f]{32})\]\]/g
+const pendingImages = new Map()
+const activeRequests = new Set()
+let processingImages = 0
+let imageServer
+let serverGeneration = 0
+let shuttingDown = false
+let uiPromptActive = false
 
 export default function (pi) {
   pi.on("session_start", async (_event, ctx) => {
+    const generation = ++serverGeneration
+    shuttingDown = true
+    if (imageServer) {
+      imageServer.closeAllConnections()
+      await new Promise((resolve) => imageServer.close(resolve))
+      imageServer = undefined
+    }
+    await unlink(process.env.DEVHATCH_PI_IMAGE_ENDPOINT ?? "").catch(() => {})
+    activeRequests.clear()
+    pendingImages.clear()
+    shuttingDown = false
     const target = process.env.DEVHATCH_PI_STATE_FILE
-    if (!target) return
-    const temporary = `${target}.${process.pid}.tmp`
-    const state = {
-      id: ctx.sessionManager.getSessionId(),
-      file: ctx.sessionManager.getSessionFile(),
-      cwd: ctx.cwd,
+    if (target) {
+      const temporary = `${target}.${process.pid}.tmp`
+      const state = {
+        id: ctx.sessionManager.getSessionId(),
+        file: ctx.sessionManager.getSessionFile(),
+        cwd: ctx.cwd,
+      }
+      const handle = await open(temporary, "wx", 0o600)
+      try {
+        await handle.writeFile(JSON.stringify(state))
+      } finally {
+        await handle.close()
+      }
+      await rename(temporary, target)
     }
-    const handle = await open(temporary, "wx", 0o600)
+    const endpoint = process.env.DEVHATCH_PI_IMAGE_ENDPOINT
+    const password = process.env.DEVHATCH_PI_IMAGE_PASSWORD
+    if (!endpoint || !password) return
+    const authorization = `Basic ${Buffer.from(`pi:${password}`).toString("base64")}`
+    imageServer = createServer((request, response) => {
+      void (async () => {
+        if (request.method !== "POST" || request.url !== "/image-paste" || request.headers.authorization !== authorization) {
+          response.writeHead(404).end()
+          return
+        }
+        const requestId = request.headers["x-devhatch-request-id"]
+        if (typeof requestId !== "string" || !/^[0-9a-f]{32}$/.test(requestId)) {
+          response.writeHead(400).end()
+          return
+        }
+        if (pendingImages.has(requestId)) {
+          response.writeHead(204).end()
+          return
+        }
+        if (activeRequests.has(requestId)) {
+          response.writeHead(409).end()
+          return
+        }
+        if (generation !== serverGeneration || shuttingDown || uiPromptActive || pendingImages.size + processingImages >= 8) {
+          response.writeHead(409).end()
+          return
+        }
+        activeRequests.add(requestId)
+        processingImages += 1
+        const chunks = []
+        let length = 0
+        let expired = false
+        const timeout = setTimeout(() => {
+          expired = true
+          if (!response.headersSent) response.writeHead(408).end()
+          if (!request.complete) request.destroy()
+        }, 15000)
+        try {
+          for await (const chunk of request) {
+            length += chunk.length
+            if (length > 10 * 1024 * 1024) {
+              response.writeHead(413).end()
+              return
+            }
+            chunks.push(chunk)
+          }
+          if (expired) return
+          if (generation !== serverGeneration || shuttingDown || uiPromptActive) {
+            response.writeHead(409).end()
+            return
+          }
+          const image = await resizeImage(Buffer.concat(chunks), "image/png")
+          if (!image) throw new Error("Unable to prepare pasted image")
+          if (expired) return
+          if (generation !== serverGeneration || shuttingDown || uiPromptActive) {
+            response.writeHead(409).end()
+            return
+          }
+          pendingImages.set(requestId, { type: "image", mimeType: image.mimeType, data: image.data })
+          try {
+            ctx.ui.pasteToEditor(`[[devhatch-image:${requestId}]]`)
+          } catch (error) {
+            pendingImages.delete(requestId)
+            throw error
+          }
+          response.writeHead(204).end()
+        } catch {
+          if (!response.headersSent) response.writeHead(422).end()
+        } finally {
+          activeRequests.delete(requestId)
+          processingImages -= 1
+          clearTimeout(timeout)
+        }
+      })()
+    })
+    await new Promise((resolve, reject) => {
+      imageServer.once("error", reject)
+      imageServer.listen(0, "127.0.0.1", resolve)
+    })
+    const port = imageServer.address().port
+    const temporaryEndpoint = `${endpoint}.${process.pid}.tmp`
+    const endpointHandle = await open(temporaryEndpoint, "wx", 0o600)
     try {
-      await handle.writeFile(JSON.stringify(state))
+      await endpointHandle.writeFile(JSON.stringify({ port }))
     } finally {
-      await handle.close()
+      await endpointHandle.close()
     }
-    await rename(temporary, target)
+    await rename(temporaryEndpoint, endpoint)
+  })
+
+  pi.on("ui_prompt_start", () => {
+    uiPromptActive = true
+  })
+
+  pi.on("ui_prompt_end", () => {
+    uiPromptActive = false
+  })
+
+  pi.on("input", async (event) => {
+    const ids = [...event.text.matchAll(imageMarker)].map((match) => match[1])
+    const uniqueIds = [...new Set(ids)]
+    const availableIds = uniqueIds.filter((id) => pendingImages.has(id))
+    const images = [...(event.images ?? []), ...availableIds.map((id) => pendingImages.get(id))]
+    const referenced = new Set(availableIds)
+    if (event.source === "interactive") {
+      for (const id of pendingImages.keys()) {
+        if (!referenced.has(id)) pendingImages.delete(id)
+      }
+    }
+    for (const id of availableIds) pendingImages.delete(id)
+    if (uniqueIds.length === 0) return { action: "continue" }
+    return {
+      action: "transform",
+      text: event.text.replace(imageMarker, ""),
+      images,
+    }
+  })
+
+  pi.on("session_shutdown", async () => {
+    serverGeneration += 1
+    shuttingDown = true
+    uiPromptActive = false
+    activeRequests.clear()
+    pendingImages.clear()
+    if (imageServer) {
+      imageServer.closeAllConnections()
+      await new Promise((resolve) => imageServer.close(resolve))
+    }
+    await unlink(process.env.DEVHATCH_PI_IMAGE_ENDPOINT ?? "").catch(() => {})
+    imageServer = undefined
   })
 }
 "#;
@@ -212,7 +365,7 @@ fn wrapper_source(
     restore_codex_home: bool,
 ) -> String {
     let mut source = String::from("#!/bin/sh\nset -e\n");
-    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\n");
+    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\ndevhatch_pi_image_endpoint=${DEVHATCH_PI_IMAGE_ENDPOINT:-}\nreadonly devhatch_pi_image_endpoint\ndevhatch_pi_image_password=${DEVHATCH_PI_IMAGE_PASSWORD:-}\nreadonly devhatch_pi_image_password\n");
     if restore_codex_home {
         source.push_str("devhatch_codex_home=$CODEX_HOME\nreadonly devhatch_codex_home\n");
     }
@@ -244,6 +397,8 @@ fn wrapper_source(
     }
     source.push_str("if [ -n \"$devhatch_runtime_bin\" ]; then export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\"; fi\n");
     source.push_str("if [ -n \"$devhatch_image_clipboard_dir\" ]; then export DEVHATCH_IMAGE_CLIPBOARD_DIR=\"$devhatch_image_clipboard_dir\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_pi_image_endpoint\" ]; then export DEVHATCH_PI_IMAGE_ENDPOINT=\"$devhatch_pi_image_endpoint\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_pi_image_password\" ]; then export DEVHATCH_PI_IMAGE_PASSWORD=\"$devhatch_pi_image_password\"; fi\n");
     source.push_str("exec \"$@\"\n");
     source
 }
@@ -260,6 +415,14 @@ mod tests {
     #[test]
     fn pi_identity_extension_is_trusted_and_local_only() {
         assert!(PI_IDENTITY_EXTENSION.contains("session_start"));
+        assert!(PI_IDENTITY_EXTENSION.contains("pi.on(\"input\""));
+        assert!(PI_IDENTITY_EXTENSION.contains("devhatch-image:"));
+        assert!(PI_IDENTITY_EXTENSION.contains("pendingImages.set"));
+        assert!(PI_IDENTITY_EXTENSION.contains("createServer"));
+        assert!(PI_IDENTITY_EXTENSION.contains("ctx.ui.pasteToEditor"));
+        assert!(PI_IDENTITY_EXTENSION.contains("imageServer.listen(0, \"127.0.0.1\""));
+        assert!(PI_IDENTITY_EXTENSION.contains("resizeImage"));
+        assert!(PI_IDENTITY_EXTENSION.contains("pendingImages.clear"));
         assert!(PI_IDENTITY_EXTENSION.contains("getSessionId()"));
         assert!(PI_IDENTITY_EXTENSION.contains("getSessionFile()"));
         assert!(PI_IDENTITY_EXTENSION.contains("open(temporary, \"wx\", 0o600)"));
