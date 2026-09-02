@@ -20,7 +20,10 @@ use crate::{
 
 use super::{
     kind::{AgentDefinition, AgentKind, OPENCODE_ID, definition},
-    launch::{available, installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli},
+    launch::{
+        available, installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
+        supports_image_paste,
+    },
     runtime::reconcile::{start_codex_reconciler, start_fork_reconciler, start_history_reconciler},
     runtime_input::{PasteImageError, paste_image as paste_runtime_image},
 };
@@ -64,7 +67,8 @@ pub async fn agents(State(state): State<Arc<AppState>>) -> Response {
                 launch_config::summary(&state, agent.kind.as_str())
             );
             let (count, default) = summary.unwrap_or((0, None));
-            agent_view(agent, version, count, default)
+            let supports_image_paste = supports_image_paste(agent.kind, version.as_deref());
+            agent_view(agent, version, count, default, supports_image_paste)
         }
     }))
     .await;
@@ -76,6 +80,7 @@ fn agent_view(
     version: Option<String>,
     launch_config_count: i64,
     default_launch_config_id: Option<String>,
+    supports_image_paste: bool,
 ) -> serde_json::Value {
     let kind = agent.kind;
     let id = kind.as_str();
@@ -93,7 +98,8 @@ fn agent_view(
         "diagnostic": if available { serde_json::Value::Null } else { serde_json::Value::String(kind.diagnostic().into()) },
         "supportsHistory": true,
         "supportsResume": agent.supports_resume,
-        "supportsSkills": agent.supports_skills
+        "supportsSkills": agent.supports_skills,
+        "supportsImagePaste": supports_image_paste
     })
 }
 

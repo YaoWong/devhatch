@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clipboardImage, imagePasteTimeoutError, runImagePaste, supportsRuntimeImagePaste } from "./runtimeImagePaste";
+import { clipboardImage, imagePasteTimeoutError, runImagePaste } from "./runtimeImagePaste";
 
 function event(items: DataTransferItem[]) {
   return { clipboardData: { items } } as unknown as ClipboardEvent;
@@ -10,13 +10,6 @@ function item(kind: string, type: string, file: File | null) {
 }
 
 describe("runtime image paste", () => {
-  it("only enables agents with a native runtime adapter", () => {
-    expect(supportsRuntimeImagePaste("opencode")).toBe(true);
-    expect(supportsRuntimeImagePaste("codex")).toBe(false);
-    expect(supportsRuntimeImagePaste("traecli")).toBe(false);
-    expect(supportsRuntimeImagePaste("pi")).toBe(true);
-  });
-
   it("selects the first image from clipboard items", () => {
     const image = new Blob(["png"], { type: "image/png" }) as File;
     expect(clipboardImage(event([

@@ -3,7 +3,6 @@ import { pasteAgentImage } from "../../api/agents";
 import type { Agent, AgentSession } from "../../types/agents";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { TerminalWorkspace } from "../terminals/TerminalWorkspace";
-import { supportsRuntimeImagePaste } from "../../shared/terminal/runtimeImagePaste";
 import { agentWorkspaceKey } from "./agentWorkspaceState";
 import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
@@ -17,6 +16,7 @@ export function AgentWorkspace({
   selectedAgentWorkspaceId,
   activeId,
   selectedAgent,
+  agents,
   phases,
   focusVersion,
   capacity,
@@ -45,6 +45,7 @@ export function AgentWorkspace({
   selectedAgentWorkspaceId: string | null;
   activeId: string | null;
   selectedAgent: Agent | null;
+  agents: Agent[];
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
@@ -100,7 +101,7 @@ export function AgentWorkspace({
     onUpstreamSessionChange={onUpstreamSessionChange}
     runtimeImagePaste={(session) => {
       const agentSession = session as AgentSession;
-      if (!supportsRuntimeImagePaste(agentSession.agentId)) return undefined;
+      if (!agents.find((agent) => agent.id === agentSession.agentId)?.supportsImagePaste) return undefined;
       return (image, signal) => pasteAgentImage(session.id, image, signal);
     }}
     onOpenLink={onOpenLink}

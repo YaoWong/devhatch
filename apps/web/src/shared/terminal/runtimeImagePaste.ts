@@ -34,10 +34,6 @@ export async function runImagePaste(
   }
 }
 
-export function supportsRuntimeImagePaste(agentId: string) {
-  return agentId === "opencode" || agentId === "pi";
-}
-
 export function clipboardImage(event: ClipboardEvent) {
   for (const item of Array.from(event.clipboardData?.items ?? [])) {
     if (item.kind !== "file" || !item.type.startsWith("image/")) continue;

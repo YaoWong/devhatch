@@ -35,6 +35,7 @@ export type Agent = {
   supportsHistory: boolean;
   supportsResume: boolean;
   supportsSkills: boolean;
+  supportsImagePaste: boolean;
 };
 
 export type AgentLaunchPath = {

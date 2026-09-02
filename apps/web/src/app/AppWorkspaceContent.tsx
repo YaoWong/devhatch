@@ -119,6 +119,7 @@ export function AppWorkspaceContent({
         selectedAgentWorkspaceId={agent.selectedAgentWorkspaceId}
         activeId={agent.activeId}
         selectedAgent={agent.selectedAgent}
+        agents={agent.agents}
         phases={phases}
         focusVersion={focusVersion}
         capacity={agentCapacity}

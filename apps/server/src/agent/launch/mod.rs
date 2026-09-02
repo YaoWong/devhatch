@@ -50,13 +50,42 @@ pub(super) async fn installed_version(kind: AgentKind) -> Option<String> {
         return None;
     }
     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let prefix = match kind {
+        AgentKind::Codex => "codex-cli",
+        AgentKind::OpenCode => "opencode",
+        AgentKind::TraeCli => "traecli",
+        AgentKind::Pi => "pi",
+    };
     let version = version
-        .strip_prefix(executable_name)
+        .strip_prefix(prefix)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or(&version)
         .to_string();
     (!version.is_empty()).then_some(version)
+}
+
+pub(super) fn supports_image_paste(kind: AgentKind, version: Option<&str>) -> bool {
+    match kind {
+        AgentKind::OpenCode | AgentKind::Pi => true,
+        AgentKind::Codex => version.is_some_and(|value| version_at_least(value, [0, 149, 1])),
+        AgentKind::TraeCli => version.is_some_and(|value| version_at_least(value, [0, 202, 1])),
+    }
+}
+
+fn version_at_least(version: &str, minimum: [u64; 3]) -> bool {
+    let version = version
+        .strip_suffix("(internal edition)")
+        .map(str::trim)
+        .unwrap_or(version);
+    let mut parts = version.split('.');
+    let current = [parts.next(), parts.next(), parts.next()]
+        .map(|part| part.and_then(|value| value.parse::<u64>().ok()));
+    parts.next().is_none()
+        && current
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .is_some_and(|current| current.as_slice() >= minimum.as_slice())
 }
 
 pub(crate) fn executable_path(executable: &str) -> Option<PathBuf> {
@@ -693,7 +722,32 @@ fn available_loopback_port() -> std::io::Result<u16> {
 mod tests {
     use std::{ffi::OsString, path::Path};
 
-    use super::{codex_args, parse_pi_identity_state, pi_args, safe_runtime_cwd, trae_args};
+    use super::{
+        codex_args, parse_pi_identity_state, pi_args, safe_runtime_cwd, supports_image_paste,
+        trae_args,
+    };
+    use crate::agent::AgentKind;
+
+    #[test]
+    fn gates_terminal_image_paste_by_verified_version() {
+        assert!(!supports_image_paste(AgentKind::Codex, Some("0.149.0")));
+        assert!(supports_image_paste(AgentKind::Codex, Some("0.149.1")));
+        assert!(!supports_image_paste(
+            AgentKind::Codex,
+            Some("0.149.1-beta")
+        ));
+        assert!(!supports_image_paste(
+            AgentKind::Codex,
+            Some("build 1 codex 0.149.1")
+        ));
+        assert!(!supports_image_paste(AgentKind::TraeCli, Some("0.202.0")));
+        assert!(supports_image_paste(
+            AgentKind::TraeCli,
+            Some("0.202.1(internal edition)")
+        ));
+        assert!(supports_image_paste(AgentKind::OpenCode, None));
+        assert!(supports_image_paste(AgentKind::Pi, None));
+    }
 
     #[test]
     fn builds_codex_args_for_new_and_resume() {
