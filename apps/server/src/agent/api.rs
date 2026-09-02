@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use axum::{
     Json,
+    body::Bytes,
     extract::{Extension, Path, State, WebSocketUpgrade, rejection::JsonRejection},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -21,6 +22,7 @@ use super::{
     kind::{AgentDefinition, AgentKind, OPENCODE_ID, definition},
     launch::{available, installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli},
     runtime::reconcile::{start_codex_reconciler, start_fork_reconciler, start_history_reconciler},
+    runtime_input::{PasteImageError, paste_image as paste_runtime_image},
 };
 
 #[derive(Default, Deserialize)]
@@ -404,6 +406,43 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
     StatusCode::NO_CONTENT.into_response()
 }
 
+pub async fn paste_image(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(session) = state.session(&id, SessionKind::Agent) else {
+        return error(StatusCode::NOT_FOUND, "AGENT_SESSION_NOT_FOUND");
+    };
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let client = match reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(1))
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => client,
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "HTTP_CLIENT_ERROR"),
+    };
+    match paste_runtime_image(&client, &session, content_type, &body).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(PasteImageError::Unsupported) => {
+            error(StatusCode::CONFLICT, "AGENT_IMAGE_PASTE_UNSUPPORTED")
+        }
+        Err(PasteImageError::UnsupportedMediaType) => {
+            error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_IMAGE_TYPE")
+        }
+        Err(PasteImageError::InvalidImage) => {
+            error(StatusCode::UNPROCESSABLE_ENTITY, "INVALID_IMAGE")
+        }
+        Err(PasteImageError::Busy) => error(StatusCode::TOO_MANY_REQUESTS, "IMAGE_PASTE_BUSY"),
+        Err(PasteImageError::Unavailable) => error(StatusCode::CONFLICT, "AGENT_SESSION_NOT_LIVE"),
+    }
+}
+
 pub async fn socket(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -465,6 +504,7 @@ mod tests {
                 agent_id: Some("test"),
                 agent_name: Some("Test"),
                 cleanup_path: None,
+                runtime_endpoint: None,
                 exit_cleanup: Some(state.agent_exit_cleanup()),
             },
             |_| {},
@@ -524,6 +564,7 @@ mod tests {
                 agent_id: Some("test"),
                 agent_name: Some("Test"),
                 cleanup_path: None,
+                runtime_endpoint: None,
                 exit_cleanup: Some(state.agent_exit_cleanup()),
             },
             |_| {},

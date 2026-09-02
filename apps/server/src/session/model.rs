@@ -5,7 +5,7 @@ use std::{
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
 use serde::Serialize;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{Mutex as AsyncMutex, broadcast, watch};
 
 #[derive(Clone)]
 pub(super) struct SessionCompletion {
@@ -53,9 +53,17 @@ pub(crate) struct Session {
     pub(super) events: broadcast::Sender<SessionEvent>,
     pub(super) agent_id: Option<&'static str>,
     pub(super) agent_name: Option<&'static str>,
+    pub(super) runtime_dir: Option<PathBuf>,
+    pub(super) runtime_endpoint: Option<RuntimeEndpoint>,
+    pub(crate) runtime_input: AsyncMutex<()>,
 }
 
 pub(crate) type SessionExitCleanup = Box<dyn FnOnce(Arc<Session>, Option<u32>) + Send>;
+
+pub(crate) struct RuntimeEndpoint {
+    pub(crate) port: u16,
+    pub(crate) password: String,
+}
 
 pub(crate) struct SessionSpawn {
     pub command: CommandBuilder,
@@ -69,6 +77,7 @@ pub(crate) struct SessionSpawn {
     pub agent_id: Option<&'static str>,
     pub agent_name: Option<&'static str>,
     pub cleanup_path: Option<PathBuf>,
+    pub runtime_endpoint: Option<RuntimeEndpoint>,
     pub exit_cleanup: Option<SessionExitCleanup>,
 }
 
@@ -157,6 +166,14 @@ impl Session {
 
     pub(crate) fn agent_id(&self) -> Option<&'static str> {
         self.agent_id
+    }
+
+    pub(crate) fn runtime_dir(&self) -> Option<PathBuf> {
+        self.runtime_dir.clone()
+    }
+
+    pub(crate) fn runtime_endpoint(&self) -> Option<&RuntimeEndpoint> {
+        self.runtime_endpoint.as_ref()
     }
 
     pub(crate) fn process_id(&self) -> u32 {

@@ -123,6 +123,9 @@ impl Session {
             events,
             agent_id: spawn.agent_id,
             agent_name: spawn.agent_name,
+            runtime_dir: cleanup_path.clone(),
+            runtime_endpoint: spawn.runtime_endpoint,
+            runtime_input: tokio::sync::Mutex::new(()),
         });
         if !sessions.insert(session.clone()) {
             return Err("server is shutting down".into());

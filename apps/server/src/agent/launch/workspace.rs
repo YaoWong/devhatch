@@ -212,6 +212,7 @@ fn wrapper_source(
     restore_codex_home: bool,
 ) -> String {
     let mut source = String::from("#!/bin/sh\nset -e\n");
+    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\n");
     if restore_codex_home {
         source.push_str("devhatch_codex_home=$CODEX_HOME\nreadonly devhatch_codex_home\n");
     }
@@ -241,6 +242,8 @@ fn wrapper_source(
     if restore_codex_home {
         source.push_str("export CODEX_HOME=\"$devhatch_codex_home\"\n");
     }
+    source.push_str("if [ -n \"$devhatch_runtime_bin\" ]; then export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_image_clipboard_dir\" ]; then export DEVHATCH_IMAGE_CLIPBOARD_DIR=\"$devhatch_image_clipboard_dir\"; fi\n");
     source.push_str("exec \"$@\"\n");
     source
 }
@@ -362,10 +365,11 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        assert_eq!(
-            wrapper_source(&config, false, false),
-            "#!/bin/sh\nset -e\nexport A='one'\nprintf '%s\\n' \"$A\"\ncase x in x) :;; esac\nexec \"$@\"\n"
-        );
+        let source = wrapper_source(&config, false, false);
+        assert!(source.starts_with("#!/bin/sh\nset -e\n"));
+        assert!(source.contains("export A='one'\nprintf '%s\\n' \"$A\"\ncase x in x) :;; esac\n"));
+        assert!(source.contains("export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\""));
+        assert!(source.ends_with("exec \"$@\"\n"));
     }
 
     #[test]
@@ -426,9 +430,8 @@ mod tests {
         let source = wrapper_source(&config, true, false);
         assert!(source.contains("devhatch_base_config_dir=${OPENCODE_CONFIG_DIR:-}"));
         assert!(source.contains("ln -s \"$devhatch_base_config_dir/$devhatch_entry\""));
-        assert!(
-            source.contains("export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\"\nexec \"$@\"")
-        );
+        assert!(source.contains("export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\""));
+        assert!(source.contains("export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\""));
         assert!(
             source
                 .find("export OPENCODE_CONFIG_DIR=/base/config")

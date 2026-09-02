@@ -1,0 +1,343 @@
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use portable_pty::CommandBuilder;
+use uuid::Uuid;
+
+use crate::session::Session;
+
+use super::AgentKind;
+
+pub(crate) const MAX_IMAGE_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION: u32 = 16_384;
+const MAX_IMAGE_PIXELS: u64 = 40_000_000;
+const CLIPBOARD_DIRECTORY: &str = "image-clipboard";
+const CLIPBOARD_SCRIPT: &str = "#!/bin/sh\nset -eu\n[ \"$#\" -eq 2 ] && [ \"$1\" = \"-t\" ] && [ \"$2\" = \"image/png\" ] || exit 1\nset -- \"$DEVHATCH_IMAGE_CLIPBOARD_DIR\"/*.png\n[ -f \"$1\" ] || exit 1\ncat -- \"$1\"\nrm -f -- \"$1\"\n";
+
+pub(super) fn prepare_opencode(
+    run_dir: &Path,
+    command: &mut CommandBuilder,
+) -> std::io::Result<()> {
+    let clipboard_dir = run_dir.join(CLIPBOARD_DIRECTORY);
+    std::fs::create_dir(&clipboard_dir)?;
+    std::fs::set_permissions(&clipboard_dir, std::fs::Permissions::from_mode(0o700))?;
+    let bin_dir = run_dir.join("bin");
+    std::fs::create_dir(&bin_dir)?;
+    std::fs::set_permissions(&bin_dir, std::fs::Permissions::from_mode(0o700))?;
+    let shim = bin_dir.join("wl-paste");
+    std::fs::write(&shim, CLIPBOARD_SCRIPT)?;
+    std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700))?;
+    let mut paths = vec![bin_dir.clone()];
+    if let Some(path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&path));
+    }
+    let path = std::env::join_paths(paths).map_err(std::io::Error::other)?;
+    command.env("PATH", path);
+    command.env("DEVHATCH_RUNTIME_BIN", bin_dir);
+    command.env("DEVHATCH_IMAGE_CLIPBOARD_DIR", clipboard_dir);
+    Ok(())
+}
+
+pub(crate) async fn paste_image(
+    client: &reqwest::Client,
+    session: &Session,
+    content_type: &str,
+    bytes: &[u8],
+) -> Result<(), PasteImageError> {
+    let kind = session
+        .agent_id()
+        .and_then(|id| AgentKind::try_from(id).ok())
+        .ok_or(PasteImageError::Unsupported)?;
+    match kind {
+        AgentKind::OpenCode => paste_opencode_image(client, session, content_type, bytes).await,
+        AgentKind::Codex | AgentKind::TraeCli | AgentKind::Pi => Err(PasteImageError::Unsupported),
+    }
+}
+
+async fn paste_opencode_image(
+    client: &reqwest::Client,
+    session: &Session,
+    content_type: &str,
+    bytes: &[u8],
+) -> Result<(), PasteImageError> {
+    validate_png(content_type, bytes)?;
+    let _runtime_input = session.runtime_input.lock().await;
+    let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
+    let endpoint = session
+        .runtime_endpoint()
+        .ok_or(PasteImageError::Unavailable)?;
+    let clipboard_dir = run_dir.join(CLIPBOARD_DIRECTORY);
+    if std::fs::read_dir(&clipboard_dir)
+        .map_err(|_| PasteImageError::Unavailable)?
+        .filter_map(Result::ok)
+        .any(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "png")
+        })
+    {
+        return Err(PasteImageError::Busy);
+    }
+    let sequence = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| PasteImageError::Unavailable)?
+        .as_nanos();
+    let name = format!("{sequence:032x}-{}", Uuid::new_v4().simple());
+    let temporary = clipboard_dir.join(format!(".{name}.tmp"));
+    let target = clipboard_dir.join(format!("{name}.png"));
+    write_private_file(&temporary, bytes).map_err(|_| PasteImageError::Unavailable)?;
+    let mut staged = StagedImage::new(temporary);
+    std::fs::rename(staged.path(), &target).map_err(|_| PasteImageError::Unavailable)?;
+    staged.path = target;
+    let url = format!("http://127.0.0.1:{}/tui/publish", endpoint.port);
+    let body = serde_json::json!({
+        "type": "tui.command.execute",
+        "properties": { "command": "prompt.paste" }
+    });
+    let mut published = false;
+    for _ in 0..10 {
+        if !session.is_live() {
+            return Err(PasteImageError::Unavailable);
+        }
+        match client
+            .post(&url)
+            .basic_auth("opencode", Some(&endpoint.password))
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(response) if response.status().is_success() => {
+                published = true;
+                break;
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+        }
+    }
+    if !published {
+        return Err(PasteImageError::Unavailable);
+    }
+    for _ in 0..50 {
+        if !session.is_live() {
+            return Err(PasteImageError::Unavailable);
+        }
+        if !staged.path().exists() {
+            staged.disarm();
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    Err(PasteImageError::Unavailable)
+}
+
+fn write_private_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    options.mode(0o600);
+    let mut file = options.open(path)?;
+    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+        return Err(error);
+    }
+    Ok(())
+}
+
+struct StagedImage {
+    path: std::path::PathBuf,
+    armed: bool,
+}
+
+impl StagedImage {
+    fn new(path: std::path::PathBuf) -> Self {
+        Self { path, armed: true }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for StagedImage {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn validate_png(content_type: &str, bytes: &[u8]) -> Result<(), PasteImageError> {
+    if content_type.split(';').next().map(str::trim) != Some("image/png") {
+        return Err(PasteImageError::UnsupportedMediaType);
+    }
+    if bytes.is_empty() || bytes.len() > MAX_IMAGE_UPLOAD_BYTES {
+        return Err(PasteImageError::InvalidImage);
+    }
+    if bytes.len() < 24 || bytes[..8] != *b"\x89PNG\r\n\x1a\n" {
+        return Err(PasteImageError::InvalidImage);
+    }
+    let mut offset = 8;
+    let mut dimensions = None;
+    let mut has_data = false;
+    let mut has_end = false;
+    while offset <= bytes.len().saturating_sub(12) {
+        let length = u32::from_be_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .expect("PNG chunk length is present"),
+        ) as usize;
+        let end = offset
+            .checked_add(12)
+            .and_then(|value| value.checked_add(length))
+            .filter(|end| *end <= bytes.len())
+            .ok_or(PasteImageError::InvalidImage)?;
+        let kind = &bytes[offset + 4..offset + 8];
+        let data = &bytes[offset + 8..offset + 8 + length];
+        let expected_crc = u32::from_be_bytes(
+            bytes[offset + 8 + length..end]
+                .try_into()
+                .expect("PNG chunk CRC is present"),
+        );
+        let mut crc = crc32fast::Hasher::new();
+        crc.update(kind);
+        crc.update(data);
+        if crc.finalize() != expected_crc {
+            return Err(PasteImageError::InvalidImage);
+        }
+        if offset == 8 {
+            if kind != b"IHDR" || length != 13 {
+                return Err(PasteImageError::InvalidImage);
+            }
+            dimensions = Some((
+                u32::from_be_bytes(data[..4].try_into().expect("PNG width is present")),
+                u32::from_be_bytes(data[4..8].try_into().expect("PNG height is present")),
+            ));
+        }
+        if kind == b"IDAT" {
+            has_data = true;
+        }
+        if kind == b"IEND" {
+            if length != 0 || end != bytes.len() {
+                return Err(PasteImageError::InvalidImage);
+            }
+            has_end = true;
+            break;
+        }
+        offset = end;
+    }
+    let (width, height) = dimensions.ok_or(PasteImageError::InvalidImage)?;
+    if !has_data
+        || !has_end
+        || width == 0
+        || height == 0
+        || width > MAX_IMAGE_DIMENSION
+        || height > MAX_IMAGE_DIMENSION
+        || u64::from(width) * u64::from(height) > MAX_IMAGE_PIXELS
+    {
+        return Err(PasteImageError::InvalidImage);
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PasteImageError {
+    Unsupported,
+    UnsupportedMediaType,
+    InvalidImage,
+    Busy,
+    Unavailable,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{os::unix::fs::PermissionsExt, process::Command};
+
+    use portable_pty::CommandBuilder;
+
+    use super::{PasteImageError, prepare_opencode, validate_png};
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+            let mut bytes = (data.len() as u32).to_be_bytes().to_vec();
+            bytes.extend(kind);
+            bytes.extend(data);
+            let mut crc = crc32fast::Hasher::new();
+            crc.update(kind);
+            crc.update(data);
+            bytes.extend(crc.finalize().to_be_bytes());
+            bytes
+        }
+        let mut header = width.to_be_bytes().to_vec();
+        header.extend(height.to_be_bytes());
+        header.extend([8, 6, 0, 0, 0]);
+        let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+        bytes.extend(chunk(b"IHDR", &header));
+        bytes.extend(chunk(b"IDAT", &[0]));
+        bytes.extend(chunk(b"IEND", &[]));
+        bytes
+    }
+
+    #[test]
+    fn validates_png_header_and_dimensions() {
+        assert_eq!(validate_png("image/png", &png(800, 600)), Ok(()));
+        assert_eq!(
+            validate_png("image/jpeg", &png(800, 600)),
+            Err(PasteImageError::UnsupportedMediaType)
+        );
+        assert_eq!(
+            validate_png("image/png", b"not a png"),
+            Err(PasteImageError::InvalidImage)
+        );
+        let mut corrupt = png(800, 600);
+        corrupt[30] ^= 1;
+        assert_eq!(
+            validate_png("image/png", &corrupt),
+            Err(PasteImageError::InvalidImage)
+        );
+        assert_eq!(
+            validate_png("image/png", &png(20_000, 1)),
+            Err(PasteImageError::InvalidImage)
+        );
+        assert_eq!(
+            validate_png("image/png", &png(10_000, 10_000)),
+            Err(PasteImageError::InvalidImage)
+        );
+    }
+
+    #[test]
+    fn opencode_clipboard_shim_is_private_and_consumes_one_image() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut command = CommandBuilder::new("opencode");
+        prepare_opencode(temp.path(), &mut command).unwrap();
+        let shim = temp.path().join("bin/wl-paste");
+        let clipboard = temp.path().join("image-clipboard");
+        assert_eq!(
+            std::fs::metadata(&shim).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&clipboard).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        std::fs::write(clipboard.join("001.png"), b"first").unwrap();
+        std::fs::write(clipboard.join("002.png"), b"second").unwrap();
+        let output = Command::new(&shim)
+            .args(["-t", "image/png"])
+            .env("DEVHATCH_IMAGE_CLIPBOARD_DIR", &clipboard)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"first");
+        assert!(!clipboard.join("001.png").exists());
+        assert!(clipboard.join("002.png").exists());
+    }
+}

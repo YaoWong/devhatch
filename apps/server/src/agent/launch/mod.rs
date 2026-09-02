@@ -14,7 +14,7 @@ mod workspace;
 
 use super::{
     AgentKind, CODEX_ID, CODEX_NAME, OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID,
-    TRAECLI_NAME, runtime::events::start_event_watcher,
+    TRAECLI_NAME, runtime::events::start_event_watcher, runtime_input::prepare_opencode,
 };
 use crate::{
     filesystem::{default_cwd, resolve_path},
@@ -151,6 +151,7 @@ pub(super) fn spawn_codex(
             agent_id: Some(CODEX_ID),
             agent_name: Some(CODEX_NAME),
             cleanup_path: Some(cleanup_path),
+            runtime_endpoint: None,
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
@@ -254,6 +255,10 @@ pub(super) fn spawn_opencode(
         }
     };
     configure_environment(&mut command, &cwd);
+    if let Err(error) = prepare_opencode(&run_dir, &mut command) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
     command.env("DEVHATCH_AGENT_ID", OPENCODE_ID);
     command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
@@ -268,6 +273,13 @@ pub(super) fn spawn_opencode(
         command.env("OPENCODE_CONFIG_DIR", &run_dir);
     }
     let endpoint = event_endpoint.clone();
+    let runtime_endpoint =
+        event_endpoint
+            .as_ref()
+            .map(|(port, password)| crate::session::RuntimeEndpoint {
+                port: *port,
+                password: password.clone(),
+            });
     let app_state = state.clone();
     let cleanup_path = run_dir.clone();
     let result = Session::spawn(
@@ -284,6 +296,7 @@ pub(super) fn spawn_opencode(
             agent_id: Some(OPENCODE_ID),
             agent_name: Some(OPENCODE_NAME),
             cleanup_path: Some(cleanup_path),
+            runtime_endpoint,
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
@@ -378,6 +391,7 @@ pub(super) fn spawn_traecli(
             agent_id: Some(TRAECLI_ID),
             agent_name: Some(TRAECLI_NAME),
             cleanup_path: Some(cleanup_path),
+            runtime_endpoint: None,
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
@@ -523,6 +537,7 @@ pub(super) fn spawn_pi(
             agent_id: Some(PI_ID),
             agent_name: Some(PI_NAME),
             cleanup_path: Some(cleanup_path),
+            runtime_endpoint: None,
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| start_pi_identity_watcher(session, state, identity_state),

@@ -133,6 +133,12 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             "/api/agent-sessions/{id}",
             patch(agent::rename).delete(agent::remove),
         )
+        .route(
+            "/api/agent-sessions/{id}/image-paste",
+            axum::routing::post(agent::paste_image).layer(axum::extract::DefaultBodyLimit::max(
+                agent::MAX_IMAGE_UPLOAD_BYTES,
+            )),
+        )
         .route("/api/agent-sessions/{id}/socket", get(agent::socket))
         .route("/api/web-apps", get(web_app::list))
         .route(

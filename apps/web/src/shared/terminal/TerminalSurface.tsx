@@ -8,6 +8,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import type { ThemeId } from "../../types/settings";
 import { SocketConnection } from "./socketConnection";
+import { clipboardImage, pngImage } from "./runtimeImagePaste";
 import { terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 
 const terminalThemes: Record<ThemeId, ITheme> = {
@@ -32,6 +33,7 @@ export function TerminalSurface({
   onPhaseChange,
   onRemoved,
   onUpstreamSessionChange,
+  onPasteImage,
   thumbnailEnabled = false,
   thumbnailIntervalMs = 500,
   onThumbnail,
@@ -50,6 +52,7 @@ export function TerminalSurface({
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
+  onPasteImage?: (image: Blob) => Promise<void>;
   thumbnailEnabled?: boolean;
   thumbnailIntervalMs?: number;
   onThumbnail?: (id: string, blob: Blob) => void;
@@ -71,6 +74,7 @@ export function TerminalSurface({
   focusedRef.current = focused;
   const onRemovedRef = useRef(onRemoved);
   const onUpstreamSessionChangeRef = useRef(onUpstreamSessionChange);
+  const onPasteImageRef = useRef(onPasteImage);
   const thumbnailEnabledRef = useRef(thumbnailEnabled);
   const thumbnailIntervalMsRef = useRef(thumbnailIntervalMs);
   const onThumbnailRef = useRef(onThumbnail);
@@ -80,8 +84,9 @@ export function TerminalSurface({
   useEffect(() => {
     onRemovedRef.current = onRemoved;
     onUpstreamSessionChangeRef.current = onUpstreamSessionChange;
+    onPasteImageRef.current = onPasteImage;
     onTransitionPrepareAvailableRef.current = onTransitionPrepareAvailable;
-  }, [onRemoved, onUpstreamSessionChange, onTransitionPrepareAvailable]);
+  }, [onRemoved, onUpstreamSessionChange, onPasteImage, onTransitionPrepareAvailable]);
   useEffect(() => {
     thumbnailIntervalMsRef.current = thumbnailIntervalMs;
   }, [thumbnailIntervalMs]);
@@ -352,6 +357,22 @@ export function TerminalSurface({
       if (protocolReady && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data }));
       else inputBuffer = (inputBuffer + data).slice(-64 * 1024);
     });
+    let pasteInProgress = false;
+    const paste = (event: ClipboardEvent) => {
+      const pasteImage = onPasteImageRef.current;
+      if (!pasteImage) return;
+      const image = clipboardImage(event);
+      if (!image) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (pasteInProgress) return;
+      pasteInProgress = true;
+      void pngImage(image)
+        .then(pasteImage)
+        .catch((reason) => onError(reason instanceof Error ? reason.message : String(reason)))
+        .finally(() => { pasteInProgress = false; });
+    };
+    container.addEventListener("paste", paste, true);
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
     void document.fonts.ready.then(() => {
@@ -372,6 +393,7 @@ export function TerminalSurface({
       if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
       thumbnailGenerationRef.current += 1;
       observer.disconnect();
+      container.removeEventListener("paste", paste, true);
       input.dispose();
       render.dispose();
       const socket = socketRef.current;

@@ -216,6 +216,7 @@ pub(crate) fn spawn_with_cwd(
             agent_id: None,
             agent_name: None,
             cleanup_path: None,
+            runtime_endpoint: None,
             exit_cleanup: None,
         },
         |_| {},

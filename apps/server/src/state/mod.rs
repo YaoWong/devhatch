@@ -243,6 +243,7 @@ mod tests {
                 agent_id: Some("test"),
                 agent_name: Some("Test"),
                 cleanup_path: None,
+                runtime_endpoint: None,
                 exit_cleanup: Some(state.agent_exit_cleanup()),
             },
             |_| {},

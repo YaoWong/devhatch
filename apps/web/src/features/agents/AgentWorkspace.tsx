@@ -1,7 +1,9 @@
 import { Bot } from "lucide-react";
+import { pasteAgentImage } from "../../api/agents";
 import type { Agent, AgentSession } from "../../types/agents";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { TerminalWorkspace } from "../terminals/TerminalWorkspace";
+import { supportsRuntimeImagePaste } from "../../shared/terminal/runtimeImagePaste";
 import { agentWorkspaceKey } from "./agentWorkspaceState";
 import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
@@ -96,6 +98,11 @@ export function AgentWorkspace({
     onWorkspaceLayoutChange={onWorkspaceLayoutChange}
     onRemoved={onRemoved}
     onUpstreamSessionChange={onUpstreamSessionChange}
+    runtimeImagePaste={(session) => {
+      const agentSession = session as AgentSession;
+      if (!supportsRuntimeImagePaste(agentSession.agentId)) return undefined;
+      return (image) => pasteAgentImage(session.id, image);
+    }}
     onOpenLink={onOpenLink}
     onError={onError}
     onDismissError={onDismissError}

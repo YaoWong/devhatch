@@ -81,7 +81,7 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 
 export function TerminalWorkspace({
   visible, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", sessionIdentity, stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
-  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, onOpenLink, onError, onDismissError,
+  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, runtimeImagePaste, onOpenLink, onError, onDismissError,
 }: {
   visible: boolean;
   busy: boolean;
@@ -114,6 +114,7 @@ export function TerminalWorkspace({
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
+  runtimeImagePaste?: (session: TerminalInfo) => ((image: Blob) => Promise<void>) | undefined;
   onOpenLink: (url: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
@@ -529,7 +530,7 @@ export function TerminalWorkspace({
                  <button aria-label={`Minimize ${session.name}`} disabled={renamingSession?.id === session.id} onClick={(event) => { event.stopPropagation(); minimize(session.id); }}><Minus /></button>
                  <button aria-label={`Close ${session.name}`} disabled={renamingSession?.id === session.id} onClick={(event) => { event.stopPropagation(); onClose(session); }}><X /></button>
               </header>
-               <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
+                <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => activateAndStage(session.id)} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onPasteImage={runtimeImagePaste?.(session)} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
             </section>;
            })}
           {layoutCount && layoutPreset && !isMobile && terminalLayoutDescriptors(layoutCount, layoutPreset).map((descriptor) => {

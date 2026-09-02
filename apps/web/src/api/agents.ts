@@ -67,6 +67,14 @@ export function createAgentSession(options: {
   );
 }
 
+export function pasteAgentImage(id: string, image: Blob) {
+  return requestEmpty(
+    `/api/agent-sessions/${encodeURIComponent(id)}/image-paste`,
+    { method: "POST", headers: { "content-type": image.type }, body: image },
+    "Unable to paste image",
+  );
+}
+
 export function createAgentLaunchConfig(input: AgentLaunchConfigInput) {
   return requestJson<{ agentLaunchConfig: AgentLaunchConfig }>(
     "/api/agent-launch-configs",
