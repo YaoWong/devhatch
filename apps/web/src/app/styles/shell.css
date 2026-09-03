@@ -153,13 +153,13 @@
 .select-copy, .config-select-copy { min-width: 0; flex: 1; }
 .select-copy strong, .select-copy small, .config-select-copy strong, .config-select-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-copy strong { font-size: 12px; }
-.select-copy small, .config-select-copy small { margin-top: 3px; color: var(--color-text-faint); font-size: 9px; }
+.select-copy small, .config-select-copy small { margin-top: 3px; color: var(--color-text-faint); font-size: 10px; line-height: 1.2; }
 .terminal-paths-section { max-height: min(52vh, 480px); }
 .terminal-new-from-path { margin-top: 6px; padding: 6px 8px; border: 1px dashed var(--color-border); border-radius: 8px; background: transparent; color: var(--color-text-faint); overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-path-row button { touch-action: manipulation; }
 .path-section-head { display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 7px; }
 .path-section-head .menu-label { margin: 0; }
-.mini-action { height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font-size: 9px; font-weight: 600; }
+.mini-action { height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font-size: 10px; line-height: 1.2; font-weight: 600; }
 .mini-action svg { width: 12px; height: 12px; }
 .mini-action:disabled, .secondary-button:disabled { opacity: .42; cursor: default; }
 .agent-path-list, .agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
@@ -174,8 +174,8 @@
 .path-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; text-align: left; }
 .path-main > span { min-width: 0; flex: 1; }
 .path-main strong, .path-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.path-main strong { font-size: 10px; }
-.path-main small { margin-top: 2px; color: var(--color-text-faint); font: 8px/1.2 var(--font-family-mono); }
+.path-main strong { font-size: 11px; line-height: 1.2; }
+.path-main small { margin-top: 2px; color: var(--color-text-faint); font: 10px/1.25 var(--font-family-mono); }
 .path-actions { width: 24px; display: flex; overflow: hidden; opacity: 1; transition: width 180ms ease; }
 .agent-path-row:hover .path-actions, .agent-path-row:has(:focus-visible) .path-actions { width: 100px; }
 .path-actions button { width: 24px; height: 24px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-faint); transition: opacity 150ms ease, background 150ms ease, color 150ms ease; }
@@ -190,9 +190,9 @@
 .path-pagination button { width: 26px; height: 25px; display: grid; place-items: center; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); }
 .path-pagination svg { width: 12px; }
 .sessions-heading { display: grid; gap: 6px; margin-bottom: 8px; }
-.sessions-title-row { min-height: 18px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.sessions-heading .menu-label { margin-bottom: 0; line-height: 18px; }
-.session-filter-path { overflow: hidden; padding: 5px 7px; border-radius: 6px; background: var(--color-canvas); color: var(--color-text-muted); font: 8px/1.2 var(--font-family-mono); text-overflow: ellipsis; white-space: nowrap; }
+.sessions-title-row { min-height: 20px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sessions-heading .menu-label { margin-bottom: 0; line-height: 20px; }
+.session-filter-path { overflow: hidden; padding: 6px 8px; border-radius: 6px; background: var(--color-canvas); color: var(--color-text-muted); font: 10px/1.25 var(--font-family-mono); text-overflow: ellipsis; white-space: nowrap; }
 .agent-session-list { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .agent-session-list.is-scrolling { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
 .agent-session-list::-webkit-scrollbar { width: 6px; height: 0; }

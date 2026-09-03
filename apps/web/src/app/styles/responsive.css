@@ -80,7 +80,7 @@
   .terminal-thumbnail-edge-trigger, .terminal-thumbnail-dock.side-right .terminal-thumbnail-edge-trigger { top: 0; right: auto; left: 50%; width: 64px; height: 44px; border: 1px solid var(--color-border); border-top: 0; border-radius: 0 0 12px 12px; transform: translateX(-50%); }
   .terminal-thumbnail-edge-trigger svg, .terminal-thumbnail-edge-trigger svg.point-left { transform: rotate(90deg); }
   .terminal-thumbnail { width: 120px; min-width: 120px; height: 75px; aspect-ratio: auto; }
-  .terminal-thumbnail-caption { height: 21px; font-size: 8px; }
+  .terminal-thumbnail-caption { height: 24px; font-size: 10px; line-height: 1.2; }
   .terminal-card-grid, .terminal-card-grid.count-1, .terminal-card-grid.count-2, .terminal-card-grid.count-3, .terminal-card-grid.count-4 { position: relative; display: block; height: calc(100% - 12px); margin: 6px; padding: 0; }
   .terminal-card-grid.with-thumbnails, .terminal-card-grid.count-1.with-thumbnails, .terminal-card-grid.count-2.with-thumbnails, .terminal-card-grid.count-3.with-thumbnails, .terminal-card-grid.count-4.with-thumbnails { height: calc(100% - 93px); margin-top: 87px; }
   .terminal-split-handle { display: none; }
