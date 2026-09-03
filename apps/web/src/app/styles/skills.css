@@ -70,9 +70,6 @@
 .repository-disclosure { display: grid; place-items: center; }
 .repository-disclosure svg { width: 13px; color: var(--color-text-faint); }
 .repository-summary > span:last-child { min-width: 0; }
-.repository-summary .inline-rename { width: fit-content; max-width: 100%; }
-.repository-summary .inline-rename input { font-size: 11px; font-weight: 700; }
-.repository-summary .inline-rename-field { height: 24px; }
 .repository-summary strong, .repository-summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repository-summary strong { font-size: 11px; }
 .repository-summary small { margin-top: 4px; color: var(--color-text-faint); font-size: 9px; }
@@ -136,8 +133,6 @@
 .profile-rename:hover:not(:disabled) { border-color: var(--color-border-strong); background: var(--color-surface-hover); color: var(--color-text); }
 .profile-rename:disabled { opacity: .3; cursor: default; }
 .profile-rename svg { width: 12px; height: 12px; }
-.profile-title .inline-rename { width: fit-content; max-width: 100%; }
-.profile-title .inline-rename input { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
 .profile-skills-header h3, .profile-skills-header small { display: block; }
 .profile-skills-header h3 { margin: 0; font-size: 14px; }
 .profile-skills-header small { margin-top: 4px; color: var(--color-text-faint); font-size: 9px; }
