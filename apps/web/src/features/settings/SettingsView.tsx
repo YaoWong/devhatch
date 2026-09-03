@@ -111,6 +111,8 @@ export function SettingsView({
                   options={themes}
                   disabled={saving}
                   compact
+                  popupSize="theme"
+                  getOptionLabel={(theme) => theme.name}
                   renderTrigger={(theme) => <span className="select-copy"><strong>{theme?.name}</strong><small>{theme?.description}</small></span>}
                   renderOption={(theme) => <span className="select-copy"><strong>{theme.name}</strong><small>{theme.description}</small></span>}
                   onChange={selectTheme}

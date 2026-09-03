@@ -185,16 +185,7 @@
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .paths-section { max-height: var(--agent-launch-paths-max-height, 286px); }
 .paths-section .path-section-head, .sessions-heading { flex: none; }
-.custom-select { position: relative; width: 100%; min-width: 0; max-width: 100%; }
-.custom-select-trigger { width: 100%; min-width: 0; max-width: 100%; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); color: var(--color-text); text-align: left; }
-.custom-select-trigger:hover { border-color: var(--color-border-strong); background: var(--color-surface-raised); }
 .custom-select-trigger:focus-visible, .custom-select-option:focus-visible, button:not([data-slot]):focus-visible, input:not([data-slot]):focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.custom-select-trigger-content, .custom-select-option-content { width: 0; min-width: 0; max-width: 100%; display: flex; align-items: center; gap: inherit; flex: 1 1 0; overflow: hidden; }
-.custom-select-trigger-content > *, .custom-select-option-content > * { min-width: 0; max-width: 100%; }
-.custom-select-indicator, .custom-select-check { width: 14px; min-width: 14px; max-width: 14px; height: 14px; display: grid; place-items: center; flex: 0 0 14px; }
-.custom-select-indicator { color: var(--color-text-faint); transition: transform 150ms ease; }
-.custom-select-indicator > svg, .custom-select-check > svg { width: 14px; height: 14px; }
-.custom-select.open .custom-select-indicator { transform: rotate(180deg); }
 .agent-brand { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-canvas); color: var(--color-text); }
 .agent-brand svg, .agent-brand img, .agent-brand .agent-icon-monochrome { width: 19px; height: 19px; }
 .agent-logo { width: 22px; height: 22px; color: currentColor; }
@@ -204,12 +195,6 @@
 .select-copy strong, .select-copy small, .config-select-copy strong, .config-select-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-copy strong { font-size: 12px; }
 .select-copy small, .config-select-copy small { margin-top: 3px; color: var(--color-text-faint); font-size: 9px; }
-.custom-select-menu { width: 100%; min-width: 100%; max-width: 100%; position: absolute; top: calc(100% + 5px); inset-inline: 0; z-index: 70; display: grid; gap: 2px; padding: 4px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); box-shadow: 0 14px 36px rgb(0 0 0 / 14%); }
-.custom-select-option { width: 100%; min-width: 0; max-width: 100%; min-height: 50px; display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; text-align: left; }
-.custom-select-option.highlighted { background: var(--color-canvas); }
-.custom-select-option:disabled { opacity: .48; cursor: not-allowed; }
-.custom-select-check { opacity: 0; }
-.custom-select-option.selected .custom-select-check { opacity: 1; }
 .agent-install-message { min-width: 0; display: grid; gap: 4px; margin-top: 8px; padding: 9px 10px; border: 1px solid var(--color-danger); border-radius: 9px; background: var(--color-danger-soft); color: var(--color-danger); overflow-wrap: anywhere; font-size: 9px; line-height: 1.4; }
 .agent-install-message strong { font-size: 10px; }
 .agent-install-message code { overflow: hidden; padding: 5px 6px; border-radius: 5px; background: color-mix(in srgb, var(--color-danger-soft) 70%, var(--color-surface)); color: var(--color-danger); font: 8px/1.4 "SF Mono", monospace; text-overflow: ellipsis; white-space: nowrap; user-select: all; }

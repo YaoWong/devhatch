@@ -7,6 +7,7 @@ import type { Agent } from "../../types/agents";
 import type { WebAppOperation } from "../../types/web-apps";
 import type { DetailMode, LaunchPathDisplay, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 import { Brand } from "../../shared/branding/Branding";
+import { hasOpenCustomSelectPortalOwnedBy } from "../../shared/ui/customSelectPortal";
 
 type RailDetailMode = Exclude<DetailMode, "settings">;
 type ModeRefs = RefObject<Record<DetailMode, HTMLButtonElement | null>>;
@@ -155,7 +156,7 @@ export function NavigationRail({
       onFocus={onCanvasFocus}
       onBlur={onCanvasBlur}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && terminalSettingsOpen) {
+        if (event.key === "Escape" && terminalSettingsOpen && !hasOpenCustomSelectPortalOwnedBy(event.currentTarget)) {
           event.preventDefault();
           event.stopPropagation();
           onCloseTerminalSettings();

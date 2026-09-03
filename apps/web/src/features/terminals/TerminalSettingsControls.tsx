@@ -55,9 +55,11 @@ export function TerminalSettingsControls({
       <span>Default agent</span>
       <CustomSelect
         compact
+        popupSize="terminal"
         label="Default agent"
         value={availableAgents.some((agent) => agent.id === defaultAgentId) ? defaultAgentId ?? availableAgents[0].id : availableAgents[0].id}
         options={availableAgents}
+        getOptionLabel={(agent) => agent.name}
         renderTrigger={(agent) => <strong>{agent?.name ?? "Select agent"}</strong>}
         renderOption={(agent) => <strong>{agent.name}</strong>}
         onChange={onDefaultAgentChange}

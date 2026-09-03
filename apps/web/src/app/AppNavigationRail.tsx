@@ -8,6 +8,7 @@ import { AgentRailPage } from "../features/agents/AgentRailPage";
 import { NavigationRail } from "../features/navigation/NavigationRail";
 import type { useNavigation } from "../features/navigation/useNavigation";
 import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
+import { isCustomSelectOwnedBy } from "../shared/ui/customSelectPortal";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { WorkspaceList } from "../features/terminals/WorkspaceList";
 import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
@@ -133,14 +134,14 @@ export function AppNavigationRail({
       terminalSettingsOpen &&
       ((navigation.workspaceMode !== "terminal" && navigation.workspaceMode !== "agent") || navigation.railPage !== navigation.workspaceMode)
     ) {
-      closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
+      closeTerminalSettings(isCustomSelectOwnedBy(terminalSettingsPanelRef.current, document.activeElement));
     }
   }, [closeTerminalSettings, navigation.railPage, navigation.workspaceMode, terminalSettingsOpen]);
   useEffect(() => {
     if (!terminalSettingsOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Node) || terminalSettingsPanelRef.current?.contains(target) || terminalSettingsToggleRef.current?.contains(target)) return;
+      if (!(target instanceof Node) || isCustomSelectOwnedBy(terminalSettingsPanelRef.current, target) || terminalSettingsToggleRef.current?.contains(target)) return;
       closeTerminalSettings(false);
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer);

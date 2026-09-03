@@ -196,6 +196,7 @@ export function AgentRailPage({
               label="Select Agent CLI"
               value={selectedAgentId}
               options={agents}
+              getOptionLabel={(agent) => agent.name}
               isOptionDisabled={(agent) => !agent.enabled || agent.availability === "coming-soon"}
               onChange={onSelectAgent}
               renderTrigger={(agent) => <AgentOption agent={agent} fallback="Select agent" />}
@@ -245,6 +246,7 @@ export function AgentRailPage({
                       label="Skills"
                       value={selectedProfileId ?? "none"}
                       options={[{ id: "none", slug: "None" }, ...profiles]}
+                      getOptionLabel={(profile) => profile.slug}
                       onChange={(id) => onSelectProfile(id === "none" ? null : id)}
                       renderTrigger={(profile) => (
                         <span className="launch-setting-copy">

@@ -1,5 +1,13 @@
-import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { dispatchCustomSelectOpenChange } from "./customSelectPortal";
 
 export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   label,
@@ -7,8 +15,10 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   options,
   disabled,
   compact,
+  popupSize = "default",
   renderTrigger,
   renderOption,
+  getOptionLabel,
   isOptionDisabled,
   onChange,
 }: {
@@ -17,126 +27,79 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   options: readonly T[];
   disabled?: boolean;
   compact?: boolean;
+  popupSize?: "default" | "theme" | "terminal";
   renderTrigger: (option: T | undefined) => ReactNode;
   renderOption: (option: T) => ReactNode;
+  getOptionLabel?: (option: T) => string;
   isOptionDisabled?: (option: T) => boolean;
   onChange: (id: Id) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [highlighted, setHighlighted] = useState(0);
-  const hostRef = useRef<HTMLDivElement | null>(null);
+  const triggerId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const stableId = useId();
-  const listboxId = `${stableId}-listbox`;
-  const optionId = (id: Id) => `${stableId}-option-${encodeURIComponent(id)}`;
+  const openRef = useRef(false);
   const selected = options.find((option) => option.id === value);
-  const enabledIndexes = options
-    .map((option, index) => (isOptionDisabled?.(option) ? -1 : index))
-    .filter((index) => index >= 0);
-  const openMenu = () => {
-    if (!disabled) {
-      const index = options.findIndex((option) => option.id === value && !isOptionDisabled?.(option));
-      setHighlighted(index >= 0 ? index : (enabledIndexes[0] ?? 0));
-      setOpen(true);
-    }
-  };
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!hostRef.current?.contains(event.target as Node)) setOpen(false);
+  const optionLabel = (option: T) => getOptionLabel?.(option) ?? option.id;
+
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    return () => {
+      if (openRef.current) dispatchCustomSelectOpenChange(trigger, false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const move = (direction: 1 | -1) => {
-    if (!enabledIndexes.length) return;
-    const current = enabledIndexes.indexOf(highlighted);
-    setHighlighted(enabledIndexes[(current + direction + enabledIndexes.length) % enabledIndexes.length]);
-  };
-  const keyDown = (event: ReactKeyboardEvent) => {
-    if (event.key === "Escape") {
-      setOpen(false);
-      triggerRef.current?.focus();
-      return;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (!open) openMenu();
-      else move(event.key === "ArrowDown" ? 1 : -1);
-      return;
-    }
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      if (!open) openMenu();
-      setHighlighted(event.key === "Home" ? (enabledIndexes[0] ?? 0) : (enabledIndexes.at(-1) ?? 0));
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      if (!open) openMenu();
-      else {
-        const option = options[highlighted];
-        if (option && !isOptionDisabled?.(option)) {
-          onChange(option.id);
-          setOpen(false);
-          triggerRef.current?.focus();
-        }
-      }
-    }
-  };
+  }, []);
+
   return (
-    <div
-      ref={hostRef}
-      className={`custom-select ${compact ? "compact" : ""} ${open ? "open" : ""}`}
-      onKeyDown={keyDown}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="custom-select-trigger"
-        role="combobox"
-        aria-label={label}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        aria-activedescendant={open && options[highlighted] ? optionId(options[highlighted].id) : undefined}
+    <div className={cn("custom-select tw:relative tw:w-full tw:min-w-0 tw:max-w-full", compact && "compact")}>
+      <Select<Id>
+        value={value}
         disabled={disabled}
-        onClick={() => (open ? setOpen(false) : openMenu())}
+        modal={false}
+        onOpenChange={(open) => {
+          openRef.current = open;
+          dispatchCustomSelectOpenChange(triggerRef.current, open);
+        }}
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) onChange(nextValue);
+        }}
       >
-        <span className="custom-select-trigger-content">{renderTrigger(selected)}</span>
-        <span className="custom-select-indicator" aria-hidden="true"><ChevronDown /></span>
-      </button>
-      {open && (
-        <div
-          id={listboxId}
-          className="custom-select-menu"
-          role="listbox"
+        <SelectTrigger
+          ref={triggerRef}
+          id={triggerId}
+          className="custom-select-trigger tw:min-h-[58px] tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:in-[.launch-setup]:min-h-[46px] tw:in-[.launch-setup]:px-[9px] tw:in-[.launch-setup]:py-[7px] tw:in-[.terminal-default-agent-row]:min-h-8 tw:in-[.terminal-default-agent-row]:rounded-lg tw:in-[.terminal-default-agent-row]:px-2 tw:in-[.terminal-default-agent-row]:py-[5px] tw:in-[.settings-theme-row]:min-h-12"
           aria-label={label}
         >
-          {options.map((option, index) => (
-            <button
-              type="button"
+          <SelectValue className="custom-select-trigger-content tw:w-0 tw:max-w-full tw:flex-1 tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">
+            {renderTrigger(selected)}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          portalOwner={triggerId}
+          align="start"
+          alignItemWithTrigger={false}
+          sideOffset={5}
+          className={cn(
+            "custom-select-menu tw:grid tw:rounded-[10px] tw:p-1 tw:shadow-[0_14px_36px_rgb(0_0_0/14%)] tw:[&_[data-slot=select-list]]:grid tw:[&_[data-slot=select-list]]:gap-0.5",
+            compact && "compact",
+            `custom-select-menu-${popupSize}`,
+          )}
+          listProps={{ "aria-label": label }}
+        >
+          {options.map((option) => (
+            <SelectItem
               key={option.id}
-              id={optionId(option.id)}
-              role="option"
-              tabIndex={-1}
-              aria-selected={option.id === value}
-              aria-disabled={isOptionDisabled?.(option) || undefined}
+              value={option.id}
+              label={optionLabel(option)}
               disabled={isOptionDisabled?.(option)}
-              className={`custom-select-option ${index === highlighted ? "highlighted" : ""} ${option.id === value ? "selected" : ""}`}
-              onMouseEnter={() => !isOptionDisabled?.(option) && setHighlighted(index)}
-              onClick={() => {
-                onChange(option.id);
-                setOpen(false);
-                triggerRef.current?.focus();
-              }}
+              className={cn(
+                "custom-select-option tw:min-h-[50px] tw:gap-[9px] tw:rounded-[7px] tw:px-[9px] tw:py-[7px] tw:data-highlighted:bg-background tw:data-highlighted:text-foreground",
+                popupSize === "theme" && "tw:min-h-[46px]",
+                popupSize === "terminal" && "tw:min-h-[34px] tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-[10px] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap",
+              )}
             >
-              <span className="custom-select-option-content">{renderOption(option)}</span>
-              <span className="custom-select-check" aria-hidden="true"><Check /></span>
-            </button>
+              <span className="custom-select-option-content tw:flex tw:w-0 tw:min-w-0 tw:max-w-full tw:flex-1 tw:items-center tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">{renderOption(option)}</span>
+            </SelectItem>
           ))}
-        </div>
-      )}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

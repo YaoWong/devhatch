@@ -60,7 +60,6 @@
 .settings-section-title h2 { margin: 0; color: var(--color-text); font-size: 17px; letter-spacing: -.02em; }
 .settings-section-title p { margin: 7px 0 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
 .settings-group { overflow: hidden; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 8px 24px rgb(var(--shadow-color) / 5%); }
-.settings-theme-group { overflow: visible; }
 .settings-row { min-height: 72px; display: flex; align-items: center; gap: 16px; padding: 14px 16px; cursor: pointer; transition: background-color 150ms ease; }
 .settings-row + .settings-row { border-top: 1px solid var(--color-border); }
 .settings-row:hover { background: color-mix(in srgb, var(--color-surface-raised) 72%, transparent); }
@@ -81,5 +80,3 @@
 .settings-signout:hover { border-color: var(--color-danger); background: var(--color-danger-soft); }
 .settings-theme-row .custom-select, .settings-range-row .pixel-range-control { width: min(240px, 48%); flex: none; }
 .settings-theme-row .custom-select-trigger { min-height: 48px; }
-.settings-theme-row .custom-select-menu { width: 240px; min-width: 240px; max-width: 240px; right: 0; left: auto; }
-.settings-theme-row .custom-select-option { min-height: 46px; }

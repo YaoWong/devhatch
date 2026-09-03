@@ -27,6 +27,11 @@ import {
 } from "../features/terminals/terminalWorkspaceDock";
 import { useWebApps } from "../features/web-apps/useWebApps";
 import { RailResizeHandle } from "../shared/ui/RailResizeHandle";
+import {
+  CUSTOM_SELECT_OPEN_CHANGE_EVENT,
+  hasOpenCustomSelectPortalOwnedBy,
+  isCustomSelectPortalOwnedBy,
+} from "../shared/ui/customSelectPortal";
 import type { ConfirmAction, DeleteTarget, LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
@@ -218,8 +223,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       const active = document.activeElement;
       const movingToMobile = query.matches;
       const focusWillBeLost = movingToMobile
-        ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active)
-        : canvasMobileTriggerRef.current === active || (!canvasPinned && canvasRailRef.current?.contains(active));
+        ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
+        : canvasMobileTriggerRef.current === active || (!canvasPinned && (canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)));
       breakpointFocusTargetRef.current = focusWillBeLost ? (movingToMobile ? "mobile" : "desktop") : null;
       setMobileNavigation(movingToMobile);
     };
@@ -242,7 +247,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [cancelCanvasClose]);
   const closeCanvasRail = useCallback((restoreFocus = false) => {
     cancelCanvasClose();
-    if (restoreFocus && canvasRailRef.current?.contains(document.activeElement)) {
+    if (restoreFocus && (canvasRailRef.current?.contains(document.activeElement) || isCustomSelectPortalOwnedBy(canvasRailRef.current, document.activeElement))) {
       if (!mobileNavigation) suppressCanvasEdgeFocusRef.current = true;
       (mobileNavigation ? canvasMobileTriggerRef : canvasEdgeTriggerRef).current?.focus();
     }
@@ -255,20 +260,38 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       canvasCloseTimerRef.current = null;
       const active = document.activeElement;
       const railHasKeyboardFocus = active instanceof HTMLElement && active.matches(":focus-visible") && (
-        canvasRailRef.current?.contains(active) || canvasHandleRef.current?.contains(active)
+        canvasRailRef.current?.contains(active) || canvasHandleRef.current?.contains(active) ||
+        isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
       );
       if (
-        railResizingRef.current || navigation.railMotion !== null ||
+        railResizingRef.current || navigation.railMotion !== null || hasOpenCustomSelectPortalOwnedBy(canvasRailRef.current) ||
         canvasRailHoverRef.current || canvasHandleHoverRef.current || railHasKeyboardFocus
       ) return;
       setCanvasOpen(false);
     }, CANVAS_RAIL_CLOSE_DELAY_MS);
   }, [cancelCanvasClose, navigation.railMotion]);
+  useEffect(() => {
+    const rail = canvasRailRef.current;
+    if (!rail) return;
+    const onSelectOpenChange = (event: Event) => {
+      if ((event as CustomEvent<boolean>).detail) {
+        cancelCanvasClose();
+        return;
+      }
+      if (!mobileNavigation && !canvasPinned && !canvasRailHoverRef.current && !canvasHandleHoverRef.current) {
+        scheduleCanvasClose();
+      }
+    };
+    rail.addEventListener(CUSTOM_SELECT_OPEN_CHANGE_EVENT, onSelectOpenChange);
+    return () => rail.removeEventListener(CUSTOM_SELECT_OPEN_CHANGE_EVENT, onSelectOpenChange);
+  }, [cancelCanvasClose, canvasPinned, mobileNavigation, scheduleCanvasClose]);
   const onSessionSelected = useCallback(() => {
     if (mobileNavigation || canvasPinned) return;
     cancelCanvasClose();
     const active = document.activeElement;
-    if (active instanceof HTMLElement && canvasRailRef.current?.contains(active)) active.blur();
+    if (active instanceof HTMLElement && (
+      canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
+    )) active.blur();
     setCanvasOpen(false);
   }, [cancelCanvasClose, canvasPinned, mobileNavigation]);
   useEffect(() => {
@@ -305,7 +328,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       focusable[0]?.focus();
     });
     const trapFocus = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !rail) return;
+      if (event.key !== "Tab" || !rail || isCustomSelectPortalOwnedBy(rail, event.target)) return;
       const focusable = getFocusableRailElements(rail);
       if (focusable.length === 0) {
         event.preventDefault();
@@ -344,7 +367,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (event.key === "Escape") {
-        if (dialogOpen || document.querySelector('[aria-modal="true"]')) return;
+        if (dialogOpen || document.querySelector('[aria-modal="true"]') || isCustomSelectPortalOwnedBy(canvasRailRef.current, target)) return;
         if (sidebarOpen) {
           event.preventDefault();
           closeSidebar();
@@ -631,7 +654,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           }
           canvasRailHoverRef.current = canvasRailRef.current?.matches(":hover") ?? false;
           setCanvasOpen(true);
-          if (!canvasRailHoverRef.current && !(document.activeElement instanceof HTMLElement && document.activeElement.matches(":focus-visible") && canvasRailRef.current?.contains(document.activeElement))) scheduleCanvasClose();
+          const railHasKeyboardFocus = document.activeElement instanceof HTMLElement && document.activeElement.matches(":focus-visible") && (
+            canvasRailRef.current?.contains(document.activeElement) ||
+            isCustomSelectPortalOwnedBy(canvasRailRef.current, document.activeElement)
+          );
+          if (!canvasRailHoverRef.current && !railHasKeyboardFocus) scheduleCanvasClose();
         }}
         onCanvasEnter={() => {
           canvasRailHoverRef.current = true;
@@ -643,7 +670,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }}
         onCanvasFocus={openCanvasRail}
         onCanvasBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget) && !canvasHandleRef.current?.contains(event.relatedTarget)) scheduleCanvasClose();
+          if (
+            event.currentTarget.contains(event.relatedTarget) ||
+            canvasHandleRef.current?.contains(event.relatedTarget) ||
+            isCustomSelectPortalOwnedBy(event.currentTarget, event.relatedTarget)
+          ) return;
+          scheduleCanvasClose();
         }}
         onStopWebApp={() => void webApps.stop()}
       />
