@@ -1,4 +1,5 @@
 import { ArrowLeft, Bot, Globe2, LoaderCircle, Pin, PinOff, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
@@ -245,10 +246,10 @@ export function NavigationRail({
       </div>
       {workspaceMode === "webapp" && webAppRunning && (
         <div className="canvas-mode-actions">
-          <button className="secondary-button canvas-stop-button" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
+          <Button variant="outline" className="canvas-stop-button tw:h-10 tw:w-full tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
             {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
             <span>{webAppOperation === "stop" ? "Stopping…" : "Stop Web App"}</span>
-          </button>
+          </Button>
         </div>
       )}
       {terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (

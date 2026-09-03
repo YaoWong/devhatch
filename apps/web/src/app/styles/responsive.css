@@ -33,13 +33,6 @@
   .secondary-button { width: 38px; padding: 0; }
   .skills-workspace { padding: 20px 14px 96px; }
   .skills-scroll-controls { right: 14px; bottom: 14px; }
-  .webapps-workspace { padding: 20px 14px; }
-  .webapp-hero { align-items: flex-start; gap: 18px; padding: 22px; }
-  .webapp-icon { width: 72px; height: 72px; }
-  .webapp-icon img { border-radius: 20px; }
-  .webapp-copy h2 { font-size: 22px; }
-  .webapp-detail-grid { grid-template-columns: 1fr; }
-  .webapp-actions { flex-wrap: wrap; }
   .terminal-workspace { grid-template-rows: minmax(0, 1fr); }
   .terminal-surface { padding: 8px 10px; }
   .terminal-thumbnail-dock { inset: 0 0 auto; width: 100%; height: 87px; }
