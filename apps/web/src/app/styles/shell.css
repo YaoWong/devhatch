@@ -174,27 +174,6 @@
 .select-copy strong, .select-copy small, .config-select-copy strong, .config-select-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-copy strong { font-size: 12px; }
 .select-copy small, .config-select-copy small { margin-top: 3px; color: var(--color-text-faint); font-size: 9px; }
-.agent-install-message { min-width: 0; display: grid; gap: 4px; margin-top: 8px; padding: 9px 10px; border: 1px solid var(--color-danger); border-radius: 9px; background: var(--color-danger-soft); color: var(--color-danger); overflow-wrap: anywhere; font-size: 9px; line-height: 1.4; }
-.agent-install-message strong { font-size: 10px; }
-.agent-install-message code { overflow: hidden; padding: 5px 6px; border-radius: 5px; background: color-mix(in srgb, var(--color-danger-soft) 70%, var(--color-surface)); color: var(--color-danger); font: 8px/1.4 "SF Mono", monospace; text-overflow: ellipsis; white-space: nowrap; user-select: all; }
-.launch-setup { display: grid; gap: 6px; margin-top: 10px; padding: 8px; border: 1px solid var(--color-border); border-radius: 13px; background: var(--color-surface-raised); }
-.launch-setup-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 1px 3px; border: 0; background: transparent; color: var(--color-text-faint); font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.launch-setup-toggle svg { width: 13px; height: 13px; transition: transform 150ms ease; }
-.launch-setup-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
-.launch-setup-toggle:focus-visible { border-radius: 4px; }
-.launch-setup-body { display: grid; gap: 6px; }
-.launch-setting-row { min-height: 46px; display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 9px; background: var(--color-surface); }
-.launch-setting-copy > svg, .launch-setting-row > svg:first-child { width: 18px; height: 18px; flex: none; }
-.launch-setting-copy > span, .launch-setting-row > span { min-width: 0; flex: 1; }
-.launch-setting-copy strong, .launch-setting-copy small, .launch-setting-row strong, .launch-setting-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.launch-setting-copy strong, .launch-setting-row strong { font-size: 10px; }
-.launch-setting-copy small, .launch-setting-row small { margin-bottom: 2px; color: var(--color-text-faint); font-size: 8px; }
-.launch-setup .custom-select-trigger, .launch-setting-row { min-height: 46px; border: 1px solid var(--color-border); }
-.launch-setup .custom-select-trigger { padding: 7px 9px; }
-.launch-setting-copy { min-width: 0; display: flex; align-items: center; gap: 9px; flex: 1; }
-.launch-setting-row { width: 100%; text-align: left; }
-.launch-setting-row:hover, .launch-setup .custom-select-trigger:hover { border-color: var(--color-border-strong); background: var(--color-surface); }
-.launch-setting-row > svg:last-child { width: 12px; height: 12px; color: var(--color-text-faint); }
 .terminal-paths-section { max-height: min(52vh, 480px); }
 .terminal-new-from-path { margin-top: 6px; padding: 6px 8px; border: 1px dashed var(--color-border); border-radius: 8px; background: transparent; color: var(--color-text-faint); overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-select, .workspace-actions button, .agent-path-row button { touch-action: manipulation; }
