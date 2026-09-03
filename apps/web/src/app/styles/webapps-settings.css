@@ -46,7 +46,6 @@
 .webapp-detail strong.missing svg { color: var(--color-warning-fg); }
 .webapp-warning { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--color-warning-fg); font-size: 10px; line-height: 1.45; }
 .webapp-warning svg { width: 14px; height: 14px; flex: none; }
-.spin { animation: picker-spin 700ms linear infinite; }
 .settings-shell { width: min(1040px, calc(100% - 48px)); display: grid; grid-template-columns: 160px minmax(0, 820px); gap: 48px; margin: 0 auto; padding: 44px 0 64px; }
 .settings-toc { position: sticky; top: 28px; align-self: start; }
 .settings-toc > span { display: block; margin: 0 10px 12px; color: var(--color-text-faint); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }

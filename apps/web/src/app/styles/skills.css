@@ -161,17 +161,16 @@
 .profile-skill-row input:checked + i { border-color: var(--color-text); background: var(--color-text); }
 .profile-skill-row i svg { display: block; width: 12px; height: 12px; stroke-width: 2.5; }
 .save-profile { min-width: 118px; }
-.skill-manifest-backdrop { z-index: 20; }
-.skill-manifest-dialog { width: min(900px, calc(100vw - 48px)); height: min(760px, calc(100vh - 64px)); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: 18px; background: var(--color-surface); box-shadow: 0 24px 70px rgb(0 0 0 / 24%); }
 .skill-manifest-dialog > header { min-height: 66px; display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--color-border); }
 .skill-manifest-dialog > header > span { min-width: 0; display: flex; align-items: center; gap: 10px; flex: 1; }
-.skill-manifest-dialog > header > span > svg { width: 20px; color: var(--color-accent); }
-.skill-manifest-dialog h2, .skill-manifest-dialog p { margin: 0; }
-.skill-manifest-dialog h2 { font-size: 14px; }
-.skill-manifest-dialog p { margin-top: 3px; color: var(--color-text-faint); font: 9px/1 var(--font-family-mono); }
+.skill-manifest-dialog > header > span > div { min-width: 0; }
+.skill-manifest-dialog > header > span > svg { width: 20px; flex: none; color: var(--color-accent); }
+.skill-manifest-dialog h2, .skill-manifest-dialog p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-manifest-dialog h2 { font-size: 15px; line-height: 1.25; }
+.skill-manifest-dialog p { margin-top: 3px; color: var(--color-text-muted); font: 11px/1.25 var(--font-family-mono); }
 .skill-manifest-body { min-height: 0; overflow: auto; background: var(--color-surface-raised); }
-.skill-manifest-body pre { min-height: 100%; margin: 0; padding: 22px 24px; color: var(--color-text-subtle); font: 11px/1.65 var(--font-family-mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
-.skill-manifest-loading, .skill-manifest-error { height: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-text-faint); font-size: 10px; }
+.skill-manifest-body pre { min-height: 100%; margin: 0; padding: 22px 24px; color: var(--color-text-subtle); font: 12px/1.65 var(--font-family-mono); tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-manifest-loading, .skill-manifest-error { height: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; text-align: center; overflow-wrap: anywhere; }
 .skill-manifest-loading svg { width: 15px; }
 .skill-manifest-error { color: var(--color-danger); }
 .skills-rail-note { display: flex; align-items: flex-start; gap: 7px; margin: 16px 8px; padding: 10px; border-radius: 9px; background: var(--color-canvas); color: var(--color-text-faint); font-size: 9px; line-height: 1.45; }

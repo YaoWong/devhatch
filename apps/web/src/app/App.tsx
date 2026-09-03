@@ -328,7 +328,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       focusable[0]?.focus();
     });
     const trapFocus = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !rail || isCustomSelectPortalOwnedBy(rail, event.target)) return;
+      if (
+        event.key !== "Tab" || !rail || document.querySelector('[aria-modal="true"]') ||
+        isCustomSelectPortalOwnedBy(rail, event.target)
+      ) return;
       const focusable = getFocusableRailElements(rail);
       if (focusable.length === 0) {
         event.preventDefault();

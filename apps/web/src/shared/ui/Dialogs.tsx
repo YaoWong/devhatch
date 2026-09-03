@@ -153,19 +153,19 @@ export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction;
         >
           <AlertDialogHeader>
             <AlertDialogTitle className="tw:text-[17px]">{action.title}</AlertDialogTitle>
-            <AlertDialogDescription className="tw:text-[11px] tw:leading-normal">
+            <AlertDialogDescription className="tw:text-xs tw:leading-[1.5]">
               {action.description}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="tw:mt-3.5 tw:flex-row tw:justify-end tw:gap-[7px]">
-            <AlertDialogCancel ref={cancelRef} disabled={busy} className="tw:h-9 tw:rounded-full tw:px-[13px] tw:text-[11px]">
+          <AlertDialogFooter className="tw:mt-3.5 tw:flex-row tw:justify-end tw:gap-2 tw:max-sm:grid tw:max-sm:grid-cols-2">
+            <AlertDialogCancel ref={cancelRef} disabled={busy} className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs tw:[@media(pointer:coarse)]:h-11">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
               className={action.danger
-                ? "tw:h-9 tw:rounded-full tw:border-destructive tw:bg-destructive tw:px-[13px] tw:text-[11px] tw:text-[var(--color-on-solid)] tw:hover:bg-[var(--color-danger-hover)]"
-                : "tw:h-9 tw:rounded-full tw:border-foreground tw:bg-foreground tw:px-[13px] tw:text-[11px] tw:text-[var(--color-on-solid)] tw:hover:bg-foreground/80"}
+                ? "tw:h-10 tw:rounded-full tw:border-destructive tw:bg-destructive tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-[var(--color-danger-hover)] tw:[@media(pointer:coarse)]:h-11"
+                : "tw:h-10 tw:rounded-full tw:border-foreground tw:bg-foreground tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground/80 tw:[@media(pointer:coarse)]:h-11"}
               onClick={() => void action.action()}
             >
               {busy ? "Working…" : action.confirmLabel}

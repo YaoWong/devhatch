@@ -41,6 +41,8 @@ body { margin: 0; overflow: hidden; }
 :where(button, input, textarea, select) { font-family: inherit; }
 :where(code, kbd, samp, pre) { font-family: var(--font-family-mono); }
 button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent) 30%, transparent); outline-offset: 2px; }
+.spin { animation: shared-spin 700ms linear infinite; }
+@keyframes shared-spin { to { transform: rotate(360deg); } }
 .pixel-range-control { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .pixel-range-control > input[type="range"] { min-width: 56px; width: 100%; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
 .pixel-range-control > input[type="range"]:focus-visible { border-radius: 99px; outline: 2px solid var(--color-accent); outline-offset: 3px; }
