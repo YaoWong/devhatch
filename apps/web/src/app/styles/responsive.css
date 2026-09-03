@@ -1,5 +1,5 @@
 @media (prefers-reduced-motion: reduce) {
-  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .canvas-rail-footer, .canvas-settings-slot, .canvas-auto-hide, .picker-backdrop, .folder-picker, .dialog-backdrop, .delete-dialog, .terminal-window, .terminal-thumbnail, .terminal-thumbnail-stack, .terminal-thumbnail-edge-trigger, .terminal-capacity-control button, .skills-section-transition, .skill-tree-children, .profile-source-tree, .profile-detail-transition { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
+  .rail-page, .shared-title-flight, .shared-title-backdrop, .nav-item, .canvas-rail-footer, .canvas-settings-slot, .canvas-auto-hide, .picker-backdrop, .folder-picker, .dialog-backdrop, .terminal-window, .terminal-thumbnail, .terminal-thumbnail-stack, .terminal-thumbnail-edge-trigger, .terminal-capacity-control button, .skills-section-transition, .skill-tree-children, .profile-source-tree, .profile-detail-transition { transform: none !important; filter: none !important; transition-duration: 1ms !important; animation-duration: 1ms !important; }
   .spin, .picker-spinner, .profile-skills.loading::after, .inline-rename-spinner, .terminal-image-paste-status svg { animation: none !important; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 1ms !important; }
 }
@@ -26,9 +26,6 @@
   .config-body aside { max-height: 150px; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .config-editor { overflow: visible; padding: 16px; }
   .config-editor textarea { min-height: 220px; }
-  .delete-dialog { grid-template-columns: 42px minmax(0, 1fr); padding: 18px; border-radius: 20px; }
-  .delete-dialog-icon { width: 42px; height: 42px; }
-  .delete-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .folder-picker { width: 100%; height: 100%; border: 0; border-radius: 0; }
   .picker-header { padding: 18px 16px 14px; }
   .picker-toolbar { padding: 0 16px 12px; }

@@ -55,15 +55,8 @@
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 130; display: grid; place-items: center; padding: 24px; background: rgb(var(--overlay-color) / 36%); backdrop-filter: blur(12px) saturate(120%); animation: dialog-backdrop-in 180ms ease both; }
 .config-backdrop { z-index: 1000; }
-.action-dialog { width: min(420px, 100%); padding: 22px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 28px 80px rgb(0 0 0 / 24%); }
-.action-dialog h2 { margin: 0; font-size: 17px; }
-.action-dialog p { margin: 8px 0 16px; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
 .config-editor > label { display: grid; gap: 6px; color: var(--color-text-muted); font-size: 10px; }
 .config-editor > label input { height: 36px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; font-size: 11px; }
-.dialog-buttons { display: flex; justify-content: flex-end; gap: 7px; margin-top: 18px; }
-.dialog-buttons button { min-height: 36px; padding: 0 13px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); font-size: 11px; font-weight: 600; }
-.dialog-buttons .primary { border-color: var(--color-text); background: var(--color-text); color: var(--color-on-solid); }
-.dialog-buttons .danger { border-color: var(--color-danger); background: var(--color-danger); color: var(--color-on-solid); }
 .config-dialog { width: min(760px, 100%); max-height: min(620px, calc(100vh - 48px)); overflow: hidden; border-radius: 18px; background: var(--color-surface); box-shadow: 0 28px 80px rgb(0 0 0 / 24%); }
 .config-dialog > header { display: flex; align-items: center; padding: 19px 21px; border-bottom: 1px solid var(--color-border); }
 .config-dialog h2 { margin: 0; font-size: 17px; }
@@ -100,21 +93,4 @@
 .config-editor footer .save-config { margin-left: auto; border-color: var(--color-text); background: var(--color-text); color: var(--color-on-solid); }
 .form-message { margin: 10px 0 0; color: var(--color-text-muted); font-size: 9px; }
 .form-error { margin: 7px 0 0; color: var(--color-danger); font-size: 9px; }
-.delete-dialog { width: min(430px, 100%); display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 16px; padding: 22px; border: 1px solid var(--color-border); border-radius: 20px; background: color-mix(in srgb, var(--color-surface) 96%, transparent); box-shadow: 0 28px 80px rgb(0 0 0 / 24%); animation: dialog-in 260ms cubic-bezier(.22, 1, .36, 1) both; }
-.delete-dialog-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: var(--color-danger-soft); color: var(--color-danger); }
-.delete-dialog-icon svg { width: 21px; height: 21px; }
-.delete-dialog-copy { min-width: 0; padding-top: 2px; }
-.delete-dialog-copy h2 { margin: 0; color: var(--color-text); font-size: 18px; letter-spacing: -.025em; }
-.delete-dialog-copy p { margin: 8px 0 0; color: var(--color-text-muted); font-size: 12px; line-height: 1.55; }
-.delete-dialog-copy p strong { color: var(--color-text-subtle); }
-.delete-dialog-copy > span { display: block; margin-top: 11px; padding: 8px 10px; overflow: hidden; border-radius: 8px; background: var(--color-canvas); color: var(--color-text-muted); font: 10px/1.3 "JetBrainsMono Nerd Font Web", monospace; text-overflow: ellipsis; white-space: nowrap; }
-.delete-dialog-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 5px; }
-.delete-dialog-actions button { min-height: 40px; padding: 0 16px; border-radius: 99px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
-.delete-dialog-actions button:active:not(:disabled) { transform: scale(.97); }
-.delete-dialog-actions button:disabled { opacity: .55; cursor: default; }
-.dialog-cancel { border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text-subtle); }
-.dialog-cancel:hover:not(:disabled) { background: var(--color-canvas); }
-.dialog-delete { border: 0; background: var(--color-danger); color: var(--color-on-solid); box-shadow: 0 6px 16px color-mix(in srgb, var(--color-danger) 22%, transparent); }
-.dialog-delete:hover:not(:disabled) { background: var(--color-danger-hover); box-shadow: 0 8px 20px color-mix(in srgb, var(--color-danger) 28%, transparent); }
 @keyframes dialog-backdrop-in { from { opacity: 0; } }
-@keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }

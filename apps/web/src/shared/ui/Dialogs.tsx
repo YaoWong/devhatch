@@ -1,6 +1,57 @@
-import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { useId, useLayoutEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { ConfirmAction, DeleteTarget } from "../../types/app";
+
+function useDialogFocus(busy: boolean) {
+  const contentId = useId();
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+
+  useLayoutEffect(() => {
+    if (busy) contentRef.current?.focus();
+  }, [busy]);
+
+  useLayoutEffect(() => {
+    const previous = returnFocusRef.current;
+    return () => {
+      queueMicrotask(() => {
+        if (document.getElementById(contentId)) return;
+        if (previous?.isConnected && !previous.closest("[inert]")) {
+          previous.focus();
+          return;
+        }
+        const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
+        if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") {
+          mobileTrigger.focus();
+          return;
+        }
+        const edgeTrigger = document.querySelector<HTMLElement>(".canvas-edge-trigger");
+        if (edgeTrigger && getComputedStyle(edgeTrigger).display !== "none") {
+          edgeTrigger.focus();
+          return;
+        }
+        (document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body).focus();
+      });
+    };
+  }, [contentId]);
+
+  return { cancelRef, contentId, contentRef };
+}
 
 export function DeleteSessionDialog({
   target,
@@ -13,74 +64,115 @@ export function DeleteSessionDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const cancelRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    cancelRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !deleting) onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [deleting, onCancel]);
+  const { cancelRef, contentId, contentRef } = useDialogFocus(deleting);
+
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !deleting) onCancel();
+    <AlertDialog
+      open
+      onOpenChange={(open, eventDetails) => {
+        if (open) return;
+        if (deleting) eventDetails.cancel();
+        else onCancel();
       }}
     >
-      <div className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-        <div className="delete-dialog-icon">
-          <X />
-        </div>
-        <div className="delete-dialog-copy">
-          <h2 id="delete-dialog-title">Close {target.kind}?</h2>
-          <p>
-            This will stop the running process and close <strong>{target.name}</strong>. OpenCode history will be
-            preserved.
-          </p>
-          <span>{target.cwd}</span>
-        </div>
-        <div className="delete-dialog-actions">
-          <button ref={cancelRef} className="dialog-cancel" disabled={deleting} onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="dialog-delete" disabled={deleting} onClick={onConfirm}>
-            {deleting ? "Closing…" : `Close ${target.kind}`}
-          </button>
-        </div>
-      </div>
-    </div>
+      <AlertDialogPortal>
+        <AlertDialogOverlay
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleting) onCancel();
+          }}
+        />
+        <AlertDialogContent
+          ref={contentRef}
+          id={contentId}
+          initialFocus={cancelRef}
+          finalFocus={false}
+          aria-busy={deleting}
+          className="tw:grid tw:grid-cols-[46px_minmax(0,1fr)] tw:gap-4 tw:p-[22px] tw:max-sm:grid-cols-[42px_minmax(0,1fr)] tw:max-sm:p-[18px]"
+        >
+          <div className="tw:grid tw:size-[46px] tw:place-items-center tw:rounded-[14px] tw:bg-[var(--color-danger-soft)] tw:text-destructive tw:max-sm:size-[42px] tw:[&_svg]:size-[21px]">
+            <X />
+          </div>
+          <AlertDialogHeader className="tw:min-w-0 tw:gap-0.5 tw:pt-0.5">
+            <AlertDialogTitle className="tw:text-[18px] tw:tracking-[-0.025em]">
+              Close {target.kind}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="tw:mt-1.5 tw:text-xs tw:leading-[1.55]">
+              This will stop the running process and close <strong className="tw:text-[var(--color-text-subtle)]">{target.name}</strong>. OpenCode history will be preserved.
+            </AlertDialogDescription>
+            <span className="tw:mt-[9px] tw:block tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:rounded-lg tw:bg-background tw:px-2.5 tw:py-2 tw:font-mono tw:text-[10px] tw:leading-[1.3] tw:text-muted-foreground">
+              {target.cwd}
+            </span>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="tw:col-span-full tw:flex-row tw:justify-end tw:gap-2 tw:pt-[5px] tw:max-sm:grid tw:max-sm:grid-cols-2">
+            <AlertDialogCancel
+              ref={cancelRef}
+              disabled={deleting}
+              className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="tw:h-10 tw:rounded-full tw:bg-destructive tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:shadow-[0_6px_16px_color-mix(in_srgb,var(--color-danger)_22%,transparent)] tw:hover:bg-[var(--color-danger-hover)] tw:hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--color-danger)_28%,transparent)]"
+              onClick={onConfirm}
+            >
+              {deleting ? "Closing…" : `Close ${target.kind}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogPortal>
+    </AlertDialog>
   );
 }
 
 export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction; busy: boolean; onClose: () => void }) {
-  const cancelRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    cancelRef.current?.focus();
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [busy, onClose]);
+  const { cancelRef, contentId, contentRef } = useDialogFocus(busy);
+
   return (
-    <div
-      className="dialog-backdrop"
-      onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}
+    <AlertDialog
+      open
+      onOpenChange={(open, eventDetails) => {
+        if (open) return;
+        if (busy) eventDetails.cancel();
+        else onClose();
+      }}
     >
-      <div className="action-dialog" role="alertdialog" aria-modal="true" aria-labelledby="action-title">
-        <h2 id="action-title">{action.title}</h2>
-        <p>{action.description}</p>
-        <div className="dialog-buttons">
-          <button ref={cancelRef} disabled={busy} onClick={onClose}>
-            Cancel
-          </button>
-          <button className={action.danger ? "danger" : "primary"} disabled={busy} onClick={() => void action.action()}>
-            {busy ? "Working…" : action.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+      <AlertDialogPortal>
+        <AlertDialogOverlay
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !busy) onClose();
+          }}
+        />
+        <AlertDialogContent
+          ref={contentRef}
+          id={contentId}
+          initialFocus={cancelRef}
+          finalFocus={false}
+          aria-busy={busy}
+          className="tw:max-w-[420px] tw:rounded-2xl tw:p-[22px]"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="tw:text-[17px]">{action.title}</AlertDialogTitle>
+            <AlertDialogDescription className="tw:text-[11px] tw:leading-normal">
+              {action.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="tw:mt-3.5 tw:flex-row tw:justify-end tw:gap-[7px]">
+            <AlertDialogCancel ref={cancelRef} disabled={busy} className="tw:h-9 tw:rounded-full tw:px-[13px] tw:text-[11px]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className={action.danger
+                ? "tw:h-9 tw:rounded-full tw:border-destructive tw:bg-destructive tw:px-[13px] tw:text-[11px] tw:text-[var(--color-on-solid)] tw:hover:bg-[var(--color-danger-hover)]"
+                : "tw:h-9 tw:rounded-full tw:border-foreground tw:bg-foreground tw:px-[13px] tw:text-[11px] tw:text-[var(--color-on-solid)] tw:hover:bg-foreground/80"}
+              onClick={() => void action.action()}
+            >
+              {busy ? "Working…" : action.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialogPortal>
+    </AlertDialog>
   );
 }
