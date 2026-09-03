@@ -138,13 +138,15 @@ export function TerminalSurface({
       verifyAuth,
       notifyUnauthorized,
     );
+    const terminalFontFamily = getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim()
+      || '"JetBrainsMono Nerd Font Web", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono", "Courier New", monospace';
     let terminal: Terminal;
     let fit: FitAddon;
     try {
       terminal = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
-        fontFamily: '"JetBrainsMono Nerd Font Web", monospace',
+        fontFamily: terminalFontFamily,
         fontSize: 13,
         fontWeight: "normal",
         fontWeightBold: "bold",
@@ -388,9 +390,17 @@ export function TerminalSurface({
     container.addEventListener("paste", paste, true);
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
-    void document.fonts.ready.then(() => {
-      if (!disposed && visibleRef.current) scheduleResize();
-    });
+    void Promise.all([
+      document.fonts.load('400 13px "JetBrainsMono Nerd Font Web"'),
+      document.fonts.load('700 13px "JetBrainsMono Nerd Font Web"'),
+    ]).then(() => {
+      if (disposed) return;
+      terminal.options.fontFamily = "monospace";
+      terminal.options.fontFamily = terminalFontFamily;
+      terminal.clearTextureAtlas();
+      if (visibleRef.current) sendResize();
+      terminal.refresh(0, terminal.rows - 1);
+    }).catch(() => undefined);
     connect();
     if (visibleRef.current) {
       focusFrame = requestAnimationFrame(() => {

@@ -36,6 +36,8 @@
 }
 
 @theme inline {
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -58,6 +60,13 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  button:not([data-slot]) {
+    color: inherit;
+    font: inherit;
+  }
 }
 
 @layer components {

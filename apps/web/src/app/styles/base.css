@@ -20,9 +20,11 @@
 }
 
 :root {
+  --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  --font-family-mono: "JetBrainsMono Nerd Font Web", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono", "Courier New", monospace;
   color: var(--color-text);
   background: var(--color-canvas);
-  font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-family-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -36,14 +38,15 @@
 *::-webkit-scrollbar-corner { background: transparent; }
 html, body, #root { width: 100%; height: 100%; }
 body { margin: 0; overflow: hidden; }
-button:not([data-slot]) { color: inherit; font: inherit; }
+:where(button, input, textarea, select) { font-family: inherit; }
+:where(code, kbd, samp, pre) { font-family: var(--font-family-mono); }
 button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent) 30%, transparent); outline-offset: 2px; }
 .pixel-range-control { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .pixel-range-control > input[type="range"] { min-width: 56px; width: 100%; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
 .pixel-range-control > input[type="range"]:focus-visible { border-radius: 99px; outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .pixel-value-control { width: 50px; height: 32px; display: grid; grid-template-columns: minmax(0, 1fr) 13px; flex: none; overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: 9px; background: var(--color-surface); transition: border-color 140ms ease, box-shadow 140ms ease; }
 .pixel-value-control:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
-.pixel-value-input { min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: 0; appearance: textfield; background: transparent; color: var(--color-text); font: 10px/1 "SF Mono", monospace; text-align: center; }
+.pixel-value-input { min-width: 0; width: 100%; height: 100%; padding: 0; border: 0; outline: 0; appearance: textfield; background: transparent; color: var(--color-text); font: 10px/1 var(--font-family-mono); text-align: center; }
 .pixel-value-input::-webkit-inner-spin-button, .pixel-value-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
 .pixel-step-buttons { display: grid; grid-template-rows: 1fr 1fr; border-left: 1px solid var(--color-border); }
 .pixel-step-buttons button { min-width: 0; width: 13px; height: 15px; display: grid; place-items: center; padding: 0; border: 0; background: var(--color-surface-raised); color: var(--color-text-muted); cursor: pointer; }
@@ -64,7 +67,7 @@ button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, va
   background: var(--color-surface);
   box-shadow: 0 12px 32px rgb(0 0 0 / 8%);
 }
-.fatal-error span { color: var(--color-text-muted); font: 12px/1.5 ui-monospace, monospace; }
+.fatal-error span { color: var(--color-text-muted); font: 12px/1.5 var(--font-family-mono); }
 .fatal-error button { width: max-content; padding: 8px 14px; border: 0; border-radius: 99px; background: var(--color-text); color: var(--color-on-solid); cursor: pointer; }
 
 .auth-page { width: 100%; height: 100%; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 0%, var(--color-surface) 0, var(--color-canvas) 55%); }
@@ -72,11 +75,11 @@ button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, va
 .auth-card > div { display: flex; align-items: center; gap: 12px; }
 .auth-card h1 { margin: 0; font-size: 24px; letter-spacing: -.04em; }
 .auth-card p { margin: 0; color: var(--color-text-muted); font-size: 14px; line-height: 1.5; }
-.auth-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); font: 700 13px/1 ui-monospace, monospace; }
+.auth-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); font: 700 13px/1 var(--font-family-mono); }
 .auth-card label { display: grid; gap: 7px; color: var(--color-text-subtle); font-size: 12px; font-weight: 600; }
-.auth-card input { width: 100%; padding: 12px 13px; border: 1px solid var(--color-border-strong); border-radius: 11px; background: var(--color-surface); color: var(--color-text); font: 14px/1.3 ui-monospace, monospace; outline: 0; }
+.auth-card input { width: 100%; padding: 12px 13px; border: 1px solid var(--color-border-strong); border-radius: 11px; background: var(--color-surface); color: var(--color-text); font: 14px/1.3 var(--font-family-mono); outline: 0; }
 .auth-card input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent); }
 .auth-card button { padding: 12px 16px; border: 0; border-radius: 11px; background: var(--color-text); color: var(--color-on-solid); font-weight: 600; cursor: pointer; }
 .auth-card button:disabled { opacity: .55; cursor: wait; }
-.auth-card .auth-error { color: var(--color-danger); font-family: ui-monospace, monospace; font-size: 12px; }
+.auth-card .auth-error { color: var(--color-danger); font-family: var(--font-family-mono); font-size: 12px; }
 }

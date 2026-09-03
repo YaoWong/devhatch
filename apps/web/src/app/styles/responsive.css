@@ -94,5 +94,5 @@
   .terminal-window-titlebar small { display: none; }
   .tab { min-width: 136px; }
   .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); }
-  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font: 10px/1 "SF Mono", monospace; }
+  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font: 10px/1 var(--font-family-mono); }
 }

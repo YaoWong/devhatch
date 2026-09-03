@@ -4,7 +4,7 @@
 .terminal-default-agent-row .custom-select-trigger { min-height: 32px; padding: 5px 8px; border-radius: 8px; }
 .terminal-default-agent-row .custom-select-trigger strong { min-width: 0; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .terminal-capacity-control { display: flex; padding: 3px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); }
-.terminal-capacity-control button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 99px; background: transparent; color: var(--color-text-muted); font: 650 10px/1 "SF Mono", monospace; cursor: pointer; transition: color 160ms ease, background-color 160ms ease; }
+.terminal-capacity-control button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 99px; background: transparent; color: var(--color-text-muted); font: 650 10px/1 var(--font-family-mono); cursor: pointer; transition: color 160ms ease, background-color 160ms ease; }
 .terminal-capacity-control button:hover { color: var(--color-text); background: var(--color-canvas); }
 .terminal-capacity-control button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-solid); }
 .path-display-control button { width: auto; min-width: 48px; padding-inline: 9px; font-family: inherit; }
