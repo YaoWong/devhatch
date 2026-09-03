@@ -26,7 +26,6 @@
 .terminal-setting-row input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
 .terminal-setting-range { align-items: flex-start; flex-direction: column; gap: 7px; padding-top: 3px; }
 .terminal-setting-range .pixel-range-control { width: 100%; }
-.terminal-setting-range .pixel-value-control { height: 30px; }
 .canvas-mode-actions { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--color-border); }
 .canvas-stop-button { width: 100%; }
 .canvas-edge-trigger, .canvas-mobile-trigger { display: none; }

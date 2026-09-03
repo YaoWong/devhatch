@@ -46,36 +46,3 @@
 .webapp-detail strong.missing svg { color: var(--color-warning-fg); }
 .webapp-warning { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--color-warning-fg); font-size: 10px; line-height: 1.45; }
 .webapp-warning svg { width: 14px; height: 14px; flex: none; }
-.settings-shell { width: min(1040px, calc(100% - 48px)); display: grid; grid-template-columns: 160px minmax(0, 820px); gap: 48px; margin: 0 auto; padding: 44px 0 64px; }
-.settings-toc { position: sticky; top: 28px; align-self: start; }
-.settings-toc > span { display: block; margin: 0 10px 12px; color: var(--color-text-faint); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.settings-toc div { display: grid; gap: 3px; }
-.settings-toc a { min-height: 36px; display: flex; align-items: center; padding: 0 10px; border-radius: 9px; color: var(--color-text-muted); font-size: 11px; font-weight: 600; text-decoration: none; }
-.settings-toc a:hover { background: var(--color-surface-hover); color: var(--color-text); }
-.settings-toc a[aria-current="location"] { background: var(--color-surface); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-border); }
-.settings-content { min-width: 0; }
-.settings-section { display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); gap: 32px; padding: 30px 0; border-bottom: 1px solid var(--color-border-strong); scroll-margin-top: 28px; }
-.settings-section:first-child { padding-top: 0; }
-.settings-section-title h2 { margin: 0; color: var(--color-text); font-size: 17px; letter-spacing: -.02em; }
-.settings-section-title p { margin: 7px 0 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
-.settings-group { overflow: hidden; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); box-shadow: 0 8px 24px rgb(var(--shadow-color) / 5%); }
-.settings-row { min-height: 72px; display: flex; align-items: center; gap: 16px; padding: 14px 16px; cursor: pointer; transition: background-color 150ms ease; }
-.settings-row + .settings-row { border-top: 1px solid var(--color-border); }
-.settings-row:hover { background: color-mix(in srgb, var(--color-surface-raised) 72%, transparent); }
-.settings-row > span { min-width: 0; flex: 1; }
-.settings-row strong, .settings-row small { display: block; }
-.settings-row strong { color: var(--color-text); font-size: 12px; }
-.settings-row small { margin-top: 5px; color: var(--color-text-muted); font-size: 10px; line-height: 1.4; }
-.settings-row .settings-error { color: var(--color-danger); }
-.settings-row input[type="checkbox"] { width: 38px; height: 22px; position: relative; flex: none; margin: 0; border: 0; border-radius: 99px; outline: none; appearance: none; background: var(--color-border-strong); cursor: pointer; transition: background 180ms ease; }
-.settings-row input[type="checkbox"]::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 1px 4px rgb(0 0 0 / 24%); transition: transform 180ms cubic-bezier(.22, 1, .36, 1); }
-.settings-row input[type="checkbox"]:checked { background: var(--color-success-fg); }
-.settings-row input[type="checkbox"]:checked::after { transform: translateX(16px); }
-.settings-row input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
-.settings-range-row { cursor: default; }
-.settings-row.static { cursor: default; }
-.settings-row.static > svg, .settings-range-row > svg { width: 34px; height: 34px; padding: 8px; flex: none; border-radius: 10px; background: var(--color-surface-muted); color: var(--color-text-muted); }
-.settings-signout { flex: none; padding: 8px 13px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); color: var(--color-danger); font-size: 11px; font-weight: 600; cursor: pointer; }
-.settings-signout:hover { border-color: var(--color-danger); background: var(--color-danger-soft); }
-.settings-theme-row .custom-select, .settings-range-row .pixel-range-control { width: min(240px, 48%); flex: none; }
-.settings-theme-row .custom-select-trigger { min-height: 48px; }

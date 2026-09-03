@@ -31,12 +31,6 @@
   .shell { margin-left: 0; grid-template-rows: minmax(0, 1fr); }
   .secondary-button span { display: none; }
   .secondary-button { width: 38px; padding: 0; }
-  .settings-shell { width: calc(100% - 28px); grid-template-columns: 1fr; gap: 24px; padding: 12px 0 40px; }
-  .settings-toc { top: 0; z-index: 2; margin: 0 -14px; padding: 10px 14px; overflow-x: auto; border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-canvas) 92%, transparent); backdrop-filter: blur(12px); }
-  .settings-toc > span { display: none; }
-  .settings-toc div { display: flex; gap: 4px; width: max-content; }
-  .settings-toc a { padding: 0 12px; }
-  .settings-section { grid-template-columns: 1fr; gap: 14px; scroll-margin-top: 68px; }
   .skills-workspace { padding: 20px 14px 96px; }
   .skills-scroll-controls { right: 14px; bottom: 14px; }
   .webapps-workspace { padding: 20px 14px; }

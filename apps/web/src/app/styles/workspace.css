@@ -16,4 +16,3 @@
 .icon-button svg { width: 17px; height: 17px; }
 .terminal-workspace { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .terminal-workspace.workspace-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; visibility: hidden; pointer-events: none; }
-.settings-workspace { min-height: 0; overflow: auto; background: var(--color-canvas); }

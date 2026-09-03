@@ -1,13 +1,17 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-export function PixelRangeControl({ label, value, min, max, step = 1, disabled = false, onChange }: {
+export function PixelRangeControl({ label, value, min, max, step = 1, disabled = false, compact = false, onChange }: {
   label: string;
   value: number;
   min: number;
   max: number;
   step?: number;
   disabled?: boolean;
+  compact?: boolean;
   onChange: (value: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -29,9 +33,17 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
     setDraft(String(next));
     if (next !== value) onChange(next);
   };
+  const buttonClassName = cn(
+    "tw:flex-none tw:rounded-lg",
+    compact ? "tw:size-8 tw:[@media(pointer:coarse)]:size-10" : "tw:size-10 tw:[@media(pointer:coarse)]:size-11",
+  );
   return (
-    <span className="pixel-range-control">
+    <div className={cn("pixel-range-control tw:flex tw:min-w-0 tw:items-center", compact ? "tw:gap-1" : "tw:gap-2")} role="group" aria-label={label}>
       <input
+        className={cn(
+          "tw:min-w-12 tw:flex-1 tw:cursor-pointer tw:accent-[var(--color-accent)] tw:focus-visible:rounded-full tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring tw:disabled:pointer-events-none tw:disabled:cursor-not-allowed tw:disabled:opacity-50",
+          compact ? "tw:h-8" : "tw:h-10",
+        )}
         type="range"
         min={min}
         max={max}
@@ -41,29 +53,32 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
         aria-label={label}
         onChange={(event) => onChange(event.target.valueAsNumber)}
       />
-      <span className="pixel-value-control">
-        <input
-          className="pixel-value-input"
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={draft}
-          disabled={disabled}
-          aria-label={`${label} in pixels`}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            const next = event.target.valueAsNumber;
-            if (Number.isFinite(next) && next >= min && next <= max) onChange(next);
-          }}
-          onBlur={commit}
-          onKeyDown={handleKeyDown}
-        />
-        <span className="pixel-step-buttons">
-          <button type="button" disabled={disabled || value >= max} aria-label={`Increase ${label}`} onClick={() => adjust(1)}><ChevronUp /></button>
-          <button type="button" disabled={disabled || value <= min} aria-label={`Decrease ${label}`} onClick={() => adjust(-1)}><ChevronDown /></button>
-        </span>
-      </span>
-    </span>
+      <Button variant="outline" size="icon" className={buttonClassName} type="button" disabled={disabled || value <= min} aria-label={`Decrease ${label}`} onClick={() => adjust(-1)}>
+        <Minus className="tw:size-3.5" />
+      </Button>
+      <Input
+        className={cn(
+          "tw:flex-none tw:px-1 tw:text-center tw:font-mono tw:text-xs tw:[appearance:textfield] tw:[&::-webkit-inner-spin-button]:appearance-none tw:[&::-webkit-outer-spin-button]:appearance-none",
+          compact ? "tw:h-8 tw:w-12" : "tw:h-10 tw:w-16",
+        )}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={draft}
+        disabled={disabled}
+        aria-label={`${label} in pixels`}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          const next = event.target.valueAsNumber;
+          if (Number.isFinite(next) && next >= min && next <= max) onChange(next);
+        }}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+      />
+      <Button variant="outline" size="icon" className={buttonClassName} type="button" disabled={disabled || value >= max} aria-label={`Increase ${label}`} onClick={() => adjust(1)}>
+        <Plus className="tw:size-3.5" />
+      </Button>
+    </div>
   );
 }
