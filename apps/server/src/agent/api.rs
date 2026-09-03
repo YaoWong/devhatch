@@ -206,14 +206,14 @@ pub async fn create(
             };
             created_session(&state, workspace_id.as_deref(), session).await
         }
-        PreparedLaunch::TraeNew { id } => {
+        PreparedLaunch::TraeNew { thread_name } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
             let session = match spawn_traecli(
                 state.clone(),
                 terminal_request,
-                id,
+                thread_name,
                 None,
                 launch_config,
                 skill_generation.as_deref(),
@@ -503,6 +503,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Agent,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: cwd.to_owned(),
                 name: "test".to_string(),
                 cols: 80,
@@ -563,6 +564,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Agent,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: temp.path().to_owned(),
                 name: "test".to_string(),
                 cols: 80,

@@ -100,6 +100,7 @@ impl Session {
             kind: spawn.kind,
             identity: std::sync::Mutex::new(super::model::SessionIdentity {
                 upstream_session_id: spawn.upstream_session_id,
+                pending_upstream_session_id: spawn.pending_upstream_session_id,
                 upstream_session_file: None,
                 cwd: path_string(spawn.cwd),
             }),

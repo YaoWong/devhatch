@@ -44,9 +44,16 @@ impl HistoryBackend {
         }
         .as_str();
         let active = state.active_upstream_session_ids_for(agent_id);
+        let pending_trae_claim = self == Self::Trae
+            && if let Some(id) = requested_id {
+                trae::pending_thread_claims_id(state, id).await
+            } else {
+                false
+            };
         if requested_id.is_some_and(|id| {
             active_resume(&active, id) || state.history_deletion_pending(agent_id, id)
-        }) {
+        }) || pending_trae_claim
+        {
             return Err(HistoryError::Active);
         }
         match self {

@@ -83,6 +83,18 @@ impl SessionRegistry {
             .collect()
     }
 
+    pub(crate) fn pending_upstream_session_ids_for(&self, agent_id: &str) -> HashSet<String> {
+        self.sessions
+            .read()
+            .expect("sessions lock poisoned")
+            .values()
+            .filter(|session| {
+                session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
+            })
+            .filter_map(|session| session.pending_upstream_session_id())
+            .collect()
+    }
+
     pub(crate) fn active_upstream_session_files_for(&self, agent_id: &str) -> HashSet<PathBuf> {
         self.sessions
             .read()
@@ -264,6 +276,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Terminal,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: std::env::temp_dir(),
                 name: "test".to_string(),
                 cols: 80,
@@ -287,6 +300,7 @@ mod tests {
                     shell: "/bin/sh".to_string(),
                     kind: SessionKind::Terminal,
                     upstream_session_id: None,
+                    pending_upstream_session_id: None,
                     cwd: std::env::temp_dir(),
                     name: "rejected".to_string(),
                     cols: 80,
@@ -320,6 +334,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Agent,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: std::env::temp_dir(),
                 name: "test".to_string(),
                 cols: 80,
@@ -366,6 +381,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Agent,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: std::env::temp_dir(),
                 name: "test".to_string(),
                 cols: 80,

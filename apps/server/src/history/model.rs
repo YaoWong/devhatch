@@ -3,7 +3,7 @@ use std::{collections::HashSet, path::PathBuf};
 use axum::http::StatusCode;
 use serde::Serialize;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HistoryBackend {
     Codex,
     OpenCode,
@@ -39,7 +39,7 @@ pub(crate) enum PreparedLaunch {
         cwd: PathBuf,
     },
     TraeNew {
-        id: String,
+        thread_name: String,
     },
     TraeResume {
         id: String,

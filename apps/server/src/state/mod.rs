@@ -71,6 +71,10 @@ impl AppState {
         self.sessions.active_upstream_session_ids_for(agent_id)
     }
 
+    pub fn pending_upstream_session_ids_for(&self, agent_id: &str) -> HashSet<String> {
+        self.sessions.pending_upstream_session_ids_for(agent_id)
+    }
+
     pub fn active_upstream_session_files_for(&self, agent_id: &str) -> HashSet<PathBuf> {
         self.sessions.active_upstream_session_files_for(agent_id)
     }
@@ -236,6 +240,7 @@ mod tests {
                 shell: "/bin/sh".to_string(),
                 kind: SessionKind::Agent,
                 upstream_session_id: None,
+                pending_upstream_session_id: None,
                 cwd: temp.path().to_owned(),
                 name: "test".to_string(),
                 cols: 80,

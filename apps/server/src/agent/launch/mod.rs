@@ -175,6 +175,7 @@ pub(super) fn spawn_codex(
             shell,
             kind: SessionKind::Agent,
             upstream_session_id: resume.as_ref().map(|value| value.0.clone()),
+            pending_upstream_session_id: None,
             cwd,
             name: CODEX_NAME.to_string(),
             cols,
@@ -320,6 +321,7 @@ pub(super) fn spawn_opencode(
             shell,
             kind: SessionKind::Agent,
             upstream_session_id,
+            pending_upstream_session_id: None,
             cwd,
             name: OPENCODE_NAME.to_string(),
             cols,
@@ -405,7 +407,9 @@ pub(super) fn spawn_traecli(
     }
     let cleanup_path = run_dir.clone();
     let resume_path = history_path.map(Path::to_path_buf);
-    let runtime_id = session_id.clone();
+    let is_resume = resume_path.is_some();
+    let runtime_identity = is_resume.then(|| session_id.clone());
+    let runtime_correlation = session_id.clone();
     let runtime_cwd = cwd.clone();
     let watcher_state = state.clone();
     let result = Session::spawn(
@@ -414,7 +418,8 @@ pub(super) fn spawn_traecli(
             command,
             shell,
             kind: SessionKind::Agent,
-            upstream_session_id: Some(session_id),
+            upstream_session_id: runtime_identity.clone(),
+            pending_upstream_session_id: (!is_resume).then(|| runtime_correlation.clone()),
             cwd,
             name: TRAECLI_NAME.to_string(),
             cols,
@@ -426,14 +431,16 @@ pub(super) fn spawn_traecli(
             exit_cleanup: Some(state.agent_exit_cleanup()),
         },
         move |session| {
-            if let Some(path) = resume_path {
-                session.update_runtime_identity(
-                    runtime_id.clone(),
-                    Some(path),
-                    Some(runtime_cwd.clone()),
+            if let (Some(path), Some(id)) = (resume_path, runtime_identity) {
+                session.update_runtime_identity(id, Some(path), Some(runtime_cwd.clone()));
+            } else {
+                start_trae_identity_watcher(
+                    session,
+                    watcher_state,
+                    runtime_homes,
+                    runtime_correlation,
                 );
             }
-            start_trae_identity_watcher(session, watcher_state, runtime_homes, runtime_id);
         },
     );
     if result.is_err() {
@@ -453,7 +460,7 @@ fn start_trae_identity_watcher(
     session: &Arc<Session>,
     state: Arc<AppState>,
     homes: crate::history::trae::TraeHomes,
-    id: String,
+    thread_name: String,
 ) {
     let session = Arc::downgrade(session);
     tokio::spawn(async move {
@@ -462,16 +469,27 @@ fn start_trae_identity_watcher(
             let Some(session) = session.upgrade() else {
                 break;
             };
-            if !state.contains_session(&session) {
+            if session.is_deleting()
+                || session.upstream_session_id().is_some()
+                || !state.contains_session(&session)
+            {
                 break;
             }
-            let record = crate::history::trae::lookup(homes.clone(), id.clone()).await;
+            let record =
+                crate::history::trae::lookup_thread_name(homes.clone(), thread_name.clone()).await;
             let Ok(record) = record else {
                 continue;
             };
             let _history_guard = state.history_reconciliation().lock().await;
-            if !state.contains_session(&session)
-                || state.history_deletion_pending(TRAECLI_ID, &record.id)
+            if session.is_deleting()
+                || session.upstream_session_id().is_some()
+                || !state.contains_session(&session)
+            {
+                break;
+            }
+            let claimed = state.active_upstream_session_ids_for(TRAECLI_ID);
+            if state.history_deletion_pending(TRAECLI_ID, &record.id)
+                || claimed.contains(&record.id)
             {
                 break;
             }
@@ -568,6 +586,7 @@ pub(super) fn spawn_pi(
             shell,
             kind: SessionKind::Agent,
             upstream_session_id: Some(session_id),
+            pending_upstream_session_id: None,
             cwd,
             name: PI_NAME.to_string(),
             cols,

@@ -70,6 +70,7 @@ pub(crate) struct SessionSpawn {
     pub shell: String,
     pub kind: SessionKind,
     pub upstream_session_id: Option<String>,
+    pub pending_upstream_session_id: Option<String>,
     pub cwd: PathBuf,
     pub name: String,
     pub cols: u16,
@@ -83,6 +84,7 @@ pub(crate) struct SessionSpawn {
 
 pub(super) struct SessionIdentity {
     pub upstream_session_id: Option<String>,
+    pub pending_upstream_session_id: Option<String>,
     pub upstream_session_file: Option<PathBuf>,
     pub cwd: String,
 }
@@ -188,6 +190,14 @@ impl Session {
             .clone()
     }
 
+    pub(crate) fn pending_upstream_session_id(&self) -> Option<String> {
+        self.identity
+            .lock()
+            .expect("session identity lock poisoned")
+            .pending_upstream_session_id
+            .clone()
+    }
+
     pub(crate) fn upstream_session_file(&self) -> Option<PathBuf> {
         self.identity
             .lock()
@@ -254,6 +264,7 @@ impl Session {
             return;
         }
         identity.upstream_session_id = upstream;
+        identity.pending_upstream_session_id = None;
         if let Some(file) = file {
             identity.upstream_session_file = Some(file);
         }

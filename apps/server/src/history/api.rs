@@ -44,6 +44,8 @@ pub async fn remove(
         if state
             .active_upstream_session_ids_for(agent_id)
             .contains(&id)
+            || (kind == AgentKind::TraeCli
+                && super::trae::pending_thread_claims_id(&state, &id).await)
         {
             return error(StatusCode::CONFLICT, "UPSTREAM_SESSION_ACTIVE_HERE");
         }

@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     env,
     ffi::OsString,
-    fs,
+    fs::{self, File},
     io::Read,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
@@ -17,12 +17,17 @@ use sqlx::{
 };
 use uuid::Uuid;
 
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
 use super::{
     DeleteError, HistoryError, HistoryItem, PreparedLaunch, Presence, command_output_with_timeout,
 };
 use crate::{agent::TRAECLI_ID, filesystem::home_dir, state::AppState};
 
 const MAX_PEER_BYTES: u64 = 20 * 1024;
+const MAX_SESSION_INDEX_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_SESSION_INDEX_LINE_BYTES: usize = 64 * 1024;
 const START_TIME_TOLERANCE_MS: u64 = 5_000;
 const REQUIRED_COLUMNS: &[&str] = &[
     "id",
@@ -84,6 +89,12 @@ struct SessionPeer {
     started_at_ms: u64,
     thread_id: String,
     socket_path: PathBuf,
+}
+
+#[derive(Deserialize)]
+struct SessionIndexEntry {
+    id: String,
+    thread_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,9 +159,16 @@ fn resolve_homes_from(
 }
 
 pub(crate) async fn list(state: &AppState) -> Result<Vec<HistoryItem>, &'static str> {
+    let homes = resolve_homes();
+    let mut active_ids = state.active_upstream_session_ids_for(TRAECLI_ID);
+    for thread_name in state.pending_upstream_session_ids_for(TRAECLI_ID) {
+        if let Ok(record) = lookup_thread_name(homes.clone(), thread_name).await {
+            active_ids.insert(record.id);
+        }
+    }
     list_from(
-        resolve_homes(),
-        state.active_upstream_session_ids_for(TRAECLI_ID),
+        homes,
+        active_ids,
         state.active_upstream_session_files_for(TRAECLI_ID),
     )
     .await
@@ -256,7 +274,7 @@ async fn prepare_from(
 ) -> Result<PreparedLaunch, HistoryError> {
     let Some(id) = requested_id else {
         return Ok(PreparedLaunch::TraeNew {
-            id: Uuid::new_v4().to_string(),
+            thread_name: Uuid::new_v4().to_string(),
         });
     };
     let record = lookup(homes.clone(), id.to_string()).await?;
@@ -275,6 +293,91 @@ fn resume_launch(
         path: record.path,
         cwd: record.cwd,
     })
+}
+
+pub(crate) async fn pending_thread_claims_id(state: &AppState, id: &str) -> bool {
+    let homes = resolve_homes();
+    for thread_name in state.pending_upstream_session_ids_for(TRAECLI_ID) {
+        let lookup_homes = homes.clone();
+        let mapped =
+            tokio::task::spawn_blocking(move || thread_id_from_index(&lookup_homes, &thread_name))
+                .await;
+        if matches!(mapped, Ok(Ok(mapped_id)) if mapped_id == id) {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) async fn lookup_thread_name(
+    homes: TraeHomes,
+    thread_name: String,
+) -> Result<SessionRecord, HistoryError> {
+    if !valid_session_id(&thread_name) {
+        return Err(HistoryError::InvalidId);
+    }
+    let lookup_homes = homes.clone();
+    let id = tokio::task::spawn_blocking(move || thread_id_from_index(&lookup_homes, &thread_name))
+        .await
+        .map_err(|_| HistoryError::Unavailable)??;
+    lookup(homes, id).await
+}
+
+fn thread_id_from_index(homes: &TraeHomes, thread_name: &str) -> Result<String, HistoryError> {
+    let path = homes.cli_home.join("session_index.jsonl");
+    let file = trusted_session_index(&path).ok_or(HistoryError::NotFound)?;
+    let mut content = String::new();
+    file.take(MAX_SESSION_INDEX_BYTES + 1)
+        .read_to_string(&mut content)
+        .map_err(|_| HistoryError::Unavailable)?;
+    if content.len() as u64 > MAX_SESSION_INDEX_BYTES {
+        return Err(HistoryError::Unavailable);
+    }
+    let id = content.lines().rev().find_map(|line| {
+        if line.len() > MAX_SESSION_INDEX_LINE_BYTES {
+            return None;
+        }
+        let entry = serde_json::from_str::<SessionIndexEntry>(line).ok()?;
+        (entry.thread_name == thread_name && valid_session_id(&entry.id)).then_some(entry.id)
+    });
+    id.ok_or(HistoryError::NotFound)
+}
+
+#[cfg(unix)]
+fn trusted_session_index(path: &Path) -> Option<File> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.nlink() != 1
+        || metadata.len() > MAX_SESSION_INDEX_BYTES
+    {
+        return None;
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .ok()?;
+    let opened = file.metadata().ok()?;
+    (opened.is_file()
+        && opened.dev() == metadata.dev()
+        && opened.ino() == metadata.ino()
+        && opened.len() <= MAX_SESSION_INDEX_BYTES)
+        .then_some(file)
+}
+
+#[cfg(not(unix))]
+fn trusted_session_index(path: &Path) -> Option<File> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_SESSION_INDEX_BYTES
+    {
+        return None;
+    }
+    let file = File::open(path).ok()?;
+    let opened = file.metadata().ok()?;
+    (opened.is_file() && opened.len() <= MAX_SESSION_INDEX_BYTES).then_some(file)
 }
 
 pub(crate) async fn lookup(homes: TraeHomes, id: String) -> Result<SessionRecord, HistoryError> {
@@ -325,6 +428,7 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     if state
         .active_upstream_session_ids_for(TRAECLI_ID)
         .contains(&id)
+        || pending_thread_claims_id(state, &id).await
     {
         return Err(DeleteError::History(HistoryError::Active));
     }
@@ -938,6 +1042,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolves_thread_name_to_actual_session_id() {
+        let homes = temporary_homes();
+        let cwd = homes.trae_home.join("work");
+        fs::create_dir(&cwd).unwrap();
+        let old_id = Uuid::new_v4().to_string();
+        let actual_id = Uuid::new_v4().to_string();
+        let thread_name = Uuid::new_v4().to_string();
+        let rollout = homes
+            .cli_home
+            .join("sessions")
+            .join(format!("{actual_id}.jsonl"));
+        fs::write(&rollout, "{}\n").unwrap();
+        let pool = database(&homes, true).await;
+        sqlx::query("INSERT INTO threads (id, rollout_path, created_at, updated_at, cwd, title, first_user_message, archived, source) VALUES (?, ?, 1, 1, ?, 'session', 'prompt', 0, 'cli')")
+            .bind(&actual_id)
+            .bind(path_string(&rollout))
+            .bind(path_string(&cwd))
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+        fs::write(
+            homes.cli_home.join("session_index.jsonl"),
+            format!(
+                "not json\n{{\"id\":\"{old_id}\",\"thread_name\":\"{thread_name}\"}}\n{{\"id\":\"{actual_id}\",\"thread_name\":\"{thread_name}\"}}\n"
+            ),
+        )
+        .unwrap();
+        let record = lookup_thread_name(homes.clone(), thread_name)
+            .await
+            .unwrap();
+        assert_eq!(record.id, actual_id);
+        assert_eq!(record.path, fs::canonicalize(&rollout).unwrap());
+        fs::remove_dir_all(homes.trae_home).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn thread_index_rejects_symlinks_and_oversized_files() {
+        use std::os::unix::fs::symlink;
+
+        let homes = temporary_homes();
+        let thread_name = Uuid::new_v4().to_string();
+        let actual_id = Uuid::new_v4().to_string();
+        let outside = homes.trae_home.join("outside-index.jsonl");
+        fs::write(
+            &outside,
+            format!("{{\"id\":\"{actual_id}\",\"thread_name\":\"{thread_name}\"}}\n"),
+        )
+        .unwrap();
+        let index = homes.cli_home.join("session_index.jsonl");
+        symlink(&outside, &index).unwrap();
+        assert_eq!(
+            thread_id_from_index(&homes, &thread_name).unwrap_err(),
+            HistoryError::NotFound
+        );
+        fs::remove_file(&index).unwrap();
+        let file = File::create(&index).unwrap();
+        file.set_len(MAX_SESSION_INDEX_BYTES + 1).unwrap();
+        assert_eq!(
+            thread_id_from_index(&homes, &thread_name).unwrap_err(),
+            HistoryError::NotFound
+        );
+        fs::remove_dir_all(homes.trae_home).unwrap();
+    }
+
+    #[tokio::test]
     async fn lookup_requires_trusted_cwd_and_rollout() {
         let homes = temporary_homes();
         let cwd = homes.trae_home.join("work");
@@ -995,7 +1166,7 @@ mod tests {
     async fn prepares_new_and_resume_and_builds_delete_arguments() {
         let new_homes = temporary_homes();
         assert!(
-            matches!(prepare_from(new_homes.clone(), None).await.unwrap(), PreparedLaunch::TraeNew { id } if valid_session_id(&id))
+            matches!(prepare_from(new_homes.clone(), None).await.unwrap(), PreparedLaunch::TraeNew { thread_name } if valid_session_id(&thread_name))
         );
         fs::remove_dir_all(new_homes.trae_home).unwrap();
         let homes = temporary_homes();

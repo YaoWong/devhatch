@@ -5,15 +5,14 @@ import { WorkspaceMutationQueue } from "../../terminals/workspaceMutationQueue";
 import { launcherActiveSession, selectedAgentLaunchPath } from "../agentLaunchState";
 import {
   agentWorkspaceSessions,
-  launchedWorkspaceSelection,
   mergeAgentWorkspace,
   mergeAgentWorkspaceMetadata,
   reconcileAgentWorkspaces,
   reconcileAgentWorkspaceSnapshot,
-  reconcileLaunchedAgentWorkspaces,
   selectedWorkspaceAfterDisband,
   workspaceOwningSession,
 } from "../agentWorkspaceState";
+import { completeAgentSessionLaunch } from "../agentWorkspaceLaunch";
 import { mergeAgentSessions, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
@@ -128,28 +127,22 @@ export function useAgentWorkspace({
     onCreated: (session: Awaited<ReturnType<typeof createAgentSession>>["agentSession"]) => void,
   ) => {
     const launch = workspaceMutationsRef.current.run(AGENT_WORKSPACES_MUTATION_KEY, () => createAgentSession(options));
-    const result = await launch.result;
-    for (;;) {
-      const refresh = workspaceMutationsRef.current.read(AGENT_WORKSPACES_MUTATION_KEY, agentWorkspaces);
-      const { generation, value: snapshot } = await refresh;
-      if (!workspaceMutationsRef.current.isLatest(AGENT_WORKSPACES_MUTATION_KEY, generation)) continue;
-      const reconciled = reconcileAgentWorkspaceSnapshot(snapshot);
-      const liveSessionIds = new Set(reconciled.sessions.map((session) => session.id));
-      const { workspaces: next, retainLaunch } = reconcileLaunchedAgentWorkspaces(
-        snapshot.agentWorkspaces,
-        liveSessionIds,
-        result.agentSession.id,
-      );
-      const preferred = launchedWorkspaceSelection(selectedAgentWorkspaceIdRef.current, targetWorkspaceId, result.agentWorkspace.id);
-      sessionState.applyAuthoritativeSessions(reconciled.sessions);
-      applyWorkspaces(next, preferred);
-      if (retainLaunch) {
-        onCreated(result.agentSession);
-        return result;
-      }
-      sessionState.removeSession(result.agentSession.id);
-      return null;
-    }
+    return completeAgentSessionLaunch({
+      launch: launch.result,
+      readAuthoritative: () => workspaceMutationsRef.current.read(AGENT_WORKSPACES_MUTATION_KEY, agentWorkspaces),
+      isLatest: (generation) => workspaceMutationsRef.current.isLatest(AGENT_WORKSPACES_MUTATION_KEY, generation),
+      onCreated,
+      currentWorkspaceId: () => selectedAgentWorkspaceIdRef.current,
+      targetWorkspaceId,
+      applyCreatedWorkspace: (workspace, preferred) => {
+        applyWorkspaces(mergeAgentWorkspace(workspacesRef.current, workspace), preferred);
+      },
+      applyAuthoritative: (sessions, next, preferred) => {
+        sessionState.applyAuthoritativeSessions(sessions);
+        applyWorkspaces(next, preferred);
+      },
+      removeSession: sessionState.removeSession,
+    });
   }, [applyWorkspaces, sessionState]);
 
   useEffect(() => {

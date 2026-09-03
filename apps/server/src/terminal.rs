@@ -209,6 +209,7 @@ pub(crate) fn spawn_with_cwd(
             shell,
             kind: SessionKind::Terminal,
             upstream_session_id: None,
+            pending_upstream_session_id: None,
             cwd,
             name,
             cols,
