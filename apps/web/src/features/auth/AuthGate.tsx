@@ -1,4 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { authStatus, login, logout, setupAdmin, type AuthStatus } from "../../api/auth";
 import { configureAuth } from "../../api/client";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
@@ -70,10 +72,10 @@ export function AuthGate({ children }: { children: (props: AuthGateRenderProps) 
       <form className="auth-card" onSubmit={(event) => void submit(event)}>
         <div><span className="auth-mark">DH</span><h1>{status.initialized ? "Sign in" : "Set up DevHatch"}</h1></div>
         <p>{status.initialized ? "Enter the administrator password." : "Enter the setup token shown in the server log and create an administrator password."}</p>
-        {!status.initialized && <label>Setup token<input name="setupToken" autoComplete="off" required /></label>}
-        <label>Password<input name="password" type="password" autoComplete={status.initialized ? "current-password" : "new-password"} minLength={12} required autoFocus={status.initialized} /></label>
-        {error && <p className="auth-error">{error}</p>}
-        <button type="submit" disabled={busy}>{busy ? "Please wait…" : status.initialized ? "Sign in" : "Create administrator"}</button>
+        {!status.initialized && <label>Setup token<Input className="tw:h-11 tw:rounded-[11px] tw:bg-card tw:px-3.5 tw:font-mono tw:text-sm tw:text-foreground tw:dark:bg-card!" name="setupToken" autoComplete="off" required autoFocus /></label>}
+        <label>Password<Input className="tw:h-11 tw:rounded-[11px] tw:bg-card tw:px-3.5 tw:font-mono tw:text-sm tw:text-foreground tw:dark:bg-card!" name="password" type="password" autoComplete={status.initialized ? "current-password" : "new-password"} minLength={12} required autoFocus={status.initialized} /></label>
+        {error && <p className="tw:m-0 tw:font-mono tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert">{error}</p>}
+        <Button className="tw:h-11 tw:rounded-[11px] tw:bg-foreground tw:px-4 tw:font-semibold tw:text-[var(--color-on-solid)] tw:hover:bg-foreground!" type="submit" disabled={busy}>{busy ? "Please wait…" : status.initialized ? "Sign in" : "Create administrator"}</Button>
       </form>
     </main>
   );
