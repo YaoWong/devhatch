@@ -1,5 +1,6 @@
 import { Search, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { ConfirmAction } from "../../types/app";
@@ -9,6 +10,13 @@ import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRow = { live?: AgentSession; history?: HistorySession };
+
+const legacyButtonFocus = "tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2";
+const retryButtonClass = `${legacyButtonFocus} tw:h-auto tw:w-fit tw:rounded-[6px] tw:border-input tw:bg-card tw:px-[7px] tw:py-[3px] tw:text-[8px] tw:leading-[1.45] tw:font-semibold tw:text-muted-foreground tw:transition-none tw:hover:bg-card! tw:hover:text-muted-foreground! tw:focus-visible:border-input! tw:disabled:pointer-events-auto tw:disabled:cursor-default tw:disabled:opacity-[0.42] tw:dark:bg-card! tw:dark:hover:bg-card!`;
+const sessionMainClass = `${legacyButtonFocus} session-main tw:h-auto tw:min-w-0 tw:flex-1 tw:justify-start tw:gap-[7px] tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:text-base tw:leading-[normal] tw:font-normal tw:whitespace-normal tw:text-inherit tw:text-left tw:transition-[padding-right] tw:duration-[220ms] tw:ease-[cubic-bezier(.2,1,.35,1)] tw:hover:bg-transparent! tw:hover:text-inherit! tw:focus-visible:border-transparent! tw:group-hover/session-row:pr-[74px] tw:group-focus-within/session-row:pr-[74px] tw:[@media(hover:none)]:pr-[74px] tw:[&>span:last-child]:min-w-0 tw:[&>span:last-child]:flex-1 tw:[&_em]:mt-[3px] tw:[&_em]:block tw:[&_em]:font-['SF_Mono',monospace] tw:[&_em]:text-[8px] tw:[&_em]:leading-[1.2] tw:[&_em]:font-normal tw:[&_em]:not-italic tw:[&_em]:text-[var(--color-text-muted)] tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-['SF_Mono',monospace] tw:[&_small]:text-[8px] tw:[&_small]:leading-[1.2] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-[10px] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap`;
+const resumeButtonClass = `${legacyButtonFocus} resume-button tw:h-[25px] tw:rounded-[7px] tw:border-input tw:bg-card tw:px-[7px] tw:py-0 tw:text-[8px] tw:leading-[normal] tw:font-semibold tw:text-inherit tw:transition-none tw:hover:bg-card! tw:hover:text-inherit! tw:focus-visible:border-input! tw:disabled:pointer-events-auto tw:disabled:opacity-100 tw:dark:bg-card! tw:dark:hover:bg-card!`;
+const deleteButtonClass = `${legacyButtonFocus} session-delete tw:grid tw:size-[25px] tw:flex-none tw:place-items-center tw:rounded-[7px] tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:transition-[background,color] tw:duration-150 tw:ease-[ease] tw:hover:bg-card! tw:hover:text-destructive! tw:focus-visible:border-transparent! tw:[&_svg]:size-3`;
+const sessionActionsClass = "session-actions tw:pointer-events-none tw:absolute tw:top-1/2 tw:right-[5px] tw:z-[1] tw:flex tw:translate-x-[9px] tw:-translate-y-1/2 tw:items-center tw:justify-end tw:gap-1 tw:bg-[linear-gradient(90deg,transparent,var(--color-canvas)_14px)] tw:pl-3.5 tw:opacity-0 tw:[transition:opacity_150ms_ease,translate_220ms_cubic-bezier(.2,1,.35,1)] tw:group-hover/session-row:pointer-events-auto tw:group-hover/session-row:translate-x-0 tw:group-hover/session-row:opacity-100 tw:group-focus-within/session-row:pointer-events-auto tw:group-focus-within/session-row:translate-x-0 tw:group-focus-within/session-row:opacity-100 tw:[@media(hover:none)]:pointer-events-auto tw:[@media(hover:none)]:translate-x-0 tw:[@media(hover:none)]:opacity-100";
 
 export function AgentSessionList({
   agentName,
@@ -133,9 +141,9 @@ export function AgentSessionList({
                 {historyUnavailable && <strong>History unavailable</strong>}
                 <span>{historyMessage}</span>
                 {historyUnavailable && (
-                  <button type="button" disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
+                  <Button type="button" variant="outline" size="xs" className={retryButtonClass} disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
                     {retrying ? "Retrying…" : "Retry"}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -149,9 +157,9 @@ export function AgentSessionList({
               return (
               <div
                 key={live?.id ?? history!.id}
-                className={`agent-session-row ${live?.id === activeId ? "active" : ""}`}
+                className={`agent-session-row tw:group/session-row tw:relative tw:flex tw:min-h-[42px] tw:w-full tw:min-w-0 tw:items-center tw:gap-[7px] tw:rounded-[9px] tw:border tw:px-[7px] tw:py-[5px] tw:[transition:background_150ms_ease,border-color_150ms_ease] tw:[&:hover]:border-border tw:[&:hover]:bg-background ${live?.id === activeId ? "active tw:border-border tw:bg-background" : "tw:border-transparent tw:bg-transparent"}`}
               >
-                <button className="session-main" onClick={() => live && onActivate(live.id)}>
+                <Button type="button" variant="ghost" className={sessionMainClass} onClick={() => live && onActivate(live.id)}>
                   <span className={`presence-dot ${presence}`} />
                   <span>
                     <strong>{live?.name ?? history?.title}</strong>
@@ -161,13 +169,16 @@ export function AgentSessionList({
                     </small>
                     <em>{label}</em>
                   </span>
-                </button>
-                <span className="session-actions">
+                </Button>
+                <span className={sessionActionsClass}>
                   {!live && history && (
-                    <button
-                       className="resume-button"
-                       disabled={launching}
-                       onClick={() => {
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className={resumeButtonClass}
+                      disabled={launching}
+                      onClick={() => {
                         const resume = () => onResume(history.id);
                         if (presence === "possibly-active-elsewhere") {
                           onConfirm({
@@ -184,10 +195,13 @@ export function AgentSessionList({
                       }}
                     >
                       Resume
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    className="session-delete"
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className={deleteButtonClass}
                     aria-label={`Delete ${live?.name ?? history?.title ?? "session"}`}
                     title="Delete session"
                     onClick={() => {
@@ -205,7 +219,7 @@ export function AgentSessionList({
                     }}
                   >
                     <Trash2 />
-                  </button>
+                  </Button>
                 </span>
               </div>
               );
@@ -217,9 +231,9 @@ export function AgentSessionList({
           <div className="quiet-message history-status unavailable">
             <strong>History unavailable</strong>
             {historyMessage && <span>{historyMessage}</span>}
-            <button type="button" disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
+            <Button type="button" variant="outline" size="xs" className={retryButtonClass} disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
               {retrying ? "Retrying…" : "Retry"}
-            </button>
+            </Button>
           </div>
         ) : historyAvailable || !supportsHistory ? (
           <div className="quiet-message">No sessions found.</div>

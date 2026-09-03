@@ -183,19 +183,19 @@
 .mini-action svg { width: 12px; height: 12px; }
 .mini-action:disabled, .secondary-button:disabled { opacity: .42; cursor: default; }
 .agent-path-list, .agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.agent-path-row, .agent-session-row { position: relative; width: 100%; min-width: 0; min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid transparent; border-radius: 9px; background: transparent; transition: background 150ms ease, border-color 150ms ease; }
+.agent-path-row { position: relative; width: 100%; min-width: 0; min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid transparent; border-radius: 9px; background: transparent; transition: background 150ms ease, border-color 150ms ease; }
 .agent-path-row { cursor: default; }
 .path-main { color: var(--color-text); cursor: pointer; }
 .path-main:focus-visible { border-radius: 5px; }
 .agent-path-row:has(.path-actions button:disabled) .path-actions button:disabled { cursor: default; }
-.agent-path-row:hover, .agent-session-row:hover, .agent-session-row.active { border-color: var(--color-border); background: var(--color-canvas); }
+.agent-path-row:hover { border-color: var(--color-border); background: var(--color-canvas); }
 .agent-path-row.active { border-left-color: var(--color-text); background: var(--color-surface-raised); }
 .agent-path-row > svg { width: 14px; height: 14px; flex: none; color: var(--color-warning-fg); }
-.path-main, .session-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; text-align: left; }
-.path-main > span, .session-main > span:last-child { min-width: 0; flex: 1; }
-.path-main strong, .path-main small, .session-main strong, .session-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.path-main strong, .session-main strong { font-size: 10px; }
-.path-main small, .session-main small { margin-top: 2px; color: var(--color-text-faint); font: 8px/1.2 "SF Mono", monospace; }
+.path-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; text-align: left; }
+.path-main > span { min-width: 0; flex: 1; }
+.path-main strong, .path-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.path-main strong { font-size: 10px; }
+.path-main small { margin-top: 2px; color: var(--color-text-faint); font: 8px/1.2 "SF Mono", monospace; }
 .path-actions { width: 24px; display: flex; overflow: hidden; opacity: 1; transition: width 180ms ease; }
 .agent-path-row:hover .path-actions, .agent-path-row:has(:focus-visible) .path-actions { width: 100px; }
 .path-actions button { width: 24px; height: 24px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-faint); transition: opacity 150ms ease, background 150ms ease, color 150ms ease; }
@@ -219,24 +219,12 @@
 .agent-session-list::-webkit-scrollbar-track { background: transparent; }
 .agent-session-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; transition: background-color 180ms ease; }
 .agent-session-list.is-scrolling::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
-.session-main { transition: padding-right 220ms cubic-bezier(.2, 1, .35, 1); }
-.agent-session-row:hover .session-main, .agent-session-row:focus-within .session-main { padding-right: 74px; }
-.session-main > span:last-child { min-width: 0; flex: 1; }
-.session-main em { display: block; margin-top: 3px; color: var(--color-text-muted); font: normal 8px/1.2 "SF Mono", monospace; }
 .presence-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-text-faint); }
 .presence-dot.active-here { background: var(--color-success-fg); }
 .presence-dot.possibly-active-elsewhere { background: var(--color-warning-fg); }
-.resume-button { height: 25px; padding: 0 7px; border: 1px solid var(--color-border-strong); border-radius: 7px; background: var(--color-surface); font-size: 8px; font-weight: 600; }
-.session-actions { position: absolute; z-index: 1; top: 50%; right: 5px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-left: 14px; opacity: 0; pointer-events: none; transform: translate(9px, -50%); background: linear-gradient(90deg, transparent, var(--color-canvas) 14px); transition: opacity 150ms ease, transform 220ms cubic-bezier(.2, 1, .35, 1); }
-.agent-session-row:hover .session-actions, .agent-session-row:focus-within .session-actions { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
-.session-delete { width: 25px; height: 25px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--color-text-faint); transition: background 150ms ease, color 150ms ease; }
-.session-delete:hover { background: var(--color-surface); color: var(--color-danger); }
-.session-delete svg { width: 12px; height: 12px; }
 .quiet-message { padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-text-faint); font-size: 10px; line-height: 1.45; }
 .history-status { min-width: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
 .history-status strong { color: var(--color-text-muted); }
-.history-status button { width: fit-content; padding: 3px 7px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-surface); color: var(--color-text-muted); font-size: 8px; font-weight: 600; }
-.history-status button:disabled { opacity: .42; cursor: default; }
 .settings-nav-item { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--color-text-subtle); font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
 .settings-nav-item:hover { background: var(--color-surface-hover); color: var(--color-text); }
 .settings-nav-item.active { background: var(--color-canvas); color: var(--color-text); }
@@ -245,6 +233,4 @@
 @media (hover: none) {
   .path-actions, .agent-path-row:hover .path-actions, .agent-path-row:has(:focus-visible) .path-actions { width: 100px; }
   .path-actions button:not(.pinned) { opacity: 1; pointer-events: auto; }
-  .session-main, .agent-session-row:hover .session-main, .agent-session-row:focus-within .session-main { padding-right: 74px; }
-  .session-actions { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
 }
