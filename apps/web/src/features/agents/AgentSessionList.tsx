@@ -1,5 +1,7 @@
 import { Search, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type { ConfirmAction } from "../../types/app";
 import type { AgentLaunchPath, AgentSession, HistorySession } from "../../types/agents";
 import { displayPath } from "../../shared/lib/utils";
@@ -87,13 +89,12 @@ export function AgentSessionList({
         <div className="sessions-title-row">
           <p className="menu-label">Sessions</p>
           {selectedPath && (
-            <label className="session-scope-toggle">
+            <label className="session-scope-toggle tw:inline-flex tw:cursor-pointer tw:items-center tw:gap-[5px] tw:text-[8px] tw:text-[var(--color-text-muted)]">
               <span>Subdirectories</span>
-              <input
-                type="checkbox"
-                role="switch"
+              <Switch
                 checked={includeSubdirectories}
-                onChange={(event) => onIncludeSubdirectoriesChange(event.target.checked)}
+                className="tw:h-[18px]! tw:w-[30px]! tw:border-0! tw:bg-[var(--color-border-strong)]! tw:p-0.5 tw:transition-[background-color]! tw:duration-[180ms] tw:ease-[ease] tw:focus-visible:ring-0! tw:focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] tw:data-checked:bg-[var(--color-success-fg)]! tw:dark:data-unchecked:bg-[var(--color-border-strong)]! tw:[&_[data-slot=switch-thumb]]:size-3.5! tw:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]! tw:[&_[data-slot=switch-thumb]]:shadow-[0_1px_3px_rgb(0_0_0/22%)] tw:[&_[data-slot=switch-thumb]]:transition-transform tw:[&_[data-slot=switch-thumb]]:duration-[180ms] tw:[&_[data-slot=switch-thumb]]:ease-[ease] tw:[&_[data-slot=switch-thumb][data-checked]]:translate-x-3! tw:dark:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]!"
+                onCheckedChange={onIncludeSubdirectoriesChange}
               />
             </label>
           )}
@@ -104,12 +105,14 @@ export function AgentSessionList({
           </div>
         )}
         {sessionCount + historyCount > 7 && (
-          <label className="session-search">
+          <label className="session-search tw:flex tw:h-[30px] tw:items-center tw:gap-[5px] tw:rounded-lg tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] tw:px-2 tw:shadow-[0_5px_14px_rgb(29_29_31/4%)] tw:backdrop-blur-[8px] tw:[&>svg]:w-3 tw:[&>svg]:text-[var(--color-text-faint)]">
             <Search />
-            <input
+            <Input
+              variant="bare"
               aria-label="Search sessions"
               placeholder="Search"
               value={search}
+              className="tw:min-w-0 tw:w-full tw:border-0 tw:bg-transparent tw:text-[9px] tw:leading-[normal] tw:focus-visible:[outline:2px_solid_var(--color-accent)] tw:focus-visible:outline-offset-2"
               onChange={(event) => onSearch(event.target.value)}
             />
           </label>
