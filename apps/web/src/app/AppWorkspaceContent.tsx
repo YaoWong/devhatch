@@ -162,6 +162,7 @@ export function AppWorkspaceContent({
           controller={skills}
           error={error}
           onDismissError={onDismissError}
+          onConfirm={onConfirm}
         />
       )}
       {mode === "settings" && (

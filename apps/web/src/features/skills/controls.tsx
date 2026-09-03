@@ -1,13 +1,24 @@
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { SourceFilter } from "./search";
+
+const compactButtonClass = "tw:h-10 tw:rounded-[9px] tw:px-3 tw:text-xs tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11";
 
 export function SourceFilterControl({ value, onChange }: { value: SourceFilter; onChange: (value: SourceFilter) => void }) {
   return (
-    <div className="skills-filter" aria-label="Filter by source">
+    <div className="skills-filter" role="group" aria-label="Filter by source">
       {(["all", "custom", "repository"] as const).map((option) => (
-        <button type="button" className={value === option ? "active" : ""} key={option} onClick={() => onChange(option)}>
+        <Button
+          type="button"
+          variant="ghost"
+          className={`tw:h-8 tw:rounded-md tw:px-2.5 tw:text-xs tw:font-medium tw:transition-none tw:[@media(pointer:coarse)]:h-11 ${value === option ? "active tw:bg-card tw:text-foreground tw:shadow-sm" : "tw:text-muted-foreground"}`}
+          aria-pressed={value === option}
+          key={option}
+          onClick={() => onChange(option)}
+        >
           {option === "all" ? "All" : option === "custom" ? "My skills" : "Repositories"}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -18,13 +29,13 @@ export function TreeControls({ allCollapsed, disabled = false, onToggle }: { all
   const Icon = allCollapsed ? ChevronDown : ChevronRight;
   return (
     <div className="tree-controls">
-      <button type="button" disabled={disabled} aria-label={label} title={label} onClick={onToggle}><Icon /><span>{label}</span></button>
+      <Button type="button" variant="secondary" className={compactButtonClass} disabled={disabled} aria-label={label} title={label} onClick={onToggle}><Icon className="tw:size-[13px]" /><span>{label}</span></Button>
     </div>
   );
 }
 
 export function SearchField({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
-  return <label className="skills-search"><Search /><input value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="skills-search"><span className="sr-only">{placeholder}</span><Search className="tw:size-[15px]" /><Input variant="bare" aria-label={placeholder} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 export function WorkspaceSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {

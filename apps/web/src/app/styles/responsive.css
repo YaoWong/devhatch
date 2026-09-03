@@ -37,29 +37,8 @@
   .settings-toc div { display: flex; gap: 4px; width: max-content; }
   .settings-toc a { padding: 0 12px; }
   .settings-section { grid-template-columns: 1fr; gap: 14px; scroll-margin-top: 68px; }
-  .skills-workspace { padding: 20px 14px; }
+  .skills-workspace { padding: 20px 14px 96px; }
   .skills-scroll-controls { right: 14px; bottom: 14px; }
-  .skills-scroll-controls button { width: 44px; height: 44px; }
-  .skills-form, .repository-form, .compact-form, .create-skill-form { grid-template-columns: 1fr; }
-  .create-skill-form > div { justify-content: flex-end; }
-  .skills-toolbar { grid-template-columns: 1fr; }
-  .skills-filter { width: fit-content; }
-  .repository-card-header { align-items: flex-start; flex-wrap: wrap; }
-  .repository-summary { width: 100%; flex-basis: 100%; }
-  .repository-actions { width: 100%; justify-content: flex-end; padding-left: 47px; }
-  .skill-tree-toolbar { align-items: stretch; flex-direction: column; }
-  .skill-tree-toolbar > .skills-search { width: 100%; }
-  .tree-controls { margin-left: 0; }
-  .repository-sync-result { gap: 8px; }
-  .repository-skill-row { grid-template-columns: minmax(0, 1fr); padding-left: 34px; }
-  .repository-skill-row code { display: none; }
-  .skills-grid.two-column { grid-template-columns: 1fr; }
-  .profile-layout { grid-template-columns: 1fr; }
-  .profile-list { min-height: 0; border-right: 0; border-bottom: 1px solid var(--color-border); }
-  .profile-skills-header { grid-template-columns: 1fr; align-items: stretch; }
-  .profile-skills-header .skills-search { width: 100%; }
-  .profile-header-actions { justify-content: flex-end; }
-  .profile-header-actions > * { flex: 1; }
   .webapps-workspace { padding: 20px 14px; }
   .webapp-hero { align-items: flex-start; gap: 18px; padding: 22px; }
   .webapp-icon { width: 72px; height: 72px; }

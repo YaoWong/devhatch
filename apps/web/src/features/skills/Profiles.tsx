@@ -1,5 +1,7 @@
 import { ChevronDown, ChevronRight, Folder, FolderGit2, Pencil, Plus, RotateCcw, Save, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { Skill } from "../../types/skills";
 import { InlineRename } from "../../shared/ui/InlineRename";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
@@ -66,21 +68,21 @@ export function Profiles({ controller }: { controller: SkillsController }) {
       {controller.profileError && (
         <div className="profile-error" role="alert">
           <span>{controller.profileError}</span>
-          <button type="button" aria-label="Dismiss profile error" onClick={controller.dismissProfileError}><X /></button>
+          <Button variant="ghost" size="icon" className="tw:size-10 tw:rounded-full tw:text-[var(--color-text-subtle)] tw:hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss profile error" onClick={controller.dismissProfileError}><X className="tw:size-3.5" /></Button>
         </div>
       )}
       <form className="skills-form compact-form" onSubmit={(event) => void submit(event)}>
-        <input required placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
-        <button className="skills-primary" disabled={controller.busy}><Plus />Create profile</button>
+        <Input className="tw:h-10 tw:text-sm" required aria-label="Profile slug" placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
+        <Button className="skills-primary tw:h-10 tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Create profile</Button>
       </form>
       <div className="profile-layout">
         <nav className="profile-list">
           <p>Profiles</p>
           {controller.profiles.map((profile) => (
-            <button key={profile.id} className={controller.selectedProfileId === profile.id ? "active" : ""} onClick={() => void controller.selectProfile(profile.id)}>
+            <Button variant="ghost" key={profile.id} className={`tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:text-xs tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 ${controller.selectedProfileId === profile.id ? "active tw:bg-muted" : ""}`} aria-current={controller.selectedProfileId === profile.id ? "page" : undefined} onClick={() => void controller.selectProfile(profile.id)}>
               <span>{profile.slug}</span>
               {controller.selectedProfileId === profile.id && <b>{draft.size}</b>}
-            </button>
+            </Button>
           ))}
           {!controller.profiles.length && <Empty text="No profiles yet." />}
         </nav>
@@ -93,15 +95,15 @@ export function Profiles({ controller }: { controller: SkillsController }) {
                 ) : (
                   <span className="profile-title-row">
                     <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
-                    {selectedProfile && <button className="profile-rename" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil /></button>}
+                    {selectedProfile && <Button variant="outline" size="icon" className="profile-rename tw:size-8 tw:rounded-lg tw:[@media(pointer:coarse)]:size-11" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></Button>}
                   </span>
                 )}
                 <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
               </span>
               <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
               <div className="profile-header-actions">
-                <button className="skills-button quiet" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</button>
-                <button className="skills-primary save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</button>
+                <Button variant="secondary" className="skills-button quiet tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</Button>
+                <Button className="skills-primary save-profile tw:h-10 tw:bg-foreground tw:px-3 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</Button>
               </div>
             </div>
             <div className="profile-tree-toolbar">
@@ -115,7 +117,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
               {customSkills.length > 0 && (
                 <ProfileSourceGroup
                   title="My skills"
-                  icon={<Folder />}
+                  icon={<Folder className="tw:size-[17px]" />}
                   skills={customSkills}
                   namespace="custom"
                   draft={draft}
@@ -132,7 +134,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
                     key={repository.id}
                     title={repository.name}
                     subtitle={`${skills.length} skills`}
-                    icon={<FolderGit2 />}
+                    icon={<FolderGit2 className="tw:size-[17px]" />}
                     skills={skills}
                     namespace={repository.id}
                     draft={draft}
@@ -167,12 +169,12 @@ function ProfileSourceGroup({ title, subtitle, icon, skills, namespace, draft, c
   const selected = skills.filter((skill) => draft.has(skill.id)).length;
   return (
     <section className="profile-source-group">
-      <button className="profile-source-header" type="button" aria-expanded={!isCollapsed} onClick={() => onToggleGroup(key)}>
-        {isCollapsed ? <ChevronRight /> : <ChevronDown />}
+      <Button variant="ghost" className="profile-source-header tw:grid tw:h-auto tw:min-h-[52px] tw:w-full tw:grid-cols-[14px_18px_minmax(0,1fr)_auto] tw:justify-start tw:rounded-none tw:bg-[var(--color-surface-raised)] tw:px-3 tw:py-[7px] tw:text-left tw:font-normal tw:whitespace-normal tw:transition-none tw:hover:bg-muted/50!" type="button" aria-expanded={!isCollapsed} onClick={() => onToggleGroup(key)}>
+        {isCollapsed ? <ChevronRight className="tw:size-3.5" /> : <ChevronDown className="tw:size-3.5" />}
         {icon}
         <span><strong>{title}</strong><small>{subtitle ?? `${skills.length} skills`}</small></span>
         <b>{selected}/{skills.length}</b>
-      </button>
+      </Button>
       {!isCollapsed && (
         <div className="profile-source-tree">
           <SkillTree nodes={buildSkillTree(skills)} collapsed={collapsed} namespace={`profile:${namespace}`} onToggle={onToggleGroup} selected={draft} onToggleSkill={onToggleSkill} />

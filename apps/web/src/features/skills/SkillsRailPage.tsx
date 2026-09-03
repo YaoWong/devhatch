@@ -1,4 +1,5 @@
 import { BookOpen, Boxes, FolderGit2, UserRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export type SkillsSection = "repositories" | "skills" | "profiles";
 
@@ -14,10 +15,10 @@ export function SkillsRailPage({ section, onSelect }: { section: SkillsSection; 
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <button type="button" key={item.id} className={`settings-nav-item ${section === item.id ? "active" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
+          <Button variant="ghost" type="button" key={item.id} className={`settings-nav-item tw:min-h-11 tw:w-full tw:justify-start tw:rounded-xl tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-none tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! ${section === item.id ? "active tw:bg-background" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
             <Icon />
             <span>{item.label}</span>
-          </button>
+          </Button>
         );
       })}
       <div className="skills-rail-note"><Boxes />Compose reusable skills into launch profiles.</div>

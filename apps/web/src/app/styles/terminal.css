@@ -122,7 +122,6 @@
 .empty-state > svg { width: 30px; height: 30px; color: var(--color-border-strong); }
 .empty-state button { justify-self: center; padding: 8px 14px; border: 0; border-radius: 99px; background: var(--color-text); color: var(--color-on-solid); cursor: pointer; }
 .error-banner { position: absolute; left: 50%; bottom: 18px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); font-size: 12px; transform: translateX(-50%); }
-.error-banner.skills-error-top { position: fixed; top: 76px; bottom: auto; }
 .error-banner button { width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--color-on-solid); }
 .error-banner svg { width: 12px; height: 12px; }
 .side-dot, .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
