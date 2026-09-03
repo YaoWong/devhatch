@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./apps/web/src/*"]
+    }
+  },
+  "references": [
+    { "path": "./apps/web" }
+  ]
+}

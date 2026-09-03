@@ -1,7 +1,8 @@
-@import "./shell.css";
-@import "./dialogs.css";
-@import "./workspace.css";
-@import "./skills.css";
-@import "./webapps-settings.css";
-@import "./terminal.css";
-@import "./responsive.css";
+@import "@xterm/xterm/css/xterm.css" layer(vendor);
+@import "./shell.css" layer(legacy);
+@import "./dialogs.css" layer(legacy);
+@import "./workspace.css" layer(legacy);
+@import "./skills.css" layer(legacy);
+@import "./webapps-settings.css" layer(legacy);
+@import "./terminal.css" layer(legacy);
+@import "./responsive.css" layer(legacy);

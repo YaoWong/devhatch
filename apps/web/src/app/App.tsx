@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Menu } from "lucide-react";
 import { flushSync } from "react-dom";
-import "@xterm/xterm/css/xterm.css";
 import { AppDialogs } from "./AppDialogs";
 import { AppNavigationRail } from "./AppNavigationRail";
 import { AppWorkspaceContent } from "./AppWorkspaceContent";
@@ -30,7 +29,6 @@ import { useWebApps } from "../features/web-apps/useWebApps";
 import { RailResizeHandle } from "../shared/ui/RailResizeHandle";
 import type { ConfirmAction, DeleteTarget, LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
-import "./styles/index.css";
 
 const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
 const CANVAS_RAIL_ID = "canvas-navigation-rail";
