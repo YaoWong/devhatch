@@ -19,13 +19,8 @@
 }
 .canvas-terminal-settings { position: absolute; right: 12px; bottom: 62px; left: 12px; z-index: 3; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
 .canvas-terminal-settings.pinned { position: relative; inset: auto; z-index: auto; flex: none; max-height: min(45%, 360px); overflow-y: auto; box-shadow: none; }
-.terminal-setting-row { min-height: 34px; display: flex; align-items: center; gap: 10px; color: var(--color-text-subtle); font-size: 11px; font-weight: 600; }
-.terminal-setting-row > span { flex: 1; }
-.terminal-setting-row input[type="checkbox"] { width: 34px; height: 20px; position: relative; flex: none; margin: 0; border: 0; border-radius: 99px; outline: 0; appearance: none; background: var(--color-border-strong); cursor: pointer; transition: background 180ms ease; }
-.terminal-setting-row input[type="checkbox"]::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 1px 4px rgb(0 0 0 / 22%); transition: transform 180ms cubic-bezier(.22, 1, .36, 1); }
-.terminal-setting-row input[type="checkbox"]:checked { background: var(--color-accent); }
-.terminal-setting-row input[type="checkbox"]:checked::after { transform: translateX(14px); }
-.terminal-setting-row input[type="checkbox"]:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.terminal-setting-row { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--color-text-subtle); font-size: 12px; font-weight: 600; }
+.terminal-setting-row > span:not([data-slot="switch"]) { flex: 1; }
 .terminal-setting-range { align-items: flex-start; flex-direction: column; gap: 7px; padding-top: 3px; }
 .terminal-setting-range .pixel-range-control { width: 100%; }
 .canvas-mode-actions { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--color-border); }

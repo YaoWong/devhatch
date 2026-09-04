@@ -33,16 +33,13 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
     setDraft(String(next));
     if (next !== value) onChange(next);
   };
-  const buttonClassName = cn(
-    "tw:flex-none tw:rounded-lg",
-    compact ? "tw:size-8 tw:[@media(pointer:coarse)]:size-10" : "tw:size-10 tw:[@media(pointer:coarse)]:size-11",
-  );
+  const buttonClassName = "tw:size-10 tw:flex-none tw:rounded-lg tw:[@media(pointer:coarse)]:size-11";
   return (
-    <div className={cn("pixel-range-control tw:flex tw:min-w-0 tw:items-center", compact ? "tw:gap-1" : "tw:gap-2")} role="group" aria-label={label}>
+    <div className={cn("pixel-range-control tw:min-w-0 tw:items-center", compact ? "tw:grid tw:w-full tw:grid-cols-[40px_48px_40px] tw:justify-end tw:gap-1 tw:[@media(pointer:coarse)]:grid-cols-[44px_48px_44px]" : "tw:flex tw:gap-2")} role="group" aria-label={label}>
       <input
         className={cn(
-          "tw:min-w-12 tw:flex-1 tw:cursor-pointer tw:accent-[var(--color-accent)] tw:focus-visible:rounded-full tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring tw:disabled:pointer-events-none tw:disabled:cursor-not-allowed tw:disabled:opacity-50",
-          compact ? "tw:h-8" : "tw:h-10",
+          "tw:min-w-12 tw:cursor-pointer tw:accent-[var(--color-accent)] tw:focus-visible:rounded-full tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring tw:disabled:pointer-events-none tw:disabled:cursor-not-allowed tw:disabled:opacity-50 tw:[@media(pointer:coarse)]:h-11",
+          compact ? "tw:col-span-3 tw:h-10 tw:w-full" : "tw:h-10 tw:flex-1",
         )}
         type="range"
         min={min}
@@ -59,7 +56,7 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
       <Input
         className={cn(
           "tw:flex-none tw:px-1 tw:text-center tw:font-mono tw:text-xs tw:[appearance:textfield] tw:[&::-webkit-inner-spin-button]:appearance-none tw:[&::-webkit-outer-spin-button]:appearance-none",
-          compact ? "tw:h-8 tw:w-12" : "tw:h-10 tw:w-16",
+          compact ? "tw:h-10 tw:w-12 tw:[@media(pointer:coarse)]:h-11" : "tw:h-10 tw:w-16 tw:[@media(pointer:coarse)]:h-11",
         )}
         type="number"
         min={min}

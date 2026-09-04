@@ -64,7 +64,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
         <SelectTrigger
           ref={triggerRef}
           id={triggerId}
-          className="custom-select-trigger tw:min-h-[58px] tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:in-[.launch-setup]:min-h-[46px] tw:in-[.launch-setup]:px-[9px] tw:in-[.launch-setup]:py-[7px] tw:in-[.terminal-default-agent-row]:min-h-8 tw:in-[.terminal-default-agent-row]:rounded-lg tw:in-[.terminal-default-agent-row]:px-2 tw:in-[.terminal-default-agent-row]:py-[5px] tw:in-[.settings-theme-row]:min-h-12"
+          className="custom-select-trigger tw:min-h-[58px] tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:in-[.launch-setup]:min-h-[46px] tw:in-[.launch-setup]:px-[9px] tw:in-[.launch-setup]:py-[7px] tw:in-[.terminal-default-agent-row]:min-h-10 tw:in-[.terminal-default-agent-row]:rounded-lg tw:in-[.terminal-default-agent-row]:px-2 tw:in-[.terminal-default-agent-row]:py-[5px] tw:[@media(pointer:coarse)]:in-[.terminal-default-agent-row]:min-h-11 tw:in-[.settings-theme-row]:min-h-12"
           aria-label={label}
         >
           <SelectValue className="custom-select-trigger-content tw:w-0 tw:max-w-full tw:flex-1 tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">
@@ -92,7 +92,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
               className={cn(
                 "custom-select-option tw:min-h-[50px] tw:gap-[9px] tw:rounded-[7px] tw:px-[9px] tw:py-[7px] tw:data-highlighted:bg-background tw:data-highlighted:text-foreground",
                 popupSize === "theme" && "tw:min-h-[46px]",
-                popupSize === "terminal" && "tw:min-h-[34px] tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-[10px] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap",
+                popupSize === "terminal" && "tw:min-h-10 tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap tw:[@media(pointer:coarse)]:min-h-11",
               )}
             >
               <span className="custom-select-option-content tw:flex tw:w-0 tw:min-w-0 tw:max-w-full tw:flex-1 tw:items-center tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">{renderOption(option)}</span>

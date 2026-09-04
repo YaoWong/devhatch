@@ -1,13 +1,5 @@
 .shell { min-width: 0; flex: 1; display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
-.terminal-setting-row select { min-width: 120px; height: 30px; padding: 0 28px 0 9px; border: 1px solid var(--color-border-strong); border-radius: 8px; outline: 0; background: var(--color-surface); color: var(--color-text-subtle); font-size: 10px; }
 .terminal-default-agent-row .custom-select { width: min(150px, 58%); }
-.terminal-default-agent-row .custom-select-trigger { min-height: 32px; padding: 5px 8px; border-radius: 8px; }
-.terminal-default-agent-row .custom-select-trigger strong { min-width: 0; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.terminal-capacity-control { display: flex; padding: 3px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); }
-.terminal-capacity-control button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 99px; background: transparent; color: var(--color-text-muted); font: 650 10px/1 var(--font-family-mono); cursor: pointer; transition: color 160ms ease, background-color 160ms ease; }
-.terminal-capacity-control button:hover { color: var(--color-text); background: var(--color-canvas); }
-.terminal-capacity-control button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-on-solid); }
-.path-display-control button { width: auto; min-width: 48px; padding-inline: 9px; font-family: inherit; }
 .secondary-button, .icon-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-surface); cursor: pointer; }
 .secondary-button { padding: 0 13px; font-size: 11px; font-weight: 600; }
 .secondary-button:hover, .icon-button:hover { background: var(--color-canvas); }

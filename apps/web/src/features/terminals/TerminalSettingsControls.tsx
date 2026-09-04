@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import type { Agent } from "../../types/agents";
 import type { LaunchPathDisplay } from "../../types/app";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
@@ -50,6 +52,7 @@ export function TerminalSettingsControls({
   onDefaultAgentChange?: (agentId: string) => void;
 }) {
   const availableAgents = agents?.filter((agent) => agent.enabled && agent.available) ?? [];
+  const segmentClassName = "tw:h-10 tw:min-w-10 tw:rounded-full tw:border-0 tw:px-2 tw:font-mono tw:text-xs tw:font-semibold tw:text-muted-foreground tw:transition-none tw:hover:bg-muted! tw:aria-pressed:bg-foreground tw:aria-pressed:text-[var(--color-on-solid)] tw:aria-pressed:hover:bg-foreground! tw:aria-pressed:hover:text-[var(--color-on-solid)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[@media(pointer:coarse)]:min-w-11";
   return <>
     {availableAgents.length > 0 && onDefaultAgentChange && <div className="terminal-setting-row terminal-default-agent-row">
       <span>Default agent</span>
@@ -60,15 +63,15 @@ export function TerminalSettingsControls({
         value={availableAgents.some((agent) => agent.id === defaultAgentId) ? defaultAgentId ?? availableAgents[0].id : availableAgents[0].id}
         options={availableAgents}
         getOptionLabel={(agent) => agent.name}
-        renderTrigger={(agent) => <strong>{agent?.name ?? "Select agent"}</strong>}
+        renderTrigger={(agent) => <strong className="tw:min-w-0 tw:overflow-hidden tw:text-xs tw:text-ellipsis tw:whitespace-nowrap">{agent?.name ?? "Select agent"}</strong>}
         renderOption={(agent) => <strong>{agent.name}</strong>}
         onChange={onDefaultAgentChange}
       />
     </div>}
     <div className="terminal-setting-row">
       <span>Capacity</span>
-      <div className="terminal-capacity-control" role="group" aria-label="Stage capacity">
-        {([1, 2, 3, 4] as const).map((value) => <button key={value} type="button" aria-label={`Capacity ${value}`} aria-pressed={capacity === value} onClick={() => onCapacityChange(value)}>{value}</button>)}
+       <div className="terminal-capacity-control tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5 tw:[@media(pointer:coarse)]:max-w-[94px] tw:[@media(pointer:coarse)]:flex-wrap" role="group" aria-label="Stage capacity">
+        {([1, 2, 3, 4] as const).map((value) => <Button variant="ghost" className={segmentClassName} key={value} type="button" aria-label={`Capacity ${value}`} aria-pressed={capacity === value} onClick={() => onCapacityChange(value)}>{value}</Button>)}
       </div>
     </div>
     {layoutCount && layoutPreset && <div className="terminal-setting-row">
@@ -77,26 +80,26 @@ export function TerminalSettingsControls({
     </div>}
     <div className="terminal-setting-row">
       <span>Path display</span>
-      <div className="terminal-capacity-control path-display-control" role="group" aria-label="Launch path display">
-        {(["folder", "full"] as const).map((mode) => <button key={mode} type="button" aria-label={mode === "folder" ? "Show relative paths" : "Show absolute paths"} aria-pressed={pathDisplay === mode} onClick={() => onPathDisplayChange(mode)}>{mode === "folder" ? "Relative" : "Absolute"}</button>)}
+      <div className="terminal-capacity-control path-display-control tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5" role="group" aria-label="Launch path display">
+        {(["folder", "full"] as const).map((mode) => <Button variant="ghost" className={`${segmentClassName} tw:min-w-16 tw:px-3 tw:font-sans`} key={mode} type="button" aria-label={mode === "folder" ? "Show relative paths" : "Show absolute paths"} aria-pressed={pathDisplay === mode} onClick={() => onPathDisplayChange(mode)}>{mode === "folder" ? "Relative" : "Absolute"}</Button>)}
       </div>
     </div>
     {showLaunchPathsHeight && <div className="terminal-setting-row terminal-setting-range">
       <span>Launch paths height</span>
       <PixelRangeControl compact label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
     </div>}
-    {showConfirmClose && <label className="terminal-setting-row">
+    {showConfirmClose && <label className="terminal-setting-row tw:cursor-pointer">
       <span>Confirm close</span>
-      <input type="checkbox" role="switch" checked={confirmClose} onChange={(event) => onConfirmCloseChange(event.target.checked)} />
+      <Switch className="tw:ml-auto tw:flex-none tw:after:-inset-x-2 tw:after:-inset-y-3 tw:data-checked:bg-[var(--color-accent)]" checked={confirmClose} onCheckedChange={onConfirmCloseChange} />
     </label>}
-    <label className="terminal-setting-row">
+    <label className="terminal-setting-row tw:cursor-pointer">
       <span>Auto-hide thumbnails</span>
-      <input type="checkbox" role="switch" checked={thumbnailsAutoHide} onChange={onToggleThumbnailAutoHide} />
+      <Switch className="tw:ml-auto tw:flex-none tw:after:-inset-x-2 tw:after:-inset-y-3 tw:data-checked:bg-[var(--color-accent)]" checked={thumbnailsAutoHide} onCheckedChange={(checked) => { if (checked !== thumbnailsAutoHide) onToggleThumbnailAutoHide(); }} />
     </label>
     <div className="terminal-setting-row">
       <span>Thumbnail side</span>
-      <div className="terminal-capacity-control" role="group" aria-label="Thumbnail side">
-        {(["left", "right"] as const).map((side) => <button key={side} type="button" aria-label={side === "left" ? "Show thumbnails on the left" : "Show thumbnails on the right"} aria-pressed={thumbnailSide === side} onClick={() => onThumbnailSideChange(side)}>{side === "left" ? "L" : "R"}</button>)}
+      <div className="terminal-capacity-control tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5 tw:[@media(pointer:coarse)]:max-w-[94px] tw:[@media(pointer:coarse)]:flex-wrap" role="group" aria-label="Thumbnail side">
+        {(["left", "right"] as const).map((side) => <Button variant="ghost" className={segmentClassName} key={side} type="button" aria-label={side === "left" ? "Show thumbnails on the left" : "Show thumbnails on the right"} aria-pressed={thumbnailSide === side} onClick={() => onThumbnailSideChange(side)}>{side === "left" ? "L" : "R"}</Button>)}
       </div>
     </div>
   </>;
