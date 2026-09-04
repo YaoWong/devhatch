@@ -540,7 +540,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     setActionBusy(true);
     try {
       const succeeded = await confirmAction.action();
-      if (succeeded !== false) setConfirmAction(null);
+      if (succeeded !== false) {
+        confirmAction.onClose?.();
+        setConfirmAction(null);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -584,7 +587,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         confirmAction={confirmAction}
         actionBusy={actionBusy}
         onRunConfirmAction={runConfirmAction}
-        onCloseConfirmAction={() => setConfirmAction(null)}
+        onCloseConfirmAction={() => {
+          confirmAction?.onClose?.();
+          setConfirmAction(null);
+        }}
         deleteCandidate={deleteCandidate}
         deleting={deleting}
         onCancelDelete={() => setDeleteCandidate(null)}

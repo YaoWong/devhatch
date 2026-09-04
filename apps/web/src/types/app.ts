@@ -3,6 +3,7 @@ export type ConfirmAction = {
   description: string;
   confirmLabel: string;
   danger?: boolean;
+  onClose?: () => void;
   action: () => boolean | void | Promise<boolean | void>;
 };
 export type DetailMode = "terminal" | "agent" | "skills" | "webapp" | "settings";

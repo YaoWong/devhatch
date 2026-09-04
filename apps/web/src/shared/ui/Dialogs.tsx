@@ -143,6 +143,7 @@ export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction;
     >
       <AlertDialogPortal>
         <AlertDialogOverlay
+          className="tw:z-[140]"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !busy) onClose();
           }}
@@ -153,7 +154,7 @@ export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction;
           initialFocus={cancelRef}
           finalFocus={false}
           aria-busy={busy}
-          className="tw:max-w-[420px] tw:rounded-2xl tw:p-[22px]"
+          className="tw:z-[141] tw:max-w-[420px] tw:rounded-2xl tw:p-[22px]"
         >
           <AlertDialogHeader>
             <AlertDialogTitle className="tw:text-[17px]">{action.title}</AlertDialogTitle>

@@ -16,7 +16,7 @@ import { InlineRename } from "../../shared/ui/InlineRename";
 type HomePaths = { home: string; resolvedHome: string } | null;
 
 const pathMainClass = "path-main tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:shrink tw:justify-start tw:gap-0 tw:rounded-md tw:border-0 tw:bg-transparent tw:p-1 tw:text-left tw:font-normal tw:whitespace-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[10px] tw:[&_small]:leading-tight tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:leading-tight tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap";
-const pathActionClass = "tw:pointer-events-none tw:size-10 tw:min-h-0 tw:flex-none tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:opacity-0 tw:transition-[background,color,opacity] tw:hover:bg-muted! tw:hover:text-foreground! tw:group-hover/path:pointer-events-auto tw:group-hover/path:opacity-100 tw:group-focus-within/path:pointer-events-auto tw:group-focus-within/path:opacity-100 tw:data-popup-open:pointer-events-auto tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:data-popup-open:opacity-100 tw:[@media(pointer:coarse)]:pointer-events-auto tw:[@media(pointer:coarse)]:size-11 tw:[@media(pointer:coarse)]:opacity-100 tw:[&_svg]:size-3.5";
+const pathActionClass = "tw:pointer-events-none tw:size-10 tw:min-h-0 tw:flex-none tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:opacity-0 tw:transition-[background,color,opacity] tw:hover:bg-muted! tw:hover:text-foreground! tw:group-hover/path:pointer-events-auto tw:group-hover/path:opacity-100 tw:group-focus-within/path:pointer-events-auto tw:group-focus-within/path:opacity-100 tw:data-popup-open:pointer-events-auto tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:data-popup-open:opacity-100 tw:[@media(hover:none)]:pointer-events-auto tw:[@media(hover:none)]:opacity-100 tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 const paginationButtonClass = "tw:size-10 tw:rounded-lg tw:border-input tw:bg-card tw:p-0 tw:text-muted-foreground tw:hover:bg-muted! tw:hover:text-foreground! tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 
 export function LaunchPaths({
@@ -89,7 +89,7 @@ export function LaunchPaths({
           Add
         </Button>
       </div>
-      <div className="agent-path-list tw:grid tw:min-h-0 tw:flex-1 tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
+      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
         {visiblePaths.length ? (
           visiblePaths.map((item) => {
             const renaming = renamingId === item.id;
@@ -141,7 +141,7 @@ export function LaunchPaths({
                     </span>
                   </div>
                 )}
-                <span className={`path-actions tw:flex tw:w-10 tw:flex-none tw:overflow-hidden tw:transition-[width] tw:group-hover/path:w-[120px] tw:group-focus-within/path:w-[120px] tw:has-[[data-popup-open]]:w-[120px] tw:[@media(pointer:coarse)]:w-[132px] ${renaming ? "tw:hidden" : ""}`}>
+                <span className={`tw:flex tw:w-10 tw:flex-none tw:overflow-hidden tw:transition-[width] tw:group-hover/path:w-[120px] tw:group-focus-within/path:w-[120px] tw:has-[[data-popup-open]]:w-[120px] tw:[@media(hover:none)]:w-[120px] tw:[@media(pointer:coarse)]:w-[132px] ${renaming ? "tw:hidden" : ""}`}>
                   <Button
                     type="button"
                     variant="ghost"
@@ -212,7 +212,7 @@ export function LaunchPaths({
         )}
       </div>
       {paths.length > 24 && (
-        <div className="path-pagination tw:mt-1.5 tw:flex tw:items-center tw:justify-between tw:font-mono tw:text-[10px] tw:text-muted-foreground">
+        <div className="tw:mt-1.5 tw:flex tw:items-center tw:justify-between tw:font-mono tw:text-[10px] tw:text-muted-foreground">
           <Button type="button" variant="outline" size="icon" className={paginationButtonClass} aria-label="Previous page" disabled={page === 1} onClick={() => onPageChange(page - 1)}>
             <ChevronLeft />
           </Button>

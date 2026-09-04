@@ -16,7 +16,6 @@
   .config-body { min-height: 0; grid-template-columns: 1fr; overflow-y: auto; }
   .config-body aside { min-height: 132px; max-height: 150px; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .config-editor { overflow: visible; padding: 16px; }
-  .config-editor textarea { min-height: 220px; }
   .picker-header { padding: 18px 16px 14px; }
   .picker-toolbar { padding: 0 16px 12px; }
   .picker-breadcrumbs { padding-inline: 16px; }
@@ -24,8 +23,6 @@
   .picker-selection { grid-column: 1 / -1; margin: 0 0 6px; }
   .picker-selection strong { max-width: calc(100vw - 32px); }
   .shell { margin-left: 0; grid-template-rows: minmax(0, 1fr); }
-  .secondary-button span { display: none; }
-  .secondary-button { width: 38px; padding: 0; }
   .skills-workspace { padding: 20px 14px 96px; }
   .skills-scroll-controls { right: 14px; bottom: 14px; }
   .terminal-workspace { grid-template-rows: minmax(0, 1fr); }
@@ -46,7 +43,4 @@
   .terminal-window.thumbnail-source { position: absolute; left: 0; right: auto; top: 0; bottom: auto; width: 960px; height: 600px; display: block; }
   .terminal-window.focused { display: block; }
   .terminal-stage-empty { inset: 0; }
-  .tab { min-width: 136px; }
-  .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); }
-  .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font: 10px/1 var(--font-family-mono); }
 }

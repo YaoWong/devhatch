@@ -104,7 +104,7 @@
 .empty-state { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; color: var(--color-text-faint); font: 12px/1.5 var(--font-family-mono); text-align: center; }
 .empty-state > svg { width: 30px; height: 30px; color: var(--color-border-strong); }
 .error-banner { position: absolute; left: 50%; bottom: 18px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); font-size: 12px; transform: translateX(-50%); }
-.side-dot, .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
+.tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
 .tab-dot.connecting, .tab-dot.reconnecting { background: var(--color-warning-fg); }
 .tab-dot.disconnected, .tab-dot.exited { background: var(--color-text-faint); }
 

@@ -1,6 +1,10 @@
 import type { AgentSession, HistoryResponse } from "../../types/agents";
 import { pathMatches } from "../../shared/lib/utils";
 
+export function shouldShowAgentSessionSearch(sessionCount: number, historyCount: number, search: string) {
+  return sessionCount + historyCount > 7 || search.trim().length > 0;
+}
+
 export function substituteHistoryTitles(sessions: AgentSession[], history: HistoryResponse) {
   const titles = new Map(history.sessions.map((session) => [session.id, session.title]));
   return sessions.map((session) => ({
@@ -21,6 +25,7 @@ export function mergeAgentSessions(
   home?: string,
   resolvedHome?: string,
 ) {
+  const normalizedSearch = search.trim().toLowerCase();
   const liveByUpstream = new Map(
     sessions.filter((session) => session.upstreamSessionId).map((session) => [session.upstreamSessionId, session]),
   );
@@ -42,7 +47,7 @@ export function mergeAgentSessions(
     .filter(({ live, history: item }) =>
       `${live?.name ?? ""} ${live?.cwd ?? ""} ${item?.title ?? ""} ${item?.directory ?? ""}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
+        .includes(normalizedSearch),
     )
     .slice(0, 30);
 }
