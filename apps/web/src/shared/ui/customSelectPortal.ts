@@ -32,6 +32,6 @@ export function isCustomSelectOwnedBy(owner: Element | null, target: EventTarget
 export function hasOpenCustomSelectPortalOwnedBy(owner: Element | null) {
   if (!owner) return false
   return Array.from(document.querySelectorAll<HTMLElement>(portalSelector)).some((portal) => (
-    isPortalOwnedBy(owner, portal) && Boolean(portal.querySelector('[data-slot="select-content"][data-open]'))
+    isPortalOwnedBy(owner, portal) && Boolean(portal.querySelector('[data-slot="select-content"][data-open], [data-slot="dropdown-menu-content"][data-open]'))
   ))
 }
