@@ -33,7 +33,7 @@ type AppWorkspaceContentProps = {
   agentWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   skillsSection: SkillsSection;
-  onCloseSession: (session: TerminalInfo, isAgent: boolean) => void;
+  onCloseSession: (session: TerminalInfo, isAgent: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
   onPickAgentPath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onTerminalLayoutCountChange: (count: TerminalLayoutCount | null) => void;
@@ -101,7 +101,7 @@ export function AppWorkspaceContent({
         error={error}
         onActivate={terminal.activateSession}
         onRename={terminal.renameSession}
-        onClose={(session) => onCloseSession(session, false)}
+        onClose={(session, returnFocus, fallbackFocus) => onCloseSession(session, false, returnFocus, fallbackFocus)}
         onCreate={(cwd) => void terminal.addTerminal(cwd)}
         onPhaseChange={onPhaseChange}
         onLayoutCountChange={onTerminalLayoutCountChange}
@@ -129,7 +129,7 @@ export function AppWorkspaceContent({
         error={error}
         onActivate={agent.activateSession}
         onRename={agent.renameSession}
-        onClose={(session) => onCloseSession(session, true)}
+        onClose={(session, returnFocus, fallbackFocus) => onCloseSession(session, true, returnFocus, fallbackFocus)}
         onChoosePath={onPickAgentPath}
         onPhaseChange={onPhaseChange}
         onLayoutCountChange={onAgentLayoutCountChange}

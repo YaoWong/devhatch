@@ -14,12 +14,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { ConfirmAction, DeleteTarget } from "../../types/app";
 
-function useDialogFocus(busy: boolean) {
+function useDialogFocus(busy: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) {
   const contentId = useId();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(
-    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null),
   );
 
   useLayoutEffect(() => {
@@ -35,6 +35,10 @@ function useDialogFocus(busy: boolean) {
           previous.focus();
           return;
         }
+        if (fallbackFocus?.isConnected && !fallbackFocus.closest("[inert]")) {
+          fallbackFocus.focus();
+          return;
+        }
         const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
         if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") {
           mobileTrigger.focus();
@@ -48,7 +52,7 @@ function useDialogFocus(busy: boolean) {
         (document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body).focus();
       });
     };
-  }, [contentId]);
+  }, [contentId, fallbackFocus]);
 
   return { cancelRef, contentId, contentRef };
 }
@@ -64,7 +68,7 @@ export function DeleteSessionDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const { cancelRef, contentId, contentRef } = useDialogFocus(deleting);
+  const { cancelRef, contentId, contentRef } = useDialogFocus(deleting, target.returnFocus, target.fallbackFocus);
 
   return (
     <AlertDialog
@@ -107,13 +111,13 @@ export function DeleteSessionDialog({
             <AlertDialogCancel
               ref={cancelRef}
               disabled={deleting}
-              className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs"
+              className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs tw:[@media(pointer:coarse)]:h-11"
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={deleting}
-              className="tw:h-10 tw:rounded-full tw:bg-destructive tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:shadow-[0_6px_16px_color-mix(in_srgb,var(--color-danger)_22%,transparent)] tw:hover:bg-[var(--color-danger-hover)] tw:hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--color-danger)_28%,transparent)]"
+              className="tw:h-10 tw:rounded-full tw:bg-destructive tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:shadow-[0_6px_16px_color-mix(in_srgb,var(--color-danger)_22%,transparent)] tw:hover:bg-[var(--color-danger-hover)] tw:hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--color-danger)_28%,transparent)] tw:[@media(pointer:coarse)]:h-11"
               onClick={onConfirm}
             >
               {deleting ? "Closing…" : `Close ${target.kind}`}

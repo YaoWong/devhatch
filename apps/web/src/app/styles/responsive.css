@@ -38,16 +38,14 @@
   .terminal-thumbnail { width: 120px; min-width: 120px; height: 75px; aspect-ratio: auto; }
   .terminal-thumbnail-caption { height: 24px; font-size: 10px; line-height: 1.2; }
   .terminal-card-grid, .terminal-card-grid.count-1, .terminal-card-grid.count-2, .terminal-card-grid.count-3, .terminal-card-grid.count-4 { position: relative; display: block; height: calc(100% - 12px); margin: 6px; padding: 0; }
-  .terminal-card-grid.with-thumbnails, .terminal-card-grid.count-1.with-thumbnails, .terminal-card-grid.count-2.with-thumbnails, .terminal-card-grid.count-3.with-thumbnails, .terminal-card-grid.count-4.with-thumbnails { height: calc(100% - 93px); margin-top: 87px; }
+  .terminal-card-grid.with-thumbnails, .terminal-card-grid.count-1.with-thumbnails, .terminal-card-grid.count-2.with-thumbnails, .terminal-card-grid.count-3.with-thumbnails, .terminal-card-grid.count-4.with-thumbnails { height: calc(100% - 93px); margin: 87px 6px 6px; }
   .terminal-split-handle { display: none; }
-  .terminal-card-grid.count-2 .terminal-window[data-slot="0"], .terminal-card-grid.count-2 .terminal-window[data-slot="1"] { transform: none; }
-  .terminal-card-grid.count-3 .terminal-window[data-slot="0"] { grid-row: auto; }
+  .terminal-card-grid.count-2 .terminal-window[data-pane-index="0"], .terminal-card-grid.count-2 .terminal-window[data-pane-index="1"] { transform: none; }
+  .terminal-card-grid.count-3 .terminal-window[data-pane-index="0"] { grid-row: auto; }
   .terminal-window, .terminal-window.shown { position: absolute; inset: 0; display: none; }
   .terminal-window.thumbnail-source { position: absolute; left: 0; right: auto; top: 0; bottom: auto; width: 960px; height: 600px; display: block; }
   .terminal-window.focused { display: block; }
   .terminal-stage-empty { inset: 0; }
-  .terminal-window-titlebar { cursor: default; }
-  .terminal-window-titlebar small { display: none; }
   .tab { min-width: 136px; }
   .mobile-keys { display: flex; align-items: center; gap: 5px; padding: 5px 8px; overflow-x: auto; border-top: 1px solid var(--color-border); background: var(--color-surface-raised); }
   .mobile-keys button { min-width: 44px; height: 38px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font: 10px/1 var(--font-family-mono); }

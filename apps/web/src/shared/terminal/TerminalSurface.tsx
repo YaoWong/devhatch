@@ -434,6 +434,7 @@ export function TerminalSurface({
   return (
     <div
       className={`terminal-surface ${rendered ? "active" : ""} ${focused ? "focused" : ""} ${className ?? ""}`}
+      onFocusCapture={onFocus}
       onPointerDown={onFocus}
     >
       <div ref={containerRef} className="terminal-xterm-host" />

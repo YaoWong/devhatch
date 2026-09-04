@@ -487,15 +487,23 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   );
 
   const requestClose = useCallback(
-    (session: TerminalInfo, isAgent: boolean) => {
+    (session: TerminalInfo, isAgent: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => {
       const target: DeleteTarget = {
         id: session.id,
         name: session.name,
         cwd: session.cwd,
         kind: isAgent ? "agent session" : "terminal",
+        returnFocus,
+        fallbackFocus,
       };
       if (confirmDelete) setDeleteCandidate(target);
-      else void deleteSession(target);
+      else {
+        void deleteSession(target).finally(() => {
+          queueMicrotask(() => {
+            if (!returnFocus?.isConnected) fallbackFocus?.focus();
+          });
+        });
+      }
     },
     [confirmDelete, deleteSession],
   );
