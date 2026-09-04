@@ -1,4 +1,3 @@
 .shell { min-width: 0; flex: 1; display: grid; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
-.terminal-default-agent-row .custom-select { width: min(150px, 58%); }
 .terminal-workspace { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .terminal-workspace.workspace-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; visibility: hidden; pointer-events: none; }

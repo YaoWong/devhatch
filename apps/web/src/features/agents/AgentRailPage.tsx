@@ -196,6 +196,7 @@ export function AgentRailPage({
         ) : agents.length ? (
           <>
             <CustomSelect
+              density="spacious"
               label="Select Agent CLI"
               value={selectedAgentId}
               options={agents}
@@ -247,6 +248,7 @@ export function AgentRailPage({
                   )}
                   {selectedAgent?.supportsSkills && (
                     <CustomSelect
+                      density="comfortable"
                       label="Skills"
                       value={selectedProfileId ?? "none"}
                       options={[{ id: "none", slug: "None" }, ...profiles]}

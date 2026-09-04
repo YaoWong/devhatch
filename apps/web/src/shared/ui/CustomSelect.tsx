@@ -14,8 +14,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   value,
   options,
   disabled,
-  compact,
-  popupSize = "default",
+  className,
+  density,
   renderTrigger,
   renderOption,
   getOptionLabel,
@@ -26,8 +26,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   value: Id | null;
   options: readonly T[];
   disabled?: boolean;
-  compact?: boolean;
-  popupSize?: "default" | "theme" | "terminal";
+  className?: string;
+  density: "compact" | "comfortable" | "spacious";
   renderTrigger: (option: T | undefined) => ReactNode;
   renderOption: (option: T) => ReactNode;
   getOptionLabel?: (option: T) => string;
@@ -48,7 +48,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   }, []);
 
   return (
-    <div className={cn("custom-select tw:relative tw:w-full tw:min-w-0 tw:max-w-full", compact && "compact")}>
+    <div className={cn("tw:relative tw:w-full tw:min-w-0 tw:max-w-full", className)}>
       <Select<Id>
         value={value}
         disabled={disabled}
@@ -64,10 +64,15 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
         <SelectTrigger
           ref={triggerRef}
           id={triggerId}
-          className="custom-select-trigger tw:min-h-[58px] tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:in-[.launch-setup]:min-h-[46px] tw:in-[.launch-setup]:px-[9px] tw:in-[.launch-setup]:py-[7px] tw:in-[.terminal-default-agent-row]:min-h-10 tw:in-[.terminal-default-agent-row]:rounded-lg tw:in-[.terminal-default-agent-row]:px-2 tw:in-[.terminal-default-agent-row]:py-[5px] tw:[@media(pointer:coarse)]:in-[.terminal-default-agent-row]:min-h-11 tw:in-[.settings-theme-row]:min-h-12"
+          className={cn(
+            "tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:border-border tw:bg-card tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
+             density === "spacious" && "tw:min-h-[58px] tw:rounded-[10px] tw:px-2.5 tw:py-2",
+            density === "comfortable" && "tw:min-h-12 tw:rounded-[10px] tw:px-2.5 tw:py-2",
+            density === "compact" && "tw:min-h-10 tw:rounded-lg tw:px-2 tw:py-[5px] tw:[@media(pointer:coarse)]:min-h-11",
+          )}
           aria-label={label}
         >
-          <SelectValue className="custom-select-trigger-content tw:w-0 tw:max-w-full tw:flex-1 tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">
+          <SelectValue className="tw:w-0 tw:max-w-full tw:flex-1 tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">
             {renderTrigger(selected)}
           </SelectValue>
         </SelectTrigger>
@@ -76,11 +81,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
           align="start"
           alignItemWithTrigger={false}
           sideOffset={5}
-          className={cn(
-            "custom-select-menu tw:grid tw:rounded-[10px] tw:p-1 tw:shadow-[0_14px_36px_rgb(0_0_0/14%)] tw:[&_[data-slot=select-list]]:grid tw:[&_[data-slot=select-list]]:gap-0.5",
-            compact && "compact",
-            `custom-select-menu-${popupSize}`,
-          )}
+          className="tw:grid tw:rounded-[10px] tw:p-1 tw:shadow-[0_14px_36px_rgb(0_0_0/14%)] tw:[&_[data-slot=select-list]]:grid tw:[&_[data-slot=select-list]]:gap-0.5"
           listProps={{ "aria-label": label }}
         >
           {options.map((option) => (
@@ -90,12 +91,13 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
               label={optionLabel(option)}
               disabled={isOptionDisabled?.(option)}
               className={cn(
-                "custom-select-option tw:min-h-[50px] tw:gap-[9px] tw:rounded-[7px] tw:px-[9px] tw:py-[7px] tw:data-highlighted:bg-background tw:data-highlighted:text-foreground",
-                popupSize === "theme" && "tw:min-h-[46px]",
-                popupSize === "terminal" && "tw:min-h-10 tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap tw:[@media(pointer:coarse)]:min-h-11",
+                "tw:gap-[9px] tw:rounded-[7px] tw:data-highlighted:bg-background tw:data-highlighted:text-foreground tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
+                density === "spacious" && "tw:min-h-[50px] tw:px-[9px] tw:py-[7px]",
+                density === "comfortable" && "tw:min-h-[46px] tw:px-[9px] tw:py-[7px]",
+                density === "compact" && "tw:min-h-10 tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap tw:[@media(pointer:coarse)]:min-h-11",
               )}
             >
-              <span className="custom-select-option-content tw:flex tw:w-0 tw:min-w-0 tw:max-w-full tw:flex-1 tw:items-center tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">{renderOption(option)}</span>
+              <span className="tw:flex tw:w-0 tw:min-w-0 tw:max-w-full tw:flex-1 tw:items-center tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">{renderOption(option)}</span>
             </SelectItem>
           ))}
         </SelectContent>
