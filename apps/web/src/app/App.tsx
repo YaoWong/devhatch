@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { flushSync } from "react-dom";
 import { AppDialogs } from "./AppDialogs";
 import { AppNavigationRail } from "./AppNavigationRail";
@@ -583,9 +584,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           if (deleteCandidate) void deleteSession(deleteCandidate);
         }}
       />
-      <button className="drawer-backdrop" aria-label="Close navigation" onClick={navigation.closeSidebar} />
+      {mobileNavigation && sidebarOpen && <Button variant="ghost" className="drawer-backdrop tw:fixed tw:inset-0 tw:z-20 tw:h-auto tw:w-auto tw:rounded-none tw:border-0 tw:bg-[rgb(var(--overlay-color)/35%)] tw:p-0 tw:hover:bg-[rgb(var(--overlay-color)/35%)]! tw:active:not-aria-[haspopup]:translate-y-0!" type="button" aria-label="Close navigation" onClick={navigation.closeSidebar} />}
       {!mobileNavigation && !canvasPinned && (
-        <button ref={canvasEdgeTriggerRef} className="canvas-edge-trigger" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
+        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:inset-y-0 tw:left-0 tw:z-39 tw:h-auto tw:w-2.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:translate-y-0!" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
           if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
           else openCanvasRail();
         }} onBlur={(event) => {
@@ -595,7 +596,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }} onClick={openCanvasRail} />
       )}
       {mobileNavigation && !sidebarOpen && (
-        <button ref={canvasMobileTriggerRef} className="canvas-mobile-trigger" type="button" aria-label="Open navigation" aria-expanded={sidebarOpen} aria-controls={CANVAS_RAIL_ID} onClick={navigation.toggleSidebar}><Menu /></button>
+        <Button variant="outline" size="icon" ref={canvasMobileTriggerRef} className="canvas-mobile-trigger tw:fixed tw:top-2.5 tw:left-2.5 tw:z-12 tw:size-10 tw:rounded-[11px] tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_86%,transparent)] tw:text-foreground tw:shadow-[0_4px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-xl tw:hover:bg-[color-mix(in_srgb,var(--color-surface)_94%,transparent)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Open navigation" aria-expanded={sidebarOpen} aria-controls={CANVAS_RAIL_ID} onClick={navigation.toggleSidebar}><Menu className="tw:size-[17px]" /></Button>
       )}
       <AppNavigationRail
         navigation={navigation}

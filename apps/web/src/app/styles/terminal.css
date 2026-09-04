@@ -127,7 +127,6 @@
 .side-dot, .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
 .tab-dot.connecting, .tab-dot.reconnecting { background: var(--color-warning-fg); }
 .tab-dot.disconnected, .tab-dot.exited { background: var(--color-text-faint); }
-.drawer-backdrop { display: none; }
 
 html:is(.terminal-stage-transition, .agent-stage-transition) { view-transition-name: none; }
 html:is(.terminal-stage-transition, .agent-stage-transition)::view-transition-group(*) { z-index: 20; overflow: clip; border-radius: 12px; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }

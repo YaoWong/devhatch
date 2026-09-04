@@ -279,9 +279,10 @@ export function NavigationRail({
       )}
       <footer className={`canvas-rail-footer ${settingsAvailable ? "has-settings" : ""}`}>
         <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
-          <button
+          <Button
             ref={terminalSettingsToggleRef}
-            className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
+            variant="ghost"
+            className={`settings-nav-item tw:min-h-11 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-none tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:aria-expanded:bg-[var(--color-canvas)]! ${terminalSettingsOpen ? "active tw:bg-[var(--color-canvas)]" : ""}`}
             type="button"
             aria-hidden={!settingsAvailable}
             aria-expanded={settingsAvailable ? terminalSettingsOpen : false}
@@ -289,21 +290,23 @@ export function NavigationRail({
             tabIndex={settingsAvailable ? undefined : -1}
             onClick={onToggleTerminalSettings}
           >
-            <SlidersHorizontal />
+            <SlidersHorizontal className="tw:size-[19px]" />
             <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
-          </button>
+          </Button>
         </div>
-        <button
-          className="canvas-auto-hide"
+        <Button
+          variant="outline"
+          size="icon"
+          className="canvas-auto-hide tw:size-10 tw:rounded-[10px] tw:bg-transparent tw:text-muted-foreground tw:transition-transform tw:[@media(pointer:coarse)]:size-11"
           type="button"
           aria-label="Auto-hide navigation"
           aria-pressed={!canvasPinned}
           title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`}
           onClick={onCanvasPinnedChange}
         >
-          {canvasPinned ? <Pin /> : <PinOff />}
+          {canvasPinned ? <Pin className="tw:size-4" /> : <PinOff className="tw:size-4" />}
           <span className="sr-only">Auto-hide navigation</span>
-        </button>
+        </Button>
       </footer>
     </aside>
   );
@@ -330,17 +333,20 @@ function ModeButton({
   }[mode];
   const Icon = meta.icon;
   return (
-    <button
+    <Button
       ref={(node) => {
         modeRefs.current[mode] = node;
       }}
-      className={`nav-item ${active ? "active" : ""}`}
+      variant="ghost"
+      type="button"
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >
-      <Icon />
+      <Icon className="tw:size-[22px]" />
       <span>{meta.label}</span>
       {count !== undefined && <b>{count}</b>}
-    </button>
+    </Button>
   );
 }
 
@@ -376,9 +382,9 @@ function DetailPage({
       className={className}
     >
       <div className="rail-page-title">
-        <button className="rail-back" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
-          <ArrowLeft />
-        </button>
+        <Button variant="ghost" size="icon" className="rail-back tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-subtle)] tw:transition-none tw:hover:bg-[var(--color-canvas)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
+          <ArrowLeft className="tw:size-[18px]" />
+        </Button>
         <span
           ref={(node) => {
             titleRefs.current[mode] = node;
