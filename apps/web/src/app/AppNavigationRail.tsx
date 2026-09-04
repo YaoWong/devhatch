@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import type { ConfirmAction, LaunchPathDisplay } from "../types/app";
@@ -8,7 +8,6 @@ import { AgentRailPage } from "../features/agents/AgentRailPage";
 import { NavigationRail } from "../features/navigation/NavigationRail";
 import type { useNavigation } from "../features/navigation/useNavigation";
 import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
-import { isCustomSelectOwnedBy } from "../shared/ui/customSelectPortal";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { WorkspaceList } from "../features/terminals/WorkspaceList";
 import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
@@ -66,6 +65,7 @@ type AppNavigationRailProps = {
   onCanvasLeave: MouseEventHandler<HTMLElement>;
   onCanvasFocus: FocusEventHandler<HTMLElement>;
   onCanvasBlur: FocusEventHandler<HTMLElement>;
+  onFloatingSettingsOpenChange: (open: boolean) => void;
   onStopWebApp: () => void;
 };
 
@@ -120,35 +120,23 @@ export function AppNavigationRail({
   onCanvasLeave,
   onCanvasFocus,
   onCanvasBlur,
+  onFloatingSettingsOpenChange,
   onStopWebApp,
 }: AppNavigationRailProps) {
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false);
-  const terminalSettingsToggleRef = useRef<HTMLButtonElement | null>(null);
-  const terminalSettingsPanelRef = useRef<HTMLDivElement | null>(null);
-  const closeTerminalSettings = useCallback((restoreFocus: boolean) => {
-    setTerminalSettingsOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => terminalSettingsToggleRef.current?.focus());
-  }, []);
   useEffect(() => {
     if (
       terminalSettingsOpen &&
       ((navigation.workspaceMode !== "terminal" && navigation.workspaceMode !== "agent") || navigation.railPage !== navigation.workspaceMode)
     ) {
-      closeTerminalSettings(isCustomSelectOwnedBy(terminalSettingsPanelRef.current, document.activeElement));
+      setTerminalSettingsOpen(false);
+      if (!canvasPinned) onFloatingSettingsOpenChange(false);
     }
-  }, [closeTerminalSettings, navigation.railPage, navigation.workspaceMode, terminalSettingsOpen]);
-  useEffect(() => {
-    if (!terminalSettingsOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || isCustomSelectOwnedBy(terminalSettingsPanelRef.current, target) || terminalSettingsToggleRef.current?.contains(target)) return;
-      closeTerminalSettings(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [closeTerminalSettings, terminalSettingsOpen]);
+  }, [canvasPinned, navigation.railPage, navigation.workspaceMode, onFloatingSettingsOpenChange, terminalSettingsOpen]);
   const sessionSelected = () => {
-    closeTerminalSettings(Boolean(terminalSettingsPanelRef.current?.contains(document.activeElement)));
+    setTerminalSettingsOpen(false);
+    if (!canvasPinned) onFloatingSettingsOpenChange(false);
+    navigation.closeSidebar();
     onSessionSelected();
   };
   return (
@@ -164,8 +152,6 @@ export function AppNavigationRail({
       titleRefs={navigation.titleRefs}
       onNavigate={navigation.animateRail}
       terminalSettingsOpen={terminalSettingsOpen}
-      terminalSettingsToggleRef={terminalSettingsToggleRef}
-      terminalSettingsPanelRef={terminalSettingsPanelRef}
        terminalCapacity={terminalCapacity}
        terminalLayoutCount={terminalLayoutCount}
        terminalLayoutPreset={terminalLayoutPreset}
@@ -174,8 +160,10 @@ export function AppNavigationRail({
       terminalThumbnailSide={terminalThumbnailSide}
       terminalLaunchPathsHeight={terminalLaunchPathsHeight}
       confirmTerminalClose={confirmTerminalClose}
-      onToggleTerminalSettings={() => setTerminalSettingsOpen((open) => !open)}
-      onCloseTerminalSettings={() => closeTerminalSettings(true)}
+      onTerminalSettingsOpenChange={(open) => {
+        setTerminalSettingsOpen(open);
+        if (!canvasPinned) onFloatingSettingsOpenChange(open);
+      }}
        onTerminalCapacityChange={onTerminalCapacityChange}
        onTerminalLayoutPresetChange={onTerminalLayoutPresetChange}
        onTerminalPathDisplayChange={onTerminalPathDisplayChange}

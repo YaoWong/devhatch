@@ -44,6 +44,18 @@ export function useNavigation(bumpFocus: () => void) {
   const animateRail = useCallback(
     (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn = false) => {
       const detailMode: DetailMode = page === "modes" ? (railPage === "modes" ? workspaceMode : railPage) : page;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (motionTimer.current) window.clearTimeout(motionTimer.current);
+        setRailMotion(null);
+        setRailPage(page);
+        if (motion === "forward" && page !== "modes") {
+          setWorkspaceMode(page);
+          if (page === "terminal" || page === "agent") bumpFocus();
+        } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
+          setWorkspaceMode("settings");
+        }
+        return;
+      }
       const source = modeRefs.current[detailMode];
       const detail = titleRefs.current[detailMode];
       const modesPage = modesPageRef.current;
@@ -130,9 +142,7 @@ export function useNavigation(bumpFocus: () => void) {
     [],
   );
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen((value) => !value);
-  }, []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
@@ -164,7 +174,7 @@ export function useNavigation(bumpFocus: () => void) {
     animateRail,
     selectMode,
     showGlobalSettings,
-    toggleSidebar,
+    openSidebar,
     closeSidebar,
   };
 }

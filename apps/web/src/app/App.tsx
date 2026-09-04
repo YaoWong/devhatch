@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { flushSync } from "react-dom";
 import { AppDialogs } from "./AppDialogs";
 import { AppNavigationRail } from "./AppNavigationRail";
@@ -31,7 +32,7 @@ import { RailResizeHandle } from "../shared/ui/RailResizeHandle";
 import {
   CUSTOM_SELECT_OPEN_CHANGE_EVENT,
   hasOpenCustomSelectPortalOwnedBy,
-  isCustomSelectPortalOwnedBy,
+  isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
 import type { ConfirmAction, DeleteTarget, LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
@@ -39,6 +40,7 @@ import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
 const CANVAS_RAIL_ID = "canvas-navigation-rail";
 const CANVAS_RAIL_CLOSE_DELAY_MS = 120;
+const CANVAS_RAIL_POPOVER_SELECTOR = "[data-canvas-rail-popover]";
 const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
 const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
@@ -64,6 +66,11 @@ function initialThumbnailSide(storageKey = TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY):
   }
 }
 
+function isCanvasRailOwnedTarget(rail: Element | null, target: EventTarget | null) {
+  const popover = document.querySelector(CANVAS_RAIL_POPOVER_SELECTOR);
+  return isCustomSelectOwnedBy(rail, target) || isCustomSelectOwnedBy(popover, target);
+}
+
 function getFocusableRailElements(rail: HTMLElement) {
   return Array.from(rail.querySelectorAll<HTMLElement>(
     'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
@@ -78,6 +85,55 @@ function getFocusableRailElements(rail: HTMLElement) {
     }
     return element.getClientRects().length > 0;
   });
+}
+
+function MobileNavigationSheet({
+  children,
+  mobile,
+  open,
+  restoreFocus,
+  railRef,
+  triggerRef,
+  onOpenChange,
+}: {
+  children: ReactNode;
+  mobile: boolean;
+  open: boolean;
+  restoreFocus: boolean;
+  railRef: RefObject<HTMLElement | null>;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!mobile) return children;
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetTrigger
+        render={
+          <Button
+            variant="outline"
+            size="icon"
+            ref={triggerRef}
+            className="canvas-mobile-trigger tw:fixed tw:top-2.5 tw:left-2.5 tw:z-40 tw:size-10 tw:rounded-[11px] tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_86%,transparent)] tw:text-foreground tw:shadow-[0_4px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-xl tw:hover:bg-[color-mix(in_srgb,var(--color-surface)_94%,transparent)]! tw:[@media(pointer:coarse)]:size-11"
+            type="button"
+            aria-label="Open navigation"
+          />
+        }
+      >
+        <Menu className="tw:size-[17px]" />
+      </SheetTrigger>
+      <SheetContent
+        side="left"
+        showCloseButton
+        initialFocus={() => railRef.current ? getFocusableRailElements(railRef.current)[0] ?? railRef.current : false}
+        finalFocus={restoreFocus ? triggerRef : false}
+        overlayClassName="tw:z-40 tw:bg-[rgb(var(--overlay-color)/35%)] tw:backdrop-blur-none"
+        className="tw:data-[side=left]:inset-y-3 tw:data-[side=left]:left-3 tw:data-[side=left]:h-[calc(100dvh-24px)] tw:data-[side=left]:w-[min(320px,calc(100vw-24px))] tw:max-w-none tw:gap-0 tw:overflow-hidden tw:rounded-[18px] tw:border tw:border-border tw:bg-[var(--color-surface)] tw:p-0 tw:shadow-[0_12px_32px_rgb(0_0_0/8%)] tw:data-[side=left]:data-ending-style:-translate-x-[calc(100%+24px)] tw:data-[side=left]:data-starting-style:-translate-x-[calc(100%+24px)]"
+      >
+        <SheetTitle className="tw:sr-only">Navigation</SheetTitle>
+        {children}
+      </SheetContent>
+    </Sheet>
+  );
 }
 
 function initialCapacity(storageKey = TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY): TerminalWorkspaceCapacity {
@@ -108,8 +164,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [canvasPinned, setCanvasPinned] = useState(readCanvasSidebarPinned);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [mobileNavigation, setMobileNavigation] = useState(() => window.matchMedia("(max-width: 920px)").matches);
+  const [restoreMobileNavigationFocus, setRestoreMobileNavigationFocus] = useState(true);
   const previousMobileNavigationRef = useRef(mobileNavigation);
-  const previousCanvasSidebarOpenRef = useRef(false);
   const canvasCloseTimerRef = useRef<number | null>(null);
   const canvasRailHoverRef = useRef(false);
   const canvasHandleHoverRef = useRef(false);
@@ -185,6 +241,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const setWorkspaceCapacity = useCallback((value: TerminalWorkspaceCapacity, setValue: (value: TerminalWorkspaceCapacity) => void, transitionRef: { current: ViewTransition | null }, storageKey: string, transitionClass: string) => {
     const update = () => setValue(value);
     const activeTransition = transitionRef.current;
+    const compositeOpen = document.querySelector('[data-slot="sheet-content"][data-open], [data-slot="popover-content"][data-open]') !== null;
     if (activeTransition) {
       try { activeTransition.skipTransition(); } catch { void activeTransition.finished.catch(() => undefined); }
       transitionRef.current = null;
@@ -192,7 +249,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       flushSync(update);
     } else {
       const startViewTransition = document.startViewTransition?.bind(document);
-      if (!startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) update();
+      if (!startViewTransition || compositeOpen || matchMedia("(prefers-reduced-motion: reduce)").matches) update();
       else {
         document.documentElement.classList.add(transitionClass);
         try {
@@ -223,20 +280,23 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const update = () => {
       const active = document.activeElement;
       const movingToMobile = query.matches;
+      const activeCanvasRailPopover = active instanceof Element ? active.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
       const focusWillBeLost = movingToMobile
-        ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
-        : canvasMobileTriggerRef.current === active || (!canvasPinned && (canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)));
+        ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active) || isCanvasRailOwnedTarget(canvasRailRef.current, active) || Boolean(activeCanvasRailPopover)
+        : canvasMobileTriggerRef.current === active || canvasRailRef.current?.contains(active) || isCanvasRailOwnedTarget(canvasRailRef.current, active) || Boolean(activeCanvasRailPopover);
       breakpointFocusTargetRef.current = focusWillBeLost ? (movingToMobile ? "mobile" : "desktop") : null;
+      if (!movingToMobile && focusWillBeLost) setRestoreMobileNavigationFocus(false);
       setMobileNavigation(movingToMobile);
     };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, [canvasPinned]);
+  }, []);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);
   const navigation = useNavigation(bumpFocus);
   const { selectMode, showGlobalSettings, closeSidebar, sidebarOpen } = navigation;
+  const navigationSheetOpen = mobileNavigation && sidebarOpen;
   const dialogOpen = pickerPurpose !== null || confirmAction !== null || deleteCandidate !== null;
   const cancelCanvasClose = useCallback(() => {
     if (canvasCloseTimerRef.current !== null) window.clearTimeout(canvasCloseTimerRef.current);
@@ -248,7 +308,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [cancelCanvasClose]);
   const closeCanvasRail = useCallback((restoreFocus = false) => {
     cancelCanvasClose();
-    if (restoreFocus && (canvasRailRef.current?.contains(document.activeElement) || isCustomSelectPortalOwnedBy(canvasRailRef.current, document.activeElement))) {
+    if (restoreFocus && (canvasRailRef.current?.contains(document.activeElement) || isCanvasRailOwnedTarget(canvasRailRef.current, document.activeElement))) {
       if (!mobileNavigation) suppressCanvasEdgeFocusRef.current = true;
       (mobileNavigation ? canvasMobileTriggerRef : canvasEdgeTriggerRef).current?.focus();
     }
@@ -260,12 +320,14 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     canvasCloseTimerRef.current = window.setTimeout(() => {
       canvasCloseTimerRef.current = null;
       const active = document.activeElement;
+      const activeCanvasRailPopover = active instanceof Element ? active.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
       const railHasKeyboardFocus = active instanceof HTMLElement && active.matches(":focus-visible") && (
         canvasRailRef.current?.contains(active) || canvasHandleRef.current?.contains(active) ||
-        isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
+        isCanvasRailOwnedTarget(canvasRailRef.current, active) || activeCanvasRailPopover
       );
       if (
         railResizingRef.current || navigation.railMotion !== null || hasOpenCustomSelectPortalOwnedBy(canvasRailRef.current) ||
+        document.querySelector(`${CANVAS_RAIL_POPOVER_SELECTOR}[data-open]`) ||
         canvasRailHoverRef.current || canvasHandleHoverRef.current || railHasKeyboardFocus
       ) return;
       setCanvasOpen(false);
@@ -289,10 +351,6 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const onSessionSelected = useCallback(() => {
     if (mobileNavigation || canvasPinned) return;
     cancelCanvasClose();
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && (
-      canvasRailRef.current?.contains(active) || isCustomSelectPortalOwnedBy(canvasRailRef.current, active)
-    )) active.blur();
     setCanvasOpen(false);
   }, [cancelCanvasClose, canvasPinned, mobileNavigation]);
   useEffect(() => {
@@ -319,48 +377,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     return () => window.cancelAnimationFrame(frame);
   }, [cancelCanvasClose, canvasPinned, closeSidebar, mobileNavigation]);
   useEffect(() => {
-    if (dialogOpen && mobileNavigation && sidebarOpen) closeSidebar();
+    if (dialogOpen && mobileNavigation && sidebarOpen) {
+      setRestoreMobileNavigationFocus(false);
+      closeSidebar();
+    }
   }, [closeSidebar, dialogOpen, mobileNavigation, sidebarOpen]);
-  useEffect(() => {
-    if (!mobileNavigation || !sidebarOpen || dialogOpen) return;
-    const rail = canvasRailRef.current;
-    const frame = window.requestAnimationFrame(() => {
-      const focusable = rail ? getFocusableRailElements(rail) : [];
-      focusable[0]?.focus();
-    });
-    const trapFocus = (event: KeyboardEvent) => {
-      if (
-        event.key !== "Tab" || !rail || document.querySelector('[aria-modal="true"]') ||
-        isCustomSelectPortalOwnedBy(rail, event.target)
-      ) return;
-      const focusable = getFocusableRailElements(rail);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        rail.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !rail.contains(document.activeElement))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !rail.contains(document.activeElement))) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", trapFocus);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", trapFocus);
-    };
-  }, [dialogOpen, mobileNavigation, sidebarOpen]);
-  useEffect(() => {
-    const wasOpen = previousCanvasSidebarOpenRef.current;
-    const isOpen = mobileNavigation && sidebarOpen;
-    previousCanvasSidebarOpenRef.current = isOpen;
-    if (wasOpen && !isOpen && !dialogOpen) canvasMobileTriggerRef.current?.focus();
-  }, [dialogOpen, mobileNavigation, sidebarOpen]);
   useEffect(() => {
     if (railResizing || navigation.railMotion !== null) cancelCanvasClose();
     else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) scheduleCanvasClose();
@@ -371,12 +392,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (event.key === "Escape") {
-        if (dialogOpen || document.querySelector('[aria-modal="true"]') || isCustomSelectPortalOwnedBy(canvasRailRef.current, target)) return;
-        if (sidebarOpen) {
-          event.preventDefault();
-          closeSidebar();
-          return;
-        }
+        if (dialogOpen || document.querySelector('[aria-modal="true"]') || isCanvasRailOwnedTarget(canvasRailRef.current, target)) return;
         if (!canvasPinned && canvasOpen) {
           event.preventDefault();
           closeCanvasRail(true);
@@ -560,7 +576,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         } as CSSProperties
       }
       className={
-        `app ${navigation.sidebarOpen ? "drawer-open" : ""} ${railResizing ? "rail-resizing" : ""} ` +
+        `app ${railResizing ? "rail-resizing" : ""} ` +
         `${canvasPinned ? "canvas-rail-pinned" : "canvas-rail-auto"} ${canvasOpen ? "canvas-rail-open" : ""} ` +
         `mode-${navigation.workspaceMode}`
       }
@@ -598,9 +614,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           if (deleteCandidate) void deleteSession(deleteCandidate);
         }}
       />
-      {mobileNavigation && sidebarOpen && <Button variant="ghost" className="drawer-backdrop tw:fixed tw:inset-0 tw:z-20 tw:h-auto tw:w-auto tw:rounded-none tw:border-0 tw:bg-[rgb(var(--overlay-color)/35%)] tw:p-0 tw:hover:bg-[rgb(var(--overlay-color)/35%)]! tw:active:not-aria-[haspopup]:translate-y-0!" type="button" aria-label="Close navigation" onClick={navigation.closeSidebar} />}
       {!mobileNavigation && !canvasPinned && (
-        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:inset-y-0 tw:left-0 tw:z-39 tw:h-auto tw:w-2.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:translate-y-0!" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
+        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:inset-y-0 tw:left-0 tw:z-39 tw:h-auto tw:w-2.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:w-11" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
           if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
           else openCanvasRail();
         }} onBlur={(event) => {
@@ -609,10 +624,22 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           scheduleCanvasClose();
         }} onClick={openCanvasRail} />
       )}
-      {mobileNavigation && !sidebarOpen && (
-        <Button variant="outline" size="icon" ref={canvasMobileTriggerRef} className="canvas-mobile-trigger tw:fixed tw:top-2.5 tw:left-2.5 tw:z-12 tw:size-10 tw:rounded-[11px] tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_86%,transparent)] tw:text-foreground tw:shadow-[0_4px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-xl tw:hover:bg-[color-mix(in_srgb,var(--color-surface)_94%,transparent)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Open navigation" aria-expanded={sidebarOpen} aria-controls={CANVAS_RAIL_ID} onClick={navigation.toggleSidebar}><Menu className="tw:size-[17px]" /></Button>
-      )}
-      <AppNavigationRail
+      <MobileNavigationSheet
+        mobile={mobileNavigation}
+        open={navigationSheetOpen}
+        restoreFocus={restoreMobileNavigationFocus}
+        railRef={canvasRailRef}
+        triggerRef={canvasMobileTriggerRef}
+        onOpenChange={(open) => {
+          if (open) {
+            setRestoreMobileNavigationFocus(true);
+            navigation.openSidebar();
+          } else {
+            navigation.closeSidebar();
+          }
+        }}
+      >
+        <AppNavigationRail
         navigation={navigation}
         terminal={terminal}
         agent={agent}
@@ -674,7 +701,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           setCanvasOpen(true);
           const railHasKeyboardFocus = document.activeElement instanceof HTMLElement && document.activeElement.matches(":focus-visible") && (
             canvasRailRef.current?.contains(document.activeElement) ||
-            isCustomSelectPortalOwnedBy(canvasRailRef.current, document.activeElement)
+            isCanvasRailOwnedTarget(canvasRailRef.current, document.activeElement)
           );
           if (!canvasRailHoverRef.current && !railHasKeyboardFocus) scheduleCanvasClose();
         }}
@@ -687,17 +714,29 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           scheduleCanvasClose();
         }}
         onCanvasFocus={openCanvasRail}
-        onCanvasBlur={(event) => {
-          if (
-            event.currentTarget.contains(event.relatedTarget) ||
-            canvasHandleRef.current?.contains(event.relatedTarget) ||
-            isCustomSelectPortalOwnedBy(event.currentTarget, event.relatedTarget)
-          ) return;
-          scheduleCanvasClose();
-        }}
-        onStopWebApp={() => void webApps.stop()}
+         onCanvasBlur={(event) => {
+           const relatedPopover = event.relatedTarget instanceof Element ? event.relatedTarget.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
+           if (
+             event.currentTarget.contains(event.relatedTarget) ||
+             canvasHandleRef.current?.contains(event.relatedTarget) ||
+             isCanvasRailOwnedTarget(event.currentTarget, event.relatedTarget) ||
+             relatedPopover
+           ) return;
+           scheduleCanvasClose();
+         }}
+         onFloatingSettingsOpenChange={(open) => {
+           if (open) {
+             cancelCanvasClose();
+             setCanvasOpen(true);
+           } else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) {
+             scheduleCanvasClose();
+           }
+         }}
+         onStopWebApp={() => void webApps.stop()}
       />
-      <RailResizeHandle
+      </MobileNavigationSheet>
+      {!mobileNavigation && (
+        <RailResizeHandle
         handleRef={canvasHandleRef}
          value={draftRailWidth}
          hidden={!canvasPinned && !canvasOpen}
@@ -722,12 +761,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            const next = event.relatedTarget;
            if (canvasRailRef.current?.contains(next) || canvasHandleRef.current?.contains(next)) return;
            scheduleCanvasClose();
-         }}
-      />
-      <section
-        className="shell"
-        inert={mobileNavigation && sidebarOpen ? true : undefined}
-      >
+          }}
+        />
+      )}
+      <section className="shell">
         <AppWorkspaceContent
           mode={navigation.workspaceMode}
           terminal={terminal}

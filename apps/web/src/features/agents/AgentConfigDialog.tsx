@@ -87,8 +87,9 @@ export function AgentConfigDialog({
   );
   const resolveFinalFocus = () => {
     const previous = returnFocusRef.current;
+    const previousInOpenSheet = previous?.closest('[data-slot="sheet-content"][data-open]');
     if (
-      previous?.isConnected && !previous.closest("[inert], .canvas-rail-auto:not(.canvas-rail-open):not(.drawer-open)") &&
+      previous?.isConnected && (previousInOpenSheet || !previous.closest("[inert], .canvas-rail-auto:not(.canvas-rail-open)")) &&
       getComputedStyle(previous).display !== "none" && getComputedStyle(previous).visibility !== "hidden"
     ) return previous;
     const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
