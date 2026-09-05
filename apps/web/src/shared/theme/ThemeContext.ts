@@ -11,6 +11,7 @@ export const ThemeContext = createContext<{
   saving: boolean;
   error: string | null;
   dismissError: () => void;
+  resetAppearance: () => void;
   selectTheme: (themeId: ThemeId) => void;
   setAgentLaunchPathsMaxHeightPx: (value: number) => void;
   setNavigationRailWidthPx: (value: number) => void;

@@ -156,14 +156,14 @@
 @media (pointer: coarse) {
   .path-actions { width: max(132px, calc(132px * var(--app-ui-scale))) !important; }
 }
-@container navigation-rail (min-width: 360px) {
+@container navigation-rail (min-width: 340px) {
   .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }
   .path-actions > [data-slot="button"] { pointer-events: auto; opacity: 1; }
   .path-actions .path-wide-action { display: inline-flex !important; }
   .path-actions [data-slot="dropdown-menu-trigger"] { display: none !important; }
 }
 @media (pointer: coarse) {
-  @container navigation-rail (min-width: 360px) {
+  @container navigation-rail (min-width: 340px) {
     .path-actions { width: max(176px, calc(176px * var(--app-ui-scale))) !important; }
   }
 }

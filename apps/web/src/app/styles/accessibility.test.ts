@@ -25,8 +25,8 @@ describe("terminal accessibility styles", () => {
   it("keeps global scale tokens dynamic without shrinking interaction targets", () => {
     expect(shadcnCss).toMatch(/@theme inline \{[\s\S]*--spacing: calc\(0\.25rem \* var\(--app-ui-scale\)\);/);
     expect(shadcnCss).toMatch(/@theme inline \{[\s\S]*--text-sm: calc\(0\.875rem \* var\(--app-font-scale\)\);/);
-    expect(shadcnCss).toMatch(/@layer utilities \{[\s\S]*?\[data-slot="button"\] \{[^}]*min-width: 40px;[^}]*min-height: 40px;/);
+    expect(shadcnCss).toMatch(/@layer utilities \{[\s\S]*?\[data-slot="button"\],\s*\[data-slot="dropdown-menu-trigger"\] \{[^}]*min-width: 40px;[^}]*min-height: 40px;/);
     expect(shadcnCss).toMatch(/\[data-settings-section-link\] \{\s*min-height: 40px;/);
-    expect(shadcnCss).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?\[data-slot="button"\] \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
+    expect(shadcnCss).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?\[data-slot="button"\],\s*\[data-slot="dropdown-menu-trigger"\] \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
   });
 });

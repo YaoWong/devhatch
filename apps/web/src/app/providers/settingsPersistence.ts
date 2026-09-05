@@ -1,10 +1,15 @@
 import type { UpdateSettingsPatch } from "../../api/settings";
 import {
+  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_FONT_SIZE_PX,
+  DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
+  DEFAULT_UI_SCALE_PERCENT,
   MAX_FONT_SIZE_PX,
   MAX_UI_SCALE_PERCENT,
   MIN_FONT_SIZE_PX,
   MIN_UI_SCALE_PERCENT,
 } from "../../shared/theme/displaySettings";
+import { DEFAULT_THEME_ID } from "../../shared/theme/themes";
 
 type NumericSettingsKey = Exclude<keyof UpdateSettingsPatch, "theme">;
 type PersistNumberSetting = (patch: UpdateSettingsPatch) => Promise<Partial<Record<NumericSettingsKey, unknown>>>;
@@ -21,6 +26,54 @@ type DebouncedNumberSettingOptions = {
 };
 
 const SAVE_DELAY_MS = 200;
+
+export type AppearanceDefaults = {
+  theme: typeof DEFAULT_THEME_ID;
+  agentLaunchPathsMaxHeightPx: number;
+  navigationRailWidthPx: number;
+  fontSizePx?: number;
+  uiScalePercent?: number;
+};
+
+export function appearanceDefaults(supportsDisplaySettings: boolean): AppearanceDefaults {
+  return {
+    theme: DEFAULT_THEME_ID,
+    agentLaunchPathsMaxHeightPx: DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+    navigationRailWidthPx: DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
+    ...(supportsDisplaySettings ? {
+      fontSizePx: DEFAULT_FONT_SIZE_PX,
+      uiScalePercent: DEFAULT_UI_SCALE_PERCENT,
+    } : {}),
+  };
+}
+
+type LatestValueOptions<T> = {
+  getConfirmed: () => T;
+  getDesired: () => T;
+  persist: (value: T) => Promise<T>;
+  setConfirmed: (value: T) => void;
+  setDesired: (value: T) => void;
+  onValue: (value: T) => void;
+  onError: (reason: unknown) => void;
+};
+
+export async function persistLatestValue<T>(options: LatestValueOptions<T>) {
+  while (options.getDesired() !== options.getConfirmed()) {
+    const requested = options.getDesired();
+    try {
+      const confirmed = await options.persist(requested);
+      options.setConfirmed(confirmed);
+      if (options.getDesired() === requested) options.onValue(confirmed);
+    } catch (reason) {
+      if (options.getDesired() === requested) {
+        const confirmed = options.getConfirmed();
+        options.onError(reason);
+        options.setDesired(confirmed);
+        options.onValue(confirmed);
+      }
+    }
+  }
+}
 
 export function hasDisplaySettings(settings: { fontSizePx?: unknown; uiScalePercent?: unknown }) {
   return typeof settings.fontSizePx === "number" &&

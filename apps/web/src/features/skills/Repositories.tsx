@@ -7,7 +7,7 @@ import { RenameDialog } from "../../shared/ui/RenameDialog";
 import type { ConfirmAction } from "../../types/app";
 import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
-import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
+import { Empty, SearchField, SkillsIconButton, SkillsPrimaryButton, SkillsSecondaryButton, TreeControls, WorkspaceSection } from "./controls";
 import { filterSkills } from "./search";
 import { SkillManifestDialog } from "./SkillManifestDialog";
 import { SkillTree } from "./SkillTree";
@@ -39,7 +39,7 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
           <span>Branch or tag <small>Optional</small></span>
           <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" placeholder="Default branch" value={gitRef} onChange={(event) => setGitRef(event.target.value)} />
         </label>
-        <Button className="skills-primary tw:h-10 tw:self-end tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Add repository</Button>
+        <SkillsPrimaryButton className="tw:self-end" type="submit" disabled={controller.busy}><Plus />Add repository</SkillsPrimaryButton>
       </form>
       <div className="repository-list">
         {controller.repositories.map((repository) => {
@@ -55,7 +55,7 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
           return (
             <Card role="article" className={`repository-card tw:block tw:gap-0 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0 ${isExpanded ? "expanded tw:border-input" : ""}`} key={repository.id}>
                <div className="repository-card-header">
-                  <Button variant="ghost" className="repository-summary tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-none tw:hover:bg-transparent!" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
+                  <Button variant="ghost" className="repository-summary tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-colors tw:duration-150 tw:hover:bg-muted/50!" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
                     <span className="repository-disclosure">{isExpanded ? <ChevronDown className="tw:size-[13px]" /> : <ChevronRight className="tw:size-[13px]" />}</span>
                     <FolderGit2 className="tw:size-[19px]" />
                     <span>
@@ -64,10 +64,10 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
                     </span>
                   </Button>
                  <div className="repository-actions">
-                    <Button variant="outline" size="icon" className="skills-icon-button tw:size-10 tw:rounded-[9px] tw:[@media(pointer:coarse)]:size-11" type="button" disabled={renaming === repository.id} aria-label={`Rename ${repository.name}`} onClick={() => setRenaming(repository.id)}><Pencil /></Button>
-                    <Button variant="secondary" className="skills-button quiet tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" disabled={controller.busy || renaming === repository.id} onClick={() => void controller.previewSync(repository.id)}>Check updates</Button>
-                    <Button variant="outline" className="skills-button tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" disabled={controller.busy || renaming === repository.id} onClick={() => void controller.syncRepository(repository.id)}><RefreshCw />Sync</Button>
-                    <Button variant="ghost" size="icon" disabled={controller.busy || renaming === repository.id} className="skills-icon-button danger tw:size-10 tw:rounded-[9px] tw:text-destructive tw:hover:bg-[var(--color-danger-soft)]! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" aria-label={`Delete ${repository.name}`} onClick={() => onConfirm({ title: `Delete ${repository.name}?`, description: "This repository and all skills discovered from it will be removed.", confirmLabel: "Delete repository", danger: true, action: () => controller.deleteRepository(repository.id) })}><Trash2 /></Button>
+                    <SkillsIconButton type="button" disabled={controller.busy || renaming === repository.id} aria-label={`Rename ${repository.name}`} onClick={() => setRenaming(repository.id)}><Pencil /></SkillsIconButton>
+                    <SkillsSecondaryButton disabled={controller.busy || renaming === repository.id} onClick={() => void controller.previewSync(repository.id)}>Check updates</SkillsSecondaryButton>
+                    <SkillsSecondaryButton disabled={controller.busy || renaming === repository.id} onClick={() => void controller.syncRepository(repository.id)}><RefreshCw />Sync</SkillsSecondaryButton>
+                    <SkillsIconButton disabled={controller.busy || renaming === repository.id} className="danger tw:text-destructive tw:hover:bg-[var(--color-danger-soft)]! tw:hover:text-destructive!" aria-label={`Delete ${repository.name}`} onClick={() => onConfirm({ title: `Delete ${repository.name}?`, description: "This repository and all skills discovered from it will be removed.", confirmLabel: "Delete repository", danger: true, action: () => controller.deleteRepository(repository.id) })}><Trash2 /></SkillsIconButton>
                  </div>
               </div>
               {plan && (

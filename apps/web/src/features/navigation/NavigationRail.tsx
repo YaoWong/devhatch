@@ -239,7 +239,7 @@ export function NavigationRail({
         </DetailPage>
         <DetailPage
           mode="skills"
-          className={pageClass("skills")}
+          className={`${pageClass("skills")} skills-rail-page`}
           railMotion={railMotion}
           active={railPage === "skills"}
           pageRefs={pageRefs}

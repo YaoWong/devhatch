@@ -47,8 +47,8 @@ describe("navigation rail accessibility", () => {
   });
 
   it("reveals direct actions when their containers are wide enough", () => {
-    expect(shellStyles).toMatch(/@container navigation-rail \(min-width: 360px\) \{[\s\S]*?\.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
-    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 360px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}/);
+    expect(shellStyles).toMatch(/@container navigation-rail \(min-width: 340px\) \{[\s\S]*?\.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
+    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 340px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}/);
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
   });
 

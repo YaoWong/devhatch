@@ -42,4 +42,19 @@ describe("display settings", () => {
       uiScalePercent: DEFAULT_UI_SCALE_PERCENT,
     });
   });
+
+  it("falls back when global storage access is unavailable", () => {
+    const storage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("blocked"); } });
+    try {
+      expect(cachedDisplaySettings()).toEqual({
+        fontSizePx: DEFAULT_FONT_SIZE_PX,
+        uiScalePercent: DEFAULT_UI_SCALE_PERCENT,
+      });
+      expect(() => cacheDisplaySettings(DEFAULT_FONT_SIZE_PX, DEFAULT_UI_SCALE_PERCENT)).not.toThrow();
+    } finally {
+      if (storage) Object.defineProperty(globalThis, "localStorage", storage);
+      else Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
 });

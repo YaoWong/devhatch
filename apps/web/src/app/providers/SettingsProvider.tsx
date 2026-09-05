@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, type UpdateSettingsPatch } from "../../api/settings";
-import { DebouncedNumberSetting, hasDisplaySettings } from "./settingsPersistence";
+import { appearanceDefaults, DebouncedNumberSetting, hasDisplaySettings, persistLatestValue } from "./settingsPersistence";
 import { ThemeContext } from "../../shared/theme/ThemeContext";
 import {
   applyDisplaySettings,
@@ -8,12 +8,14 @@ import {
   cachedDisplaySettings,
   clampFontSize,
   clampUiScale,
+  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   MAX_FONT_SIZE_PX,
   MAX_UI_SCALE_PERCENT,
   MIN_FONT_SIZE_PX,
   MIN_UI_SCALE_PERCENT,
 } from "../../shared/theme/displaySettings";
-import { applyTheme, cachedTheme, isThemeId } from "../../shared/theme/themes";
+import { applyTheme, cachedTheme, DEFAULT_THEME_ID, isThemeId } from "../../shared/theme/themes";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { ThemeId } from "../../types/settings";
 
@@ -69,8 +71,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const reportError = useCallback((reason: unknown) => {
     if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
   }, []);
-  const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("agentLaunchPathsMaxHeightPx", 286, 160, 480, reportError);
-  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", 288, 240, 480, reportError);
+  const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("agentLaunchPathsMaxHeightPx", DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, 160, 480, reportError);
+  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, 240, 480, reportError);
   const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError, supportsDisplaySettings);
   const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError, supportsDisplaySettings, 5);
 
@@ -83,26 +85,27 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     if (savingRef.current) return;
     savingRef.current = true;
     if (mountedRef.current) setSaving(true);
-    while (desiredRef.current !== confirmedRef.current) {
-      const requested = desiredRef.current;
-      try {
+    await persistLatestValue({
+      getConfirmed: () => confirmedRef.current,
+      getDesired: () => desiredRef.current,
+      persist: async (requested) => {
         const settings = await updateSettings({ theme: requested });
-        confirmedRef.current = isThemeId(settings.theme) ? settings.theme : requested;
-        if (mountedRef.current && desiredRef.current === requested) {
-          applyTheme(confirmedRef.current);
-          setThemeId(confirmedRef.current);
+        return isThemeId(settings.theme) ? settings.theme : requested;
+      },
+      setConfirmed: (theme) => {
+        confirmedRef.current = theme;
+      },
+      setDesired: (theme) => {
+        desiredRef.current = theme;
+      },
+      onValue: (theme) => {
+        if (mountedRef.current) {
+          applyTheme(theme);
+          setThemeId(theme);
         }
-      } catch (reason) {
-        reportError(reason);
-        if (desiredRef.current === requested) {
-          desiredRef.current = confirmedRef.current;
-          if (mountedRef.current) {
-            applyTheme(confirmedRef.current);
-            setThemeId(confirmedRef.current);
-          }
-        }
-      }
-    }
+      },
+      onError: reportError,
+    });
     savingRef.current = false;
     if (mountedRef.current) setSaving(false);
   }, [reportError]);
@@ -114,7 +117,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     getSettings()
       .then((settings) => {
         if (!active) return;
-        const next = isThemeId(settings.theme) ? settings.theme : "default";
+        const next = isThemeId(settings.theme) ? settings.theme : DEFAULT_THEME_ID;
         confirmedRef.current = next;
         desiredRef.current = next;
         loadHeightValue(settings.agentLaunchPathsMaxHeightPx);
@@ -130,8 +133,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         confirmedRef.current = initialTheme;
         desiredRef.current = initialTheme;
-        loadHeightValue(286);
-        loadWidthValue(288);
+        setSupportsDisplaySettings(false);
+        loadHeightValue(DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX);
+        loadWidthValue(DEFAULT_NAVIGATION_RAIL_WIDTH_PX);
         loadFontSizeValue(initialDisplaySettings.fontSizePx);
         loadUiScaleValue(initialDisplaySettings.uiScalePercent);
         applyTheme(initialTheme);
@@ -149,11 +153,12 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   const dismissError = useCallback(() => setError(null), []);
   const selectTheme = useCallback((next: ThemeId) => {
+    const changed = desiredRef.current !== next;
     desiredRef.current = next;
     setThemeId(next);
     applyTheme(next);
     setError(null);
-    void flush();
+    if (changed || next !== confirmedRef.current) void flush();
   }, [flush]);
   const setAgentLaunchPathsMaxHeightPx = useCallback((value: number) => {
     setError(null);
@@ -171,6 +176,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setError(null);
     setUiScaleValue(clampUiScale(value));
   }, [setUiScaleValue]);
+  const resetAppearance = useCallback(() => {
+    const defaults = appearanceDefaults(supportsDisplaySettings);
+    selectTheme(defaults.theme);
+    setAgentLaunchPathsMaxHeightPx(defaults.agentLaunchPathsMaxHeightPx);
+    setNavigationRailWidthPx(defaults.navigationRailWidthPx);
+    if (defaults.fontSizePx !== undefined && defaults.uiScalePercent !== undefined) {
+      setFontSizePx(defaults.fontSizePx);
+      setUiScalePercent(defaults.uiScalePercent);
+    }
+  }, [selectTheme, setAgentLaunchPathsMaxHeightPx, setFontSizePx, setNavigationRailWidthPx, setUiScalePercent, supportsDisplaySettings]);
 
   if (themeId === null) {
     return showInitialLoading ? <main className="auth-page" aria-busy="true"><section className="auth-card"><h1>DevHatch</h1><p role="status">Loading settings…</p></section></main> : null;
@@ -187,6 +202,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         saving,
         error,
         dismissError,
+        resetAppearance,
         selectTheme,
         setAgentLaunchPathsMaxHeightPx,
         setNavigationRailWidthPx,

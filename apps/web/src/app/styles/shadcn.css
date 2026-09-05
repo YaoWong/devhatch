@@ -92,7 +92,8 @@
 }
 
 @layer utilities {
-  [data-slot="button"] {
+  [data-slot="button"],
+  [data-slot="dropdown-menu-trigger"] {
     min-width: 40px;
     min-height: 40px;
   }
@@ -106,7 +107,8 @@
   }
 
   @media (pointer: coarse) {
-    [data-slot="button"] {
+    [data-slot="button"],
+    [data-slot="dropdown-menu-trigger"] {
       min-width: 44px;
       min-height: 44px;
     }

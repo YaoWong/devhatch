@@ -45,7 +45,8 @@
 .skill-library-summary strong { color: var(--color-text); font-size: calc(13px * var(--app-font-scale)); }
 .skills-grid { display: grid; gap: 8px; }
 .skills-grid.two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.skill-card { min-width: 0; min-height: 76px; align-items: center; }
+.skill-card { min-width: 0; min-height: 76px; align-items: center; transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+.skill-card:hover, .skill-card:focus-within { box-shadow: 0 3px 12px rgb(0 0 0 / 5%); }
 .skill-card-copy > span { min-width: 0; width: 100%; }
 .skill-card-copy:hover strong { text-decoration: underline; text-underline-offset: 2px; }
 .skill-card strong, .skill-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -100,6 +101,8 @@
 .profile-list p { margin: 3px 9px 7px; color: var(--color-text-muted); font-size: calc(11px * var(--app-font-scale)); line-height: 1.2; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .profile-list .skills-empty { margin: 2px 0 0; padding: 20px 10px; border-radius: 9px; }
 .profile-list button span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.profile-list button:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent) 38%, transparent); outline-offset: 1px; }
+.profile-list button[aria-current="page"]:hover { background: var(--color-surface-muted); }
 .profile-list button b { min-width: 22px; padding: 2px 5px; border-radius: 99px; background: var(--color-surface); color: var(--color-text-subtle); font-size: calc(11px * var(--app-font-scale)); text-align: center; }
 .profile-no-selection { min-height: 420px; display: grid; align-content: center; justify-items: center; gap: 7px; padding: 32px; color: var(--color-text-muted); text-align: center; }
 .profile-no-selection strong { color: var(--color-text); font-size: calc(14px * var(--app-font-scale)); }

@@ -276,7 +276,15 @@ export function AppNavigationRail({
           onRetryHistory={agent.retryHistory}
         />
       }
-       skillsContent={<SkillsRailPage section={skillsSection} onSelect={onSelectSkillsSection} />}
+       skillsContent={
+         <SkillsRailPage
+           section={skillsSection}
+           onSelect={(section) => {
+             onSelectSkillsSection(section);
+             navigation.closeSidebar();
+           }}
+         />
+       }
        webAppContent={
         <WebAppsRailPage
           app={webApps.openDesign}

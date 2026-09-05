@@ -10,6 +10,16 @@
   .shell, .canvas-rail-pinned:is(.mode-terminal, .mode-agent, .mode-skills, .mode-settings) > .shell { margin-left: 0; border: 0; border-radius: 0; box-shadow: none; grid-template-rows: minmax(0, 1fr); }
   .rail-resize-handle { display: none; }
   [data-slot="sheet-content"] > .rail { position: relative; inset: auto; z-index: auto; width: 100%; height: 100%; padding: 12px; border: 0; border-radius: inherit; opacity: 1; pointer-events: auto; transform: none; transition: none; box-shadow: none; backdrop-filter: none; }
+  .skills-rail-page .rail-page-title { min-height: 44px; padding-block: 2px; }
+  .skills-rail-page .rail-detail { gap: 12px; padding-top: 4px; }
+  .skills-rail-page .skills-section-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }
+  .skills-rail-page .skills-section-nav > .menu-label,
+  .skills-rail-page .skills-section-nav > .skills-rail-note { display: none; }
+  .skills-rail-page .skills-section-nav > [data-slot="button"] { min-width: 0; border-radius: 9px !important; padding-inline: 8px !important; }
+  .skills-rail-page .skills-section-nav > [data-slot="button"]:not(.active) { color: var(--color-text-muted); }
+  .skills-rail-page .skills-section-nav > [data-slot="button"].active { background: var(--color-surface) !important; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+  .skills-rail-page .skills-section-nav > [data-slot="button"] svg { display: none; }
+  .skills-rail-page .skills-section-nav > [data-slot="button"] span { text-align: center; }
   .mode-skills .skills-workspace { padding-top: 58px !important; }
   .mode-webapp .webapps-workspace:not(.is-running) { padding-top: 58px !important; }
   .mode-settings .shell > div:last-child { padding-top: 58px !important; }

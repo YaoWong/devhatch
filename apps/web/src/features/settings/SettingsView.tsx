@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { LogOut, PanelLeft, Palette, Scan, Type, X } from "lucide-react";
+import { LogOut, PanelLeft, Palette, RotateCcw, Scan, Type, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
+import {
+  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_FONT_SIZE_PX,
+  DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
+  DEFAULT_UI_SCALE_PERCENT,
+} from "../../shared/theme/displaySettings";
 import { useTheme } from "../../shared/theme/ThemeContext";
-import { themes } from "../../shared/theme/themes";
+import { DEFAULT_THEME_ID, themes } from "../../shared/theme/themes";
 import type { ConfirmAction } from "../../types/app";
 import { SupervisorSetup } from "./SupervisorSetup";
 
@@ -30,6 +36,7 @@ export function SettingsView({
 }) {
   const {
     themeId,
+    agentLaunchPathsMaxHeightPx,
     navigationRailWidthPx,
     fontSizePx,
     uiScalePercent,
@@ -37,6 +44,7 @@ export function SettingsView({
     saving,
     error,
     dismissError,
+    resetAppearance,
     selectTheme,
     setNavigationRailWidthPx,
     setFontSizePx,
@@ -44,6 +52,10 @@ export function SettingsView({
   } = useTheme();
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
+  const appearanceDirty = themeId !== DEFAULT_THEME_ID ||
+    agentLaunchPathsMaxHeightPx !== DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
+    navigationRailWidthPx !== DEFAULT_NAVIGATION_RAIL_WIDTH_PX ||
+    (supportsDisplaySettings && (fontSizePx !== DEFAULT_FONT_SIZE_PX || uiScalePercent !== DEFAULT_UI_SCALE_PERCENT));
 
   useEffect(() => {
     const workspace = workspaceRef.current;
@@ -107,9 +119,15 @@ export function SettingsView({
         </nav>
         <div className="tw:min-w-0">
           <section id="settings-appearance" data-settings-section="appearance" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:border-b tw:border-border tw:pb-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-appearance-heading">
-            <div className="tw:min-w-0">
-              <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-appearance-heading">Appearance</h2>
-              <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Choose a theme for DevHatch and its terminals.</p>
+            <div className="tw:flex tw:min-w-0 tw:items-start tw:justify-between tw:gap-4 tw:@max-[540px]/settings-workspace:items-center">
+              <span className="tw:min-w-0">
+                <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-appearance-heading">Appearance</h2>
+                <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Choose a theme for DevHatch and its terminals.</p>
+              </span>
+              <Button variant="secondary" className="tw:h-10 tw:flex-none tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" disabled={saving || !appearanceDirty} onClick={resetAppearance}>
+                <RotateCcw className="tw:size-3.5" />
+                Reset
+              </Button>
             </div>
             <Card className="tw:@container/settings-card tw:gap-0 tw:rounded-xl tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0">
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(180px,240px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:px-3.5 tw:py-2.5 tw:@max-[540px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">

@@ -24,6 +24,24 @@ import { AgentWorkspaceList } from "./AgentWorkspaceList";
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRows = Parameters<typeof AgentSessionList>[0]["rows"];
 
+function readLaunchSetupCollapsed(key: string | null) {
+  if (!key) return false;
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeLaunchSetupCollapsed(key: string | null, collapsed: boolean) {
+  if (!key) return;
+  try {
+    localStorage.setItem(key, String(collapsed));
+  } catch {
+    return;
+  }
+}
+
 export function AgentRailPage({
   busy,
   launching,
@@ -145,12 +163,10 @@ export function AgentRailPage({
     ? `devhatch-agent-launch-setup-collapsed:${selectedAgentId}`
     : null;
   const [launchSetupCollapsed, setLaunchSetupCollapsed] = useState(() =>
-    launchSetupStorageKey ? localStorage.getItem(launchSetupStorageKey) === "true" : false,
+    readLaunchSetupCollapsed(launchSetupStorageKey),
   );
   useLayoutEffect(() => {
-    setLaunchSetupCollapsed(
-      launchSetupStorageKey ? localStorage.getItem(launchSetupStorageKey) === "true" : false,
-    );
+    setLaunchSetupCollapsed(readLaunchSetupCollapsed(launchSetupStorageKey));
   }, [launchSetupStorageKey]);
   const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
@@ -213,26 +229,28 @@ export function AgentRailPage({
               renderTrigger={(agent) => <AgentOption agent={agent} fallback="Select agent" />}
               renderOption={(agent) => <AgentOption agent={agent} />}
             />
-            <Card className="launch-setup tw:mt-2.5 tw:grid tw:gap-1.5 tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:p-2 tw:py-2 tw:text-base tw:leading-[normal] tw:ring-0">
+            <Card className={`launch-setup tw:mt-2 tw:grid tw:w-full tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:p-1 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-1"}`}>
               <Button
                 variant="ghost"
-                 className="tw:h-10 tw:w-full tw:justify-between tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-[3px] tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-bold tw:tracking-[0.08em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
+                className="tw:h-10 tw:w-full tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-[7px] tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-bold tw:tracking-[0.08em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
                 type="button"
                 aria-expanded={!launchSetupCollapsed}
                 aria-controls="agent-launch-setup-body"
                 onClick={() => {
                   const collapsed = !launchSetupCollapsed;
                   setLaunchSetupCollapsed(collapsed);
-                  if (launchSetupStorageKey) localStorage.setItem(launchSetupStorageKey, String(collapsed));
+                  writeLaunchSetupCollapsed(launchSetupStorageKey, collapsed);
                 }}
               >
-                <span>Launch setup</span>
-                <ChevronDown />
+                <span className="tw:flex tw:h-8 tw:w-full tw:items-center tw:justify-between tw:px-1">
+                  <span>Launch setup</span>
+                  <ChevronDown />
+                </span>
               </Button>
               {!launchSetupCollapsed && (
-                <div className="tw:grid tw:gap-1.5" id="agent-launch-setup-body">
+                <div className="tw:grid tw:gap-1" id="agent-launch-setup-body">
                   {selectedAgent && !selectedAgent.available && (
-                    <Card className="tw:mt-2 tw:grid tw:min-w-0 tw:gap-1 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-[calc(11px*var(--app-font-scale))]">
+                    <Card className="tw:grid tw:min-w-0 tw:gap-1 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-[calc(11px*var(--app-font-scale))]">
                       <strong>{selectedAgent.name} is not installed</strong>
                       {selectedAgent.id === "opencode" ? (
                         <>

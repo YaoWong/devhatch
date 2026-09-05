@@ -1,9 +1,27 @@
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import type { SourceFilter } from "./search";
 
-const compactButtonClass = "tw:h-10 tw:rounded-[9px] tw:px-3 tw:text-xs tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11";
+export const skillsPrimaryButtonClass = "skills-primary tw:h-10 tw:rounded-lg tw:bg-foreground tw:px-3.5 tw:text-xs tw:font-semibold tw:text-[var(--color-on-solid)] tw:shadow-sm tw:transition-[background-color,box-shadow,transform] tw:duration-150 tw:hover:bg-[color-mix(in_srgb,var(--color-text)_88%,var(--color-canvas))]! tw:hover:text-[var(--color-on-solid)]! tw:hover:shadow-md tw:active:shadow-none tw:[@media(pointer:coarse)]:h-11";
+export const skillsSecondaryButtonClass = "skills-button tw:h-10 tw:rounded-lg tw:px-3 tw:text-xs tw:font-semibold tw:transition-[background-color,border-color,color,box-shadow,transform] tw:duration-150 tw:hover:shadow-sm tw:[@media(pointer:coarse)]:h-11";
+export const skillsIconButtonClass = "skills-icon-button tw:size-10 tw:rounded-lg tw:transition-[background-color,border-color,color,box-shadow,transform] tw:duration-150 tw:hover:shadow-sm tw:[@media(pointer:coarse)]:size-11";
+
+type SkillsButtonProps = Omit<React.ComponentProps<typeof Button>, "variant">;
+type SkillsIconButtonProps = Omit<SkillsButtonProps, "size">;
+
+export function SkillsPrimaryButton({ className, ...props }: SkillsButtonProps) {
+  return <Button variant="default" className={cn(skillsPrimaryButtonClass, className)} {...props} />;
+}
+
+export function SkillsSecondaryButton({ className, ...props }: SkillsButtonProps) {
+  return <Button variant="outline" className={cn(skillsSecondaryButtonClass, className)} {...props} />;
+}
+
+export function SkillsIconButton({ className, ...props }: SkillsIconButtonProps) {
+  return <Button variant="outline" size="icon" className={cn(skillsIconButtonClass, className)} {...props} />;
+}
 
 export function SourceFilterControl({ value, onChange }: { value: SourceFilter; onChange: (value: SourceFilter) => void }) {
   return (
@@ -12,12 +30,13 @@ export function SourceFilterControl({ value, onChange }: { value: SourceFilter; 
         <Button
           type="button"
           variant="ghost"
-          className={`tw:h-10 tw:rounded-none tw:px-2.5 tw:text-xs tw:font-medium tw:transition-none tw:first:rounded-l-lg tw:last:rounded-r-lg tw:[@media(pointer:coarse)]:h-11 ${value === option ? "active tw:bg-card tw:text-foreground tw:shadow-sm" : "tw:text-muted-foreground"}`}
+          className={`tw:h-10 tw:min-w-0 tw:rounded-none tw:px-2.5 tw:text-xs tw:font-medium tw:transition-colors tw:duration-150 tw:first:rounded-l-lg tw:last:rounded-r-lg tw:[@media(pointer:coarse)]:h-11 ${value === option ? "active tw:bg-card tw:text-foreground tw:shadow-sm" : "tw:text-muted-foreground"}`}
+          aria-label={option === "repository" ? "Repos, filter to repository skills" : undefined}
           aria-pressed={value === option}
           key={option}
           onClick={() => onChange(option)}
         >
-          {option === "all" ? "All" : option === "custom" ? "My skills" : "Repositories"}
+          {option === "all" ? "All" : option === "custom" ? "My skills" : "Repos"}
         </Button>
       ))}
     </div>
@@ -29,7 +48,7 @@ export function TreeControls({ allCollapsed, disabled = false, onToggle }: { all
   const Icon = allCollapsed ? ChevronDown : ChevronRight;
   return (
     <div className="tree-controls">
-      <Button type="button" variant="secondary" className={compactButtonClass} disabled={disabled} aria-label={label} title={label} onClick={onToggle}><Icon className="tw:size-[13px]" /><span>{label}</span></Button>
+      <SkillsSecondaryButton type="button" disabled={disabled} aria-label={label} title={label} onClick={onToggle}><Icon className="tw:size-[13px]" /><span>{label}</span></SkillsSecondaryButton>
     </div>
   );
 }
