@@ -1,8 +1,8 @@
-import type { AppSettings } from "../types/settings";
+import type { AppSettings, AppSettingsResponse } from "../types/settings";
 import { requestJson } from "./client";
 
 export function getSettings() {
-  return requestJson<{ settings: AppSettings }>("/api/settings", undefined, "Unable to load settings")
+  return requestJson<{ settings: AppSettingsResponse }>("/api/settings", undefined, "Unable to load settings")
     .then(({ settings }) => settings);
 }
 

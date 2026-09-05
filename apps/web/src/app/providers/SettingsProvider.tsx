@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, type UpdateSettingsPatch } from "../../api/settings";
+import { DebouncedNumberSetting, hasDisplaySettings } from "./settingsPersistence";
 import { ThemeContext } from "../../shared/theme/ThemeContext";
 import {
   applyDisplaySettings,
@@ -24,58 +25,32 @@ function usePersistedNumberSetting(
   min: number,
   max: number,
   reportError: (reason: unknown) => void,
+  enabled = true,
+  step = 1,
 ) {
   const [value, setValueState] = useState(initialValue);
-  const mountedRef = useRef(false);
-  const confirmedRef = useRef(initialValue);
-  const desiredRef = useRef(initialValue);
-  const savingRef = useRef(false);
-  const generationRef = useRef(0);
+  const settingRef = useRef<DebouncedNumberSetting | null>(null);
+  if (!settingRef.current) {
+    settingRef.current = new DebouncedNumberSetting({
+      key,
+      initialValue,
+      min,
+      max,
+      step,
+      persist: updateSettings,
+      onValue: setValueState,
+      onError: reportError,
+    });
+  }
+  const setting = settingRef.current;
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-  const flush = useCallback(async () => {
-    if (savingRef.current) return;
-    savingRef.current = true;
-    while (desiredRef.current !== confirmedRef.current) {
-      const requested = desiredRef.current;
-      const generation = generationRef.current;
-      try {
-        const settings = await updateSettings({ [key]: requested });
-        const confirmed = settings[key];
-        confirmedRef.current = confirmed;
-        if (mountedRef.current && generationRef.current === generation && desiredRef.current === requested) {
-          setValueState(confirmed);
-        }
-      } catch (reason) {
-        reportError(reason);
-        if (desiredRef.current === requested) {
-          desiredRef.current = confirmedRef.current;
-          if (mountedRef.current && generationRef.current === generation) setValueState(confirmedRef.current);
-        }
-      }
-    }
-    savingRef.current = false;
-  }, [key, reportError]);
+    setting.activate();
+    return () => setting.dispose();
+  }, [setting]);
   const setValue = useCallback((nextValue: number) => {
-    const next = Math.min(max, Math.max(min, Math.round(nextValue)));
-    generationRef.current += 1;
-    desiredRef.current = next;
-    setValueState(next);
-    void flush();
-  }, [flush, max, min]);
-  const loadValue = useCallback((nextValue: unknown) => {
-    const next = typeof nextValue === "number" && Number.isInteger(nextValue) && nextValue >= min && nextValue <= max
-      ? nextValue
-      : initialValue;
-    generationRef.current += 1;
-    confirmedRef.current = next;
-    desiredRef.current = next;
-    setValueState(next);
-  }, [initialValue, max, min]);
+    if (enabled) setting.setValue(nextValue);
+  }, [enabled, setting]);
+  const loadValue = useCallback((nextValue: unknown) => setting.loadValue(nextValue), [setting]);
   return { value, setValue, loadValue };
 }
 
@@ -83,6 +58,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const initialTheme = useRef(cachedTheme()).current;
   const initialDisplaySettings = useRef(cachedDisplaySettings()).current;
   const [themeId, setThemeId] = useState<ThemeId | null>(null);
+  const [supportsDisplaySettings, setSupportsDisplaySettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showInitialLoading = useDelayedLoading(themeId === null);
@@ -95,8 +71,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
   const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("agentLaunchPathsMaxHeightPx", 286, 160, 480, reportError);
   const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", 288, 240, 480, reportError);
-  const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError);
-  const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError);
+  const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError, supportsDisplaySettings);
+  const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError, supportsDisplaySettings, 5);
 
   useLayoutEffect(() => {
     applyDisplaySettings(fontSizeValue, uiScaleValue);
@@ -143,8 +119,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         desiredRef.current = next;
         loadHeightValue(settings.agentLaunchPathsMaxHeightPx);
         loadWidthValue(settings.navigationRailWidthPx);
-        loadFontSizeValue(settings.fontSizePx);
-        loadUiScaleValue(settings.uiScalePercent);
+        const displaySettingsSupported = hasDisplaySettings(settings);
+        setSupportsDisplaySettings(displaySettingsSupported);
+        loadFontSizeValue(displaySettingsSupported ? settings.fontSizePx : initialDisplaySettings.fontSizePx);
+        loadUiScaleValue(displaySettingsSupported ? settings.uiScalePercent : initialDisplaySettings.uiScalePercent);
         applyTheme(next);
         setThemeId(next);
       })
@@ -205,6 +183,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         navigationRailWidthPx: widthValue,
         fontSizePx: fontSizeValue,
         uiScalePercent: uiScaleValue,
+        supportsDisplaySettings,
         saving,
         error,
         dismissError,

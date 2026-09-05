@@ -8,3 +8,5 @@ export type AppSettings = {
   createdAt: number;
   updatedAt: number;
 };
+
+export type AppSettingsResponse = Omit<AppSettings, "fontSizePx" | "uiScalePercent"> & Partial<Pick<AppSettings, "fontSizePx" | "uiScalePercent">>;

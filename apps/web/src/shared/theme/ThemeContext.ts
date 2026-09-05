@@ -7,6 +7,7 @@ export const ThemeContext = createContext<{
   navigationRailWidthPx: number;
   fontSizePx: number;
   uiScalePercent: number;
+  supportsDisplaySettings: boolean;
   saving: boolean;
   error: string | null;
   dismissError: () => void;

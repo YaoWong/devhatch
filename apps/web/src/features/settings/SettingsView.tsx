@@ -33,6 +33,7 @@ export function SettingsView({
     navigationRailWidthPx,
     fontSizePx,
     uiScalePercent,
+    supportsDisplaySettings,
     saving,
     error,
     dismissError,
@@ -136,20 +137,20 @@ export function SettingsView({
                 <Type className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
                 <span className="tw:min-w-0">
                   <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Font size</strong>
-                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Adjust text throughout DevHatch, including terminals.</small>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">{supportsDisplaySettings ? "Adjust text throughout DevHatch, including terminals." : "Restart DevHatch to configure this setting."}</small>
                 </span>
                 <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
-                  <PixelRangeControl label="Font size" min={12} max={20} value={fontSizePx} disabled={saving} onChange={setFontSizePx} />
+                  <PixelRangeControl label="Font size" min={12} max={20} value={fontSizePx} disabled={saving || !supportsDisplaySettings} onChange={setFontSizePx} />
                 </div>
               </div>
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
                 <Scan className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
                 <span className="tw:min-w-0">
                   <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">UI scale</strong>
-                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Scale common controls, icons, and spacing.</small>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">{supportsDisplaySettings ? "Scale common controls, icons, and spacing." : "Restart DevHatch to configure this setting."}</small>
                 </span>
                 <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
-                  <PixelRangeControl label="UI scale" min={80} max={125} step={5} unit="percent" value={uiScalePercent} disabled={saving} onChange={setUiScalePercent} />
+                  <PixelRangeControl label="UI scale" min={80} max={125} step={5} unit="percent" value={uiScalePercent} disabled={saving || !supportsDisplaySettings} onChange={setUiScalePercent} />
                 </div>
               </div>
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
