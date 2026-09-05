@@ -1,4 +1,6 @@
-@import "./themes.css";
+@layer theme, base, vendor, legacy, components, utilities;
+
+@import "./themes.css" layer(theme);
 @import "./shadcn.css";
 @import "./index.css";
 

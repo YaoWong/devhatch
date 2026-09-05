@@ -1,7 +1,6 @@
-@layer theme, base, vendor, legacy, components, utilities;
 @import "tailwindcss/theme.css" layer(theme) prefix(tw);
 @import "tailwindcss/utilities.css" layer(utilities) prefix(tw);
-@import "tw-animate-css";
+@import "tw-animate-css/prefix";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:where(
@@ -13,6 +12,7 @@
   :root[data-theme="mocha"] *
 ));
 
+@layer theme {
 :root {
   --background: var(--color-canvas);
   --foreground: var(--color-text);
@@ -33,6 +33,7 @@
   --input: var(--color-border-strong);
   --ring: var(--color-accent);
   --radius: 0.625rem;
+}
 }
 
 @theme inline {
