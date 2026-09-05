@@ -31,9 +31,15 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
   return (
     <WorkspaceSection title="Repositories" description="Connect Git sources, inspect discovered skills, and keep them synchronized.">
       <form className="skills-form repository-form" onSubmit={(event) => void submit(event)}>
-        <Input className="tw:h-10 tw:text-sm" required type="text" aria-label="Repository URL" placeholder="GitHub, HTTP(S), or git@host:path" value={url} onChange={(event) => setUrl(event.target.value)} />
-        <Input className="tw:h-10 tw:text-sm" aria-label="Repository branch or tag" placeholder="Branch or tag (optional)" value={gitRef} onChange={(event) => setGitRef(event.target.value)} />
-        <Button className="skills-primary tw:h-10 tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Add repository</Button>
+        <label className="skills-form-field">
+          <span>Repository URL</span>
+          <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" required type="text" placeholder="GitHub, HTTP(S), or git@host:path" value={url} onChange={(event) => setUrl(event.target.value)} />
+        </label>
+        <label className="skills-form-field">
+          <span>Branch or tag <small>Optional</small></span>
+          <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" placeholder="Default branch" value={gitRef} onChange={(event) => setGitRef(event.target.value)} />
+        </label>
+        <Button className="skills-primary tw:h-10 tw:self-end tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Add repository</Button>
       </form>
       <div className="repository-list">
         {controller.repositories.map((repository) => {
@@ -43,7 +49,8 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
           const filtered = filterSkills(repositorySkills, query, "all");
           const tree = buildSkillTree(filtered);
           const collapsibleKeys = treeKeys(tree, repository.id);
-          const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => collapsed.has(key));
+          const effectiveCollapsed = query.trim() ? new Set<string>() : collapsed;
+          const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => effectiveCollapsed.has(key));
           const plan = controller.syncPlan?.repositoryId === repository.id ? controller.syncPlan : null;
           return (
             <Card role="article" className={`repository-card tw:block tw:gap-0 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0 ${isExpanded ? "expanded tw:border-input" : ""}`} key={repository.id}>
@@ -52,7 +59,7 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
                     <span className="repository-disclosure">{isExpanded ? <ChevronDown className="tw:size-[13px]" /> : <ChevronRight className="tw:size-[13px]" />}</span>
                     <FolderGit2 className="tw:size-[19px]" />
                    <span>
-                     <InlineRename initialValue={repository.name} label="repository name" maxLength={2048} onSubmit={(name) => controller.renameRepository(repository.id, name)} onCancel={() => setRenaming(null)} />
+                     <InlineRename presentation="field" initialValue={repository.name} label="repository name" maxLength={2048} onSubmit={(name) => controller.renameRepository(repository.id, name)} onCancel={() => setRenaming(null)} />
                      <small title={repository.url}>{repository.gitRef ?? "Default branch"} · {repositorySkills.length} skills · {repository.commitHash.slice(0, 10)}</small>
                    </span>
                   </div> : <Button variant="ghost" className="repository-summary tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-none tw:hover:bg-transparent!" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
@@ -82,12 +89,12 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
                     <SearchField value={query} placeholder={`Search ${repositorySkills.length} skills`} onChange={(value) => setQueries((current) => ({ ...current, [repository.id]: value }))} />
                     <TreeControls
                       allCollapsed={allCollapsed}
-                      disabled={!collapsibleKeys.length}
+                      disabled={!collapsibleKeys.length || Boolean(query.trim())}
                       onToggle={() => setCollapsed((current) => setKeysCollapsed(current, collapsibleKeys, !allCollapsed))}
                     />
                   </div>
-                  <div className="skill-tree-shell">
-                    <SkillTree nodes={tree} collapsed={collapsed} namespace={repository.id} onToggle={(key) => setCollapsed((current) => toggleSet(current, key))} onViewSkill={setViewer} />
+                  <div className="skill-tree-list">
+                    <SkillTree nodes={tree} collapsed={effectiveCollapsed} namespace={repository.id} onToggle={query.trim() ? () => undefined : (key) => setCollapsed((current) => toggleSet(current, key))} onViewSkill={setViewer} />
                     {!filtered.length && <div className="repository-no-skills">{repositorySkills.length ? "No skills match your search." : "No skills discovered in this repository."}</div>}
                   </div>
                 </div>

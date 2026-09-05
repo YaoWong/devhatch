@@ -3,6 +3,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { ConfirmAction } from "../../types/app";
 import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
@@ -35,9 +36,15 @@ export function SkillLibrary({ controller, onConfirm }: { controller: SkillsCont
       </div>
       {creating && (
         <form className="skills-form create-skill-form" onSubmit={(event) => void submit(event)}>
-          <Input className="tw:h-10 tw:text-sm" required aria-label="Skill slug" placeholder="skill-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
-          <Input className="tw:h-10 tw:text-sm" required maxLength={1024} aria-label="Skill description" placeholder="When should an agent use this skill?" value={description} onChange={(event) => setDescription(event.target.value)} />
-          <div>
+          <label className="skills-form-field">
+            <span>Slug</span>
+            <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" required maxLength={64} placeholder="skill-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
+          </label>
+          <label className="skills-form-field">
+            <span>Description</span>
+            <Textarea className="skills-description-input tw:min-h-20 tw:resize-y tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:min-h-20" required maxLength={1024} rows={3} placeholder="When should an agent use this skill?" value={description} onChange={(event) => setDescription(event.target.value)} />
+          </label>
+          <div className="skills-form-actions">
             <Button variant="secondary" className="skills-button quiet tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" onClick={() => setCreating(false)}>Cancel</Button>
             <Button className="skills-primary tw:h-10 tw:bg-foreground tw:px-3 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}>Create</Button>
           </div>
@@ -48,7 +55,7 @@ export function SkillLibrary({ controller, onConfirm }: { controller: SkillsCont
         {filtered.map((skill) => (
           <Card role="article" className="skill-card tw:flex-row tw:gap-3 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:px-3.5 tw:py-3 tw:ring-0" key={skill.id}>
             <div className={`skill-source ${skill.sourceType}`}>{skill.sourceType === "custom" ? "Mine" : "Git"}</div>
-            <Button variant="ghost" className="skill-card-copy tw:h-auto tw:min-w-0 tw:flex-1 tw:justify-start tw:rounded-lg tw:px-2 tw:py-1 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:bg-muted/60!" aria-haspopup="dialog" onClick={() => setViewer(skill)}><span><strong>{skill.slug}</strong><small>{skill.description || "No description"}</small></span></Button>
+            <Button variant="ghost" className="skill-card-copy tw:h-auto tw:min-w-0 tw:flex-1 tw:justify-start tw:rounded-none tw:px-0 tw:py-1 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:bg-transparent!" aria-haspopup="dialog" onClick={() => setViewer(skill)}><span><strong>{skill.slug}</strong><small>{skill.description || "No description"}</small></span></Button>
             {skill.sourceType === "custom" && <Button variant="ghost" size="icon" disabled={controller.busy} className="skills-icon-button danger tw:size-10 tw:rounded-[9px] tw:text-destructive tw:hover:bg-[var(--color-danger-soft)]! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" aria-label={`Delete ${skill.slug}`} onClick={() => onConfirm({ title: `Delete ${skill.slug}?`, description: "This custom skill and its reusable instructions will be permanently deleted.", confirmLabel: "Delete skill", danger: true, action: () => controller.deleteSkill(skill.id) })}><Trash2 /></Button>}
           </Card>
         ))}

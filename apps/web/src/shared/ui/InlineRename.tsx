@@ -2,10 +2,11 @@ import { Check, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { inlineRenameSubmission } from "./inlineRenameState";
 
-const inputClassName = "tw:h-5 tw:w-auto tw:min-w-0 tw:max-w-[36ch] tw:flex-[0_1_auto] tw:border-0 tw:bg-transparent tw:p-0 tw:text-foreground tw:outline-none tw:disabled:opacity-50 tw:aria-invalid:text-destructive tw:in-[.workspace-select]:h-10 tw:in-[.workspace-select]:text-xs tw:in-[.workspace-select]:leading-[normal] tw:in-[.workspace-select]:font-semibold tw:[@media(pointer:coarse)]:in-[.workspace-select]:h-11 tw:in-[.path-main]:h-10 tw:in-[.path-main]:text-xs tw:in-[.path-main]:font-semibold tw:in-[.path-main]:leading-tight tw:[@media(pointer:coarse)]:in-[.path-main]:h-11 tw:in-[.repository-summary]:text-[11px] tw:in-[.repository-summary]:leading-[normal] tw:in-[.repository-summary]:font-bold tw:in-[.profile-title]:text-sm tw:in-[.profile-title]:leading-[normal] tw:in-[.profile-title]:font-bold tw:in-[.profile-title]:tracking-[-0.01em] tw:in-[.terminal-window-titlebar]:h-10 tw:in-[.terminal-window-titlebar]:cursor-text tw:in-[.terminal-window-titlebar]:font-mono tw:in-[.terminal-window-titlebar]:text-xs tw:in-[.terminal-window-titlebar]:font-semibold tw:in-[.terminal-window-titlebar]:leading-tight tw:in-[.terminal-window-titlebar]:select-text tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:h-11";
-const actionClassName = "tw:size-6 tw:min-h-0 tw:cursor-pointer tw:rounded tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:transition-none tw:hover:bg-[var(--color-surface-hover)] tw:hover:text-foreground tw:active:not-aria-[haspopup]:translate-y-0! tw:disabled:pointer-events-auto tw:disabled:cursor-default tw:disabled:opacity-55 tw:disabled:hover:bg-transparent tw:disabled:hover:text-[var(--color-text-faint)] tw:dark:hover:bg-[var(--color-surface-hover)] tw:dark:disabled:hover:bg-transparent tw:[@media(pointer:coarse)]:in-[.repository-summary]:size-11 tw:[@media(pointer:coarse)]:in-[.profile-title]:size-11 tw:in-[.path-main]:size-10 tw:[@media(pointer:coarse)]:in-[.path-main]:size-11 tw:in-[.workspace-select]:size-10 tw:[@media(pointer:coarse)]:in-[.workspace-select]:size-11 tw:in-[.terminal-window-titlebar]:size-10 tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:size-11";
+const inputClassName = "tw:h-5 tw:w-auto tw:min-w-0 tw:max-w-[36ch] tw:flex-[0_1_auto] tw:border-0 tw:bg-transparent tw:p-0 tw:text-foreground tw:outline-none tw:disabled:opacity-50 tw:aria-invalid:text-destructive tw:in-[.workspace-select]:h-10 tw:in-[.workspace-select]:text-xs tw:in-[.workspace-select]:leading-[normal] tw:in-[.workspace-select]:font-semibold tw:[@media(pointer:coarse)]:in-[.workspace-select]:h-11 tw:in-[.path-main]:h-10 tw:in-[.path-main]:text-xs tw:in-[.path-main]:font-semibold tw:in-[.path-main]:leading-tight tw:[@media(pointer:coarse)]:in-[.path-main]:h-11 tw:in-[.terminal-window-titlebar]:h-10 tw:in-[.terminal-window-titlebar]:cursor-text tw:in-[.terminal-window-titlebar]:font-mono tw:in-[.terminal-window-titlebar]:text-xs tw:in-[.terminal-window-titlebar]:font-semibold tw:in-[.terminal-window-titlebar]:leading-tight tw:in-[.terminal-window-titlebar]:select-text tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:h-11";
+const actionClassName = "tw:size-6 tw:min-h-0 tw:cursor-pointer tw:rounded tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:transition-none tw:hover:bg-[var(--color-surface-hover)] tw:hover:text-foreground tw:active:not-aria-[haspopup]:translate-y-0! tw:disabled:pointer-events-auto tw:disabled:cursor-default tw:disabled:opacity-55 tw:disabled:hover:bg-transparent tw:disabled:hover:text-[var(--color-text-faint)] tw:dark:hover:bg-[var(--color-surface-hover)] tw:dark:disabled:hover:bg-transparent tw:in-[.path-main]:size-10 tw:[@media(pointer:coarse)]:in-[.path-main]:size-11 tw:in-[.workspace-select]:size-10 tw:[@media(pointer:coarse)]:in-[.workspace-select]:size-11 tw:in-[.terminal-window-titlebar]:size-10 tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:size-11";
 const iconClassName = "tw:size-[11px] tw:in-[.path-main]:size-[9px]";
 
 export function InlineRename({
@@ -13,6 +14,7 @@ export function InlineRename({
   label,
   allowEmpty = false,
   maxLength = 120,
+  presentation = "compact",
   onSubmit,
   onCancel,
 }: {
@@ -20,6 +22,7 @@ export function InlineRename({
   label: string;
   allowEmpty?: boolean;
   maxLength?: number;
+  presentation?: "compact" | "field";
   onSubmit: (value: string) => Promise<boolean>;
   onCancel: () => void;
 }) {
@@ -116,20 +119,28 @@ export function InlineRename({
   return (
     <form
       ref={formRef}
-      className="inline-rename tw:relative tw:block tw:w-fit tw:min-w-0 tw:max-w-full tw:in-[.terminal-window-titlebar]:flex-[0_1_auto]"
+      className={cn(
+        "inline-rename tw:relative tw:block tw:w-fit tw:min-w-0 tw:max-w-full tw:in-[.terminal-window-titlebar]:flex-[0_1_auto]",
+        presentation === "field" && "inline-rename-field-presentation tw:w-full tw:overflow-visible",
+      )}
       aria-busy={busy}
       onClick={stopClick}
       onSubmit={submit}
     >
       <label className="sr-only" htmlFor={errorId}>Rename {label}</label>
-      <span className="inline-rename-field tw:flex tw:h-6 tw:w-fit tw:min-w-0 tw:max-w-full tw:items-center tw:overflow-hidden tw:rounded-[6px] tw:border tw:border-input tw:bg-card tw:py-px tw:pr-0.5 tw:pl-1.5 tw:shadow-[0_1px_2px_rgb(var(--shadow-color)/6%)] tw:transition-[border-color,box-shadow] tw:duration-[140ms] tw:ease-[ease] tw:focus-within:border-[color-mix(in_srgb,var(--color-accent)_72%,var(--color-border-strong))] tw:focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_10%,transparent)] tw:[@media(pointer:coarse)]:in-[.repository-summary]:h-11 tw:[@media(pointer:coarse)]:in-[.profile-title]:h-11 tw:in-[.path-main]:h-auto tw:in-[.path-main]:min-h-10 tw:in-[.path-main]:overflow-visible tw:in-[.path-main]:py-0 tw:[@media(pointer:coarse)]:in-[.path-main]:min-h-11 tw:in-[.workspace-select]:h-auto tw:in-[.workspace-select]:min-h-10 tw:in-[.workspace-select]:overflow-visible tw:in-[.workspace-select]:py-0 tw:[@media(pointer:coarse)]:in-[.workspace-select]:min-h-11 tw:in-[.path-main]:pl-[5px] tw:in-[.terminal-window-titlebar]:h-auto tw:in-[.terminal-window-titlebar]:min-h-10 tw:in-[.terminal-window-titlebar]:overflow-visible tw:in-[.terminal-window-titlebar]:py-0 tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:min-h-11">
+      <span className={cn(
+        "inline-rename-field tw:min-w-0 tw:max-w-full",
+        presentation === "compact"
+          ? "tw:flex tw:h-6 tw:w-fit tw:items-center tw:overflow-hidden tw:rounded-[6px] tw:border tw:border-input tw:bg-card tw:py-px tw:pr-0.5 tw:pl-1.5 tw:shadow-[0_1px_2px_rgb(var(--shadow-color)/6%)] tw:transition-[border-color,box-shadow] tw:duration-[140ms] tw:ease-[ease] tw:focus-within:border-[color-mix(in_srgb,var(--color-accent)_72%,var(--color-border-strong))] tw:focus-within:shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_10%,transparent)] tw:in-[.path-main]:h-auto tw:in-[.path-main]:min-h-10 tw:in-[.path-main]:overflow-visible tw:in-[.path-main]:py-0 tw:in-[.path-main]:pl-[5px] tw:[@media(pointer:coarse)]:in-[.path-main]:min-h-11 tw:in-[.workspace-select]:h-auto tw:in-[.workspace-select]:min-h-10 tw:in-[.workspace-select]:overflow-visible tw:in-[.workspace-select]:py-0 tw:[@media(pointer:coarse)]:in-[.workspace-select]:min-h-11 tw:in-[.terminal-window-titlebar]:h-auto tw:in-[.terminal-window-titlebar]:min-h-10 tw:in-[.terminal-window-titlebar]:overflow-visible tw:in-[.terminal-window-titlebar]:py-0 tw:[@media(pointer:coarse)]:in-[.terminal-window-titlebar]:min-h-11"
+          : "tw:grid tw:w-full tw:grid-cols-[minmax(0,1fr)_40px_40px] tw:gap-1 tw:overflow-visible tw:[@media(pointer:coarse)]:grid-cols-[minmax(0,1fr)_44px_44px]",
+      )}>
         <Input
           ref={inputRef}
           variant="bare"
           id={errorId}
           value={value}
-          className={inputClassName}
-          style={{ width: `${inputWidth}px` }}
+          className={cn(inputClassName, presentation === "field" && "tw:h-10 tw:w-full tw:max-w-none tw:flex-1 tw:rounded-lg tw:border tw:border-input tw:bg-[var(--color-surface-raised)] tw:px-2.5 tw:text-sm tw:leading-normal tw:font-normal tw:text-foreground tw:shadow-none tw:focus-visible:border-ring tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11")}
+          style={presentation === "compact" ? { width: `${inputWidth}px` } : undefined}
           maxLength={maxLength}
           disabled={busy}
           aria-invalid={Boolean(error)}
@@ -146,12 +157,12 @@ export function InlineRename({
             if (!busyRef.current) cancel();
           }}
         />
-        <span className="inline-rename-actions tw:ml-[3px] tw:flex tw:items-center tw:border-l tw:border-border tw:pl-0.5">
+        <span className={cn("inline-rename-actions tw:flex tw:items-center", presentation === "compact" ? "tw:ml-[3px] tw:border-l tw:border-border tw:pl-0.5" : "tw:contents")}>
           <Button
             type="submit"
             variant="ghost"
             size="icon-xs"
-            className={`${actionClassName} tw:text-primary tw:disabled:hover:text-primary`}
+             className={cn(`${actionClassName} tw:text-primary tw:disabled:hover:text-primary`, presentation === "field" && "tw:size-10 tw:rounded-lg tw:border tw:border-input tw:bg-card tw:[@media(pointer:coarse)]:size-11")}
             aria-label={`Save ${label}`}
             disabled={busy}
             onMouseDown={keepFocus}
@@ -162,7 +173,7 @@ export function InlineRename({
             type="button"
             variant="ghost"
             size="icon-xs"
-            className={actionClassName}
+             className={cn(actionClassName, presentation === "field" && "tw:size-10 tw:rounded-lg tw:border tw:border-input tw:bg-card tw:[@media(pointer:coarse)]:size-11")}
             aria-label={`Cancel renaming ${label}`}
             disabled={busy}
             onMouseDown={keepFocus}
@@ -175,7 +186,10 @@ export function InlineRename({
       {error && (
         <span
           id={`${errorId}-error`}
-          className="inline-rename-error tw:absolute tw:top-[calc(100%+5px)] tw:left-1 tw:z-80 tw:max-w-[min(280px,calc(100vw-32px))] tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:rounded-[7px] tw:border tw:border-[color-mix(in_srgb,var(--color-danger)_25%,transparent)] tw:bg-card tw:px-2 tw:py-[5px] tw:text-[10px] tw:leading-[1.3] tw:text-destructive tw:shadow-[0_8px_20px_rgb(var(--shadow-color)/12%)]"
+          className={cn(
+            "inline-rename-error tw:absolute tw:top-[calc(100%+5px)] tw:left-1 tw:z-80 tw:max-w-[min(280px,calc(100vw-32px))] tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:rounded-[7px] tw:border tw:border-[color-mix(in_srgb,var(--color-danger)_25%,transparent)] tw:bg-card tw:px-2 tw:py-[5px] tw:text-[10px] tw:leading-[1.3] tw:text-destructive tw:shadow-[0_8px_20px_rgb(var(--shadow-color)/12%)]",
+            presentation === "field" && "tw:static tw:mt-1.5 tw:block tw:max-w-full tw:overflow-visible tw:whitespace-normal tw:border-0 tw:bg-transparent tw:p-0 tw:text-[11px] tw:shadow-none",
+          )}
           role="alert"
         >
           {error}

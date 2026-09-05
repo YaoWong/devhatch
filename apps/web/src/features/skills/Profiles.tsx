@@ -72,8 +72,11 @@ export function Profiles({ controller }: { controller: SkillsController }) {
         </div>
       )}
       <form className="skills-form compact-form" onSubmit={(event) => void submit(event)}>
-        <Input className="tw:h-10 tw:text-sm" required aria-label="Profile slug" placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
-        <Button className="skills-primary tw:h-10 tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Create profile</Button>
+        <label className="skills-form-field">
+          <span>Profile slug</span>
+          <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" required maxLength={64} placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
+        </label>
+        <Button className="skills-primary tw:h-10 tw:self-end tw:rounded-[9px] tw:bg-foreground tw:px-3.5 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="submit" disabled={controller.busy}><Plus />Create profile</Button>
       </form>
       <div className="profile-layout">
         <nav className="profile-list">
@@ -86,16 +89,22 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           ))}
           {!controller.profiles.length && <Empty text="No profiles yet." />}
         </nav>
-        <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
-          <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
-            <div className="profile-skills-header">
+        {!selectedProfile ? (
+          <div className="profile-no-selection">
+            <strong>No profile selected</strong>
+            <span>{controller.profiles.length ? "Choose a profile to edit its saved skills." : "Create a profile to choose and save a reusable set of skills."}</span>
+          </div>
+        ) : (
+          <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
+            <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
+              <div className="profile-skills-header">
               <span className="profile-title">
                 {selectedProfile && renamingProfileId === selectedProfile.id ? (
-                  <InlineRename initialValue={selectedProfile.slug} label="profile slug" maxLength={64} onSubmit={(nextSlug) => controller.renameProfile(selectedProfile.id, nextSlug)} onCancel={() => setRenamingProfileId(null)} />
+                  <InlineRename presentation="field" initialValue={selectedProfile.slug} label="profile slug" maxLength={64} onSubmit={(nextSlug) => controller.renameProfile(selectedProfile.id, nextSlug)} onCancel={() => setRenamingProfileId(null)} />
                 ) : (
                   <span className="profile-title-row">
                     <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
-                    {selectedProfile && <Button variant="outline" size="icon" className="profile-rename tw:size-8 tw:rounded-lg tw:[@media(pointer:coarse)]:size-11" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></Button>}
+                    {selectedProfile && <Button variant="outline" size="icon" className="profile-rename tw:size-10 tw:rounded-lg tw:[@media(pointer:coarse)]:size-11" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></Button>}
                   </span>
                 )}
                 <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
@@ -147,7 +156,8 @@ export function Profiles({ controller }: { controller: SkillsController }) {
               {!filtered.length && <Empty text="No skills match your search." />}
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </WorkspaceSection>
   );

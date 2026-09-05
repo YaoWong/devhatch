@@ -12,7 +12,7 @@ export function SourceFilterControl({ value, onChange }: { value: SourceFilter; 
         <Button
           type="button"
           variant="ghost"
-          className={`tw:h-8 tw:rounded-md tw:px-2.5 tw:text-xs tw:font-medium tw:transition-none tw:[@media(pointer:coarse)]:h-11 ${value === option ? "active tw:bg-card tw:text-foreground tw:shadow-sm" : "tw:text-muted-foreground"}`}
+          className={`tw:h-10 tw:rounded-none tw:px-2.5 tw:text-xs tw:font-medium tw:transition-none tw:first:rounded-l-lg tw:last:rounded-r-lg tw:[@media(pointer:coarse)]:h-11 ${value === option ? "active tw:bg-card tw:text-foreground tw:shadow-sm" : "tw:text-muted-foreground"}`}
           aria-pressed={value === option}
           key={option}
           onClick={() => onChange(option)}
@@ -35,7 +35,7 @@ export function TreeControls({ allCollapsed, disabled = false, onToggle }: { all
 }
 
 export function SearchField({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
-  return <label className="skills-search"><span className="sr-only">{placeholder}</span><Search className="tw:size-[15px]" /><Input variant="bare" aria-label={placeholder} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="skills-search"><span className="sr-only">{placeholder}</span><Search className="tw:size-[15px]" /><Input variant="bare" type="search" spellCheck={false} className="tw:h-full tw:w-full tw:text-[13px] tw:leading-[1.3] tw:font-normal tw:text-foreground tw:placeholder:text-muted-foreground" aria-label={placeholder} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 export function WorkspaceSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
