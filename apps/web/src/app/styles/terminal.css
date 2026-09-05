@@ -14,7 +14,7 @@
 .terminal-thumbnail { position: relative; width: 100%; aspect-ratio: 16 / 10; flex: none; padding: 24px 0 0; overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: 10px; background: var(--color-surface); color: var(--color-text); cursor: pointer; box-shadow: 0 4px 10px rgb(var(--overlay-color) / 12%); transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
 .terminal-thumbnail img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .terminal-thumbnail img:not([src]) { visibility: hidden; }
-.terminal-thumbnail-caption { position: absolute; inset: 0 0 auto; height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 8px; overflow: hidden; border-bottom: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); font: 10px/1.2 var(--font-family-mono); text-overflow: ellipsis; white-space: nowrap; }
+.terminal-thumbnail-caption { position: absolute; inset: 0 0 auto; height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 8px; overflow: hidden; border-bottom: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); font: calc(10px * var(--app-font-scale))/1.2 var(--font-family-mono); text-overflow: ellipsis; white-space: nowrap; }
 .terminal-thumbnail-caption .tab-dot { width: 6px; height: 6px; }
 .terminal-thumbnail:focus-visible, .terminal-thumbnail-edge-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .terminal-card-grid { height: calc(100% - 20px); display: grid; gap: 12px; margin: 10px; }
@@ -81,12 +81,17 @@
 }
 .terminal-split-handle:hover::before, .terminal-split-handle:focus-visible::before, .terminal-split-handle.dragging::before { background: var(--color-accent); }
 .terminal-stage-empty { position: absolute; inset: 0; }
-.terminal-window { display: none; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: 14px; background: var(--color-surface); box-shadow: none; }
+.terminal-window { display: none; min-width: 0; min-height: 0; overflow: hidden; container-type: inline-size; container-name: terminal-pane; border: 1px solid var(--color-border-strong); border-radius: 14px; background: var(--color-surface); box-shadow: none; }
 .terminal-window.shown { position: relative; display: block; }
 .terminal-window.thumbnail-source { position: absolute; left: 0; top: 0; z-index: 0; width: 960px; height: 600px; display: block; opacity: .001; pointer-events: none; contain: strict; }
 .terminal-window.focused { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border-strong)); box-shadow: none; }
 .terminal-window:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .terminal-window-titlebar { position: absolute; inset: 0 0 auto; z-index: 2; height: 48px; display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent); color: var(--color-text-muted); user-select: none; backdrop-filter: blur(14px); transition: background-color 160ms ease, box-shadow 160ms ease; }
+.terminal-pane-actions { display: none; align-items: center; }
+@container terminal-pane (min-width: 420px) {
+  .terminal-pane-actions { display: flex; }
+  .terminal-pane-overflow { display: none !important; }
+}
 .terminal-window.focused .terminal-window-titlebar { background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface-raised)); box-shadow: inset 3px 0 var(--color-accent); }
 .terminal-window .terminal-surface { top: 48px; }
 @media (pointer: coarse) {
@@ -100,11 +105,11 @@
 .terminal-xterm-host .xterm .composition-view { background: var(--color-surface); color: var(--color-text); }
 .terminal-xterm-host .xterm-viewport { scrollbar-color: var(--color-border-strong) transparent; scrollbar-width: thin; }
 .terminal-xterm-host .xterm-screen canvas { image-rendering: auto; }
-.terminal-image-paste-status { position: absolute; z-index: 4; top: 12px; right: 14px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 99px; background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent); color: var(--color-text-muted); box-shadow: 0 6px 18px rgb(0 0 0 / 12%); font: 10px/1 var(--font-family-mono); pointer-events: none; backdrop-filter: blur(8px); }
+.terminal-image-paste-status { position: absolute; z-index: 4; top: 12px; right: 14px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 99px; background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent); color: var(--color-text-muted); box-shadow: 0 6px 18px rgb(0 0 0 / 12%); font: calc(10px * var(--app-font-scale))/1 var(--font-family-mono); pointer-events: none; backdrop-filter: blur(8px); }
 .terminal-image-paste-status svg { width: 13px; height: 13px; }
-.empty-state { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; color: var(--color-text-faint); font: 12px/1.5 var(--font-family-mono); text-align: center; }
+.empty-state { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; color: var(--color-text-faint); font: calc(12px * var(--app-font-scale))/1.5 var(--font-family-mono); text-align: center; }
 .empty-state > svg { width: 30px; height: 30px; color: var(--color-border-strong); }
-.error-banner { position: absolute; left: 50%; bottom: 18px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); font-size: 12px; transform: translateX(-50%); }
+.error-banner { position: absolute; left: 50%; bottom: 18px; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); font-size: calc(12px * var(--app-font-scale)); transform: translateX(-50%); }
 .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
 .tab-dot.connecting, .tab-dot.reconnecting { background: var(--color-warning-fg); }
 .tab-dot.disconnected, .tab-dot.exited { background: var(--color-text-faint); }

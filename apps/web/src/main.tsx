@@ -5,9 +5,12 @@ import App from './app/App.tsx'
 import { AppSettingsProvider } from './app/providers/SettingsProvider.tsx'
 import './app/styles/base.css'
 import { AuthGate } from './features/auth/AuthGate.tsx'
+import { applyDisplaySettings, cachedDisplaySettings } from './shared/theme/displaySettings.ts'
 import { applyTheme, cachedTheme } from './shared/theme/themes.ts'
 
 applyTheme(cachedTheme())
+const initialDisplaySettings = cachedDisplaySettings()
+applyDisplaySettings(initialDisplaySettings.fontSizePx, initialDisplaySettings.uiScalePercent)
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }

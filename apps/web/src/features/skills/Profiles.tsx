@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Skill } from "../../types/skills";
-import { InlineRename } from "../../shared/ui/InlineRename";
+import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { SkillsController } from "./controller";
 import { Empty, SearchField, TreeControls, WorkspaceSection } from "./controls";
@@ -99,14 +99,10 @@ export function Profiles({ controller }: { controller: SkillsController }) {
             <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
               <div className="profile-skills-header">
               <span className="profile-title">
-                {selectedProfile && renamingProfileId === selectedProfile.id ? (
-                  <InlineRename presentation="field" initialValue={selectedProfile.slug} label="profile slug" maxLength={64} onSubmit={(nextSlug) => controller.renameProfile(selectedProfile.id, nextSlug)} onCancel={() => setRenamingProfileId(null)} />
-                ) : (
-                  <span className="profile-title-row">
-                    <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
-                    {selectedProfile && <Button variant="outline" size="icon" className="profile-rename tw:size-10 tw:rounded-lg tw:[@media(pointer:coarse)]:size-11" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></Button>}
-                  </span>
-                )}
+                <span className="profile-title-row">
+                  <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
+                  {selectedProfile && <Button variant="outline" size="icon" className="profile-rename tw:size-10 tw:rounded-lg tw:[@media(pointer:coarse)]:size-11" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></Button>}
+                </span>
                 <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
               </span>
               <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
@@ -159,6 +155,11 @@ export function Profiles({ controller }: { controller: SkillsController }) {
           </div>
         )}
       </div>
+      {renamingProfileId && (() => {
+        const profile = controller.profiles.find((item) => item.id === renamingProfileId);
+        if (!profile) return null;
+        return <RenameDialog initialValue={profile.slug} label="profile" maxLength={64} onSubmit={(nextSlug) => controller.renameProfile(profile.id, nextSlug)} onClose={() => setRenamingProfileId(null)} />;
+      })()}
     </WorkspaceSection>
   );
 }

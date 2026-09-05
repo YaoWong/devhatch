@@ -15,7 +15,7 @@ export function SkillsRailPage({ section, onSelect }: { section: SkillsSection; 
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Button variant="ghost" type="button" key={item.id} className={`settings-nav-item tw:min-h-11 tw:w-full tw:justify-start tw:rounded-xl tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-none tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! ${section === item.id ? "active tw:bg-background" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
+          <Button variant="ghost" type="button" key={item.id} className={`settings-nav-item tw:min-h-11 tw:w-full tw:justify-start tw:rounded-xl tw:px-3 tw:py-2 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:transition-none tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! ${section === item.id ? "active tw:bg-background" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
             <Icon />
             <span>{item.label}</span>
           </Button>

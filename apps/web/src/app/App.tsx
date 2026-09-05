@@ -41,6 +41,7 @@ const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
 const CANVAS_RAIL_ID = "canvas-navigation-rail";
 const CANVAS_RAIL_CLOSE_DELAY_MS = 120;
 const CANVAS_RAIL_POPOVER_SELECTOR = "[data-canvas-rail-popover]";
+const CANVAS_RAIL_DIALOG_SELECTOR = "[data-canvas-rail-dialog]";
 const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
 const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
@@ -334,6 +335,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       if (
         railResizingRef.current || navigation.railMotion !== null || hasOpenCustomSelectPortalOwnedBy(canvasRailRef.current) ||
         document.querySelector(`${CANVAS_RAIL_POPOVER_SELECTOR}[data-open]`) ||
+        document.querySelector(`${CANVAS_RAIL_DIALOG_SELECTOR}[data-open]`) ||
         canvasRailHoverRef.current || canvasHandleHoverRef.current || railHasKeyboardFocus
       ) return;
       setCanvasOpen(false);
@@ -354,6 +356,15 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     rail.addEventListener(CUSTOM_SELECT_OPEN_CHANGE_EVENT, onSelectOpenChange);
     return () => rail.removeEventListener(CUSTOM_SELECT_OPEN_CHANGE_EVENT, onSelectOpenChange);
   }, [cancelCanvasClose, canvasPinned, mobileNavigation, scheduleCanvasClose]);
+  useEffect(() => {
+    const onRailDialogClosed = () => {
+      if (!mobileNavigation && !canvasPinned && !canvasRailHoverRef.current && !canvasHandleHoverRef.current) {
+        scheduleCanvasClose();
+      }
+    };
+    window.addEventListener("devhatch-canvas-rail-dialog-closed", onRailDialogClosed);
+    return () => window.removeEventListener("devhatch-canvas-rail-dialog-closed", onRailDialogClosed);
+  }, [canvasPinned, mobileNavigation, scheduleCanvasClose]);
   const onSessionSelected = useCallback(() => {
     if (mobileNavigation || canvasPinned) return;
     cancelCanvasClose();
@@ -721,12 +732,13 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }}
         onCanvasFocus={openCanvasRail}
          onCanvasBlur={(event) => {
-           const relatedPopover = event.relatedTarget instanceof Element ? event.relatedTarget.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
-           if (
-             event.currentTarget.contains(event.relatedTarget) ||
-             canvasHandleRef.current?.contains(event.relatedTarget) ||
-             isCanvasRailOwnedTarget(event.currentTarget, event.relatedTarget) ||
-             relatedPopover
+            const relatedPopover = event.relatedTarget instanceof Element ? event.relatedTarget.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
+            const relatedDialog = event.relatedTarget instanceof Element ? event.relatedTarget.closest(CANVAS_RAIL_DIALOG_SELECTOR) : null;
+            if (
+              event.currentTarget.contains(event.relatedTarget) ||
+              canvasHandleRef.current?.contains(event.relatedTarget) ||
+              isCanvasRailOwnedTarget(event.currentTarget, event.relatedTarget) ||
+              relatedPopover || relatedDialog
            ) return;
            scheduleCanvasClose();
          }}

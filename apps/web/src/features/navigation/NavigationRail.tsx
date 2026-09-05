@@ -268,61 +268,38 @@ export function NavigationRail({
           </Button>
         </div>
       )}
-      {terminalSettingsOpen && canvasPinned && settingsAvailable && (
-        <div id={`canvas-${workspaceMode}-settings`} className="canvas-terminal-settings pinned" role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
-          {settingsControls}
-        </div>
-      )}
       <footer className={`canvas-rail-footer ${settingsAvailable ? "has-settings" : ""}`}>
-        {canvasPinned ? (
+        <Popover open={settingsAvailable && terminalSettingsOpen} onOpenChange={onTerminalSettingsOpenChange}>
           <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
-            <Button
-              variant="ghost"
-              className={`settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! ${terminalSettingsOpen ? "active tw:bg-[var(--color-canvas)]" : ""}`}
-              type="button"
-              aria-hidden={!settingsAvailable}
-              aria-expanded={settingsAvailable ? terminalSettingsOpen : false}
-              aria-controls={`canvas-${workspaceMode}-settings`}
-              tabIndex={settingsAvailable ? undefined : -1}
-              onClick={() => onTerminalSettingsOpenChange(!terminalSettingsOpen)}
+            <PopoverTrigger
+              disabled={!settingsAvailable}
+              render={
+                <Button
+                  variant="ghost"
+                  className="settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:data-popup-open:bg-[var(--color-canvas)]!"
+                  type="button"
+                  aria-hidden={!settingsAvailable}
+                  tabIndex={settingsAvailable ? undefined : -1}
+                />
+              }
             >
               <SlidersHorizontal className="tw:size-[19px]" />
               <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
-            </Button>
+            </PopoverTrigger>
           </div>
-        ) : (
-          <Popover open={settingsAvailable && terminalSettingsOpen} onOpenChange={onTerminalSettingsOpenChange}>
-            <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
-              <PopoverTrigger
-                disabled={!settingsAvailable}
-                render={
-                  <Button
-                    variant="ghost"
-                    className="settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:data-popup-open:bg-[var(--color-canvas)]!"
-                    type="button"
-                    aria-hidden={!settingsAvailable}
-                    tabIndex={settingsAvailable ? undefined : -1}
-                  />
-                }
-              >
-                <SlidersHorizontal className="tw:size-[19px]" />
-                <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
-              </PopoverTrigger>
-            </div>
-            <PopoverContent
-              id={`canvas-${workspaceMode}-settings`}
-              data-canvas-rail-popover=""
-              side="top"
-              align="start"
-              sideOffset={8}
-              initialFocus={false}
-              className="canvas-terminal-settings tw:max-h-[var(--available-height)] tw:w-[calc(var(--anchor-width)+48px)] tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:border tw:border-border tw:bg-[var(--color-surface)] tw:p-3 tw:shadow-[0_12px_32px_rgb(0_0_0/16%)] tw:ring-0 tw:[@media(pointer:coarse)]:w-[calc(var(--anchor-width)+52px)]"
-              aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}
-            >
-              {settingsControls}
-            </PopoverContent>
-          </Popover>
-        )}
+          <PopoverContent
+            id={`canvas-${workspaceMode}-settings`}
+            data-canvas-rail-popover=""
+            side="top"
+            align="start"
+            sideOffset={8}
+            initialFocus={false}
+            className="canvas-terminal-settings tw:max-h-[var(--available-height)] tw:min-w-0 tw:w-[calc(var(--anchor-width)+48px)] tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-3 tw:shadow-[0_12px_32px_rgb(0_0_0/16%)] tw:ring-0 tw:backdrop-blur-xl tw:[@media(pointer:coarse)]:w-[calc(var(--anchor-width)+52px)]"
+            aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}
+          >
+            {settingsControls}
+          </PopoverContent>
+        </Popover>
         <Button
           variant="outline"
           size="icon"
@@ -368,7 +345,7 @@ function ModeButton({
       }}
       variant="ghost"
       type="button"
-      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[13px] tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >

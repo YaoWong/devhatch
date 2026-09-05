@@ -35,7 +35,7 @@ export function TreeControls({ allCollapsed, disabled = false, onToggle }: { all
 }
 
 export function SearchField({ value, placeholder, onChange }: { value: string; placeholder: string; onChange: (value: string) => void }) {
-  return <label className="skills-search"><span className="sr-only">{placeholder}</span><Search className="tw:size-[15px]" /><Input variant="bare" type="search" spellCheck={false} className="tw:h-full tw:w-full tw:text-[13px] tw:leading-[1.3] tw:font-normal tw:text-foreground tw:placeholder:text-muted-foreground" aria-label={placeholder} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="skills-search"><span className="sr-only">{placeholder}</span><Search className="tw:size-[15px]" /><Input variant="bare" type="search" spellCheck={false} className="tw:h-full tw:w-full tw:text-[calc(13px*var(--app-font-scale))] tw:leading-[1.3] tw:font-normal tw:text-foreground tw:placeholder:text-muted-foreground" aria-label={placeholder} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 export function WorkspaceSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {

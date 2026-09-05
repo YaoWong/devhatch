@@ -60,7 +60,7 @@ export function WebAppsRailPage({
       <Button variant="outline" className="webapp-rail-card tw:h-auto tw:min-h-16 tw:w-full tw:justify-start tw:gap-2.5 tw:rounded-xl tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:border-input tw:hover:bg-popover!" type="button" onClick={action} disabled={operation !== null || app.running || (!app.installed && !ready)}>
         <img className="tw:size-9 tw:flex-none tw:rounded-[10px]" src={openDesignIcon} alt="" />
         <span className="tw:min-w-0 tw:flex-1">
-          <strong className="tw:block tw:text-[13px] tw:font-semibold tw:text-foreground">{app.name}</strong>
+          <strong className="tw:block tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:text-foreground">{app.name}</strong>
           <small className="tw:mt-1 tw:block tw:text-xs tw:leading-snug tw:text-muted-foreground">{app.running ? "Running" : app.installed ? `Installed · v${app.version}` : "Not installed"}</small>
         </span>
         {app.installing || app.updating ? <LoaderCircle className="spin tw:size-4 tw:text-muted-foreground" /> : app.running ? <CircleCheck className="tw:size-4 tw:text-[var(--color-success-fg)]" /> : <Play className="tw:size-4 tw:text-muted-foreground" />}
@@ -134,13 +134,13 @@ export function WebAppsWorkspace({
             <img className="tw:size-full tw:rounded-[30px] tw:shadow-[0_12px_28px_rgb(0_0_0/16%)] tw:@max-[720px]/webapps-workspace:rounded-[22px]" src={openDesignIcon} alt="" />
           </div>
           <div className="webapp-copy tw:min-w-0 tw:flex-1">
-            <span className={cn("webapp-status tw:inline-flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[11px] tw:leading-none tw:text-muted-foreground tw:uppercase", app.running && "tw:text-[var(--color-success-fg)]", app.error && "tw:text-destructive")}>
+            <span className={cn("webapp-status tw:inline-flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-none tw:text-muted-foreground tw:uppercase", app.running && "tw:text-[var(--color-success-fg)]", app.error && "tw:text-destructive")}>
               {app.installing && <LoaderCircle className="spin tw:size-3" />}
               {app.running ? "Running" : phase}
             </span>
-            <h2 className="tw:mt-2 tw:mb-0 tw:text-[28px] tw:leading-tight tw:tracking-[-0.035em] tw:text-foreground tw:@max-[520px]/webapps-workspace:text-[22px]">OpenDesign</h2>
-            <p className="tw:mt-2 tw:mb-0 tw:text-[13px] tw:leading-relaxed tw:text-muted-foreground">{app.description}</p>
-            {app.updateAvailable && <span className="webapp-update-badge tw:mt-2.5 tw:inline-block tw:rounded-full tw:bg-[var(--color-accent-soft)] tw:px-2 tw:py-1 tw:text-[11px] tw:font-semibold tw:text-[var(--color-warning-fg)]">Update available · v{app.latestVersion ?? "unknown"}</span>}
+            <h2 className="tw:mt-2 tw:mb-0 tw:text-[calc(28px*var(--app-font-scale))] tw:leading-tight tw:tracking-[-0.035em] tw:text-foreground tw:@max-[520px]/webapps-workspace:text-[calc(22px*var(--app-font-scale))]">OpenDesign</h2>
+            <p className="tw:mt-2 tw:mb-0 tw:text-[calc(13px*var(--app-font-scale))] tw:leading-relaxed tw:text-muted-foreground">{app.description}</p>
+            {app.updateAvailable && <span className="webapp-update-badge tw:mt-2.5 tw:inline-block tw:rounded-full tw:bg-[var(--color-accent-soft)] tw:px-2 tw:py-1 tw:text-[calc(11px*var(--app-font-scale))] tw:font-semibold tw:text-[var(--color-warning-fg)]">Update available · v{app.latestVersion ?? "unknown"}</span>}
             <div className="webapp-actions tw:mt-5 tw:flex tw:flex-wrap tw:gap-2">
               {!app.installed && (
                 <WebAppAction disabled={!ready || operation !== null} onClick={install} fullWidth>
@@ -172,7 +172,7 @@ export function WebAppsWorkspace({
           <Card className="webapp-progress-card tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-2.5 tw:rounded-2xl tw:border tw:border-border tw:bg-card tw:px-[22px] tw:py-[18px] tw:ring-0">
             <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-xs">
               <strong className="tw:text-foreground">{phase}</strong>
-              <span className="tw:text-right tw:font-mono tw:text-[11px] tw:text-muted-foreground">{app.downloadedBytes !== null ? `${formatBytes(app.downloadedBytes)}${app.totalBytes !== null ? ` / ~${formatBytes(app.totalBytes)}` : ""} · ` : ""}{app.progress}%</span>
+              <span className="tw:text-right tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:text-muted-foreground">{app.downloadedBytes !== null ? `${formatBytes(app.downloadedBytes)}${app.totalBytes !== null ? ` / ~${formatBytes(app.totalBytes)}` : ""} · ` : ""}{app.progress}%</span>
             </div>
             <progress className="tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:border-0" max="100" value={app.progress} aria-label={`${phase} progress`} />
           </Card>
@@ -229,7 +229,7 @@ function Detail({ label, value, mono, ok }: { label: string; value: string; mono
   return (
     <div className="webapp-detail tw:min-w-0 tw:bg-card tw:px-3.5 tw:py-3">
       <dt className="tw:text-xs tw:text-muted-foreground">{label}</dt>
-      <dd className={cn("tw:mt-1.5 tw:mb-0 tw:flex tw:items-start tw:gap-1.5 tw:text-[13px] tw:font-semibold tw:text-foreground", mono && "tw:break-all tw:font-mono tw:text-[11px] tw:leading-relaxed", ok === true && "tw:text-[var(--color-success-fg)]", ok === false && "tw:text-[var(--color-warning-fg)]")} title={mono ? value : undefined}>
+      <dd className={cn("tw:mt-1.5 tw:mb-0 tw:flex tw:items-start tw:gap-1.5 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:text-foreground", mono && "tw:break-all tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-relaxed", ok === true && "tw:text-[var(--color-success-fg)]", ok === false && "tw:text-[var(--color-warning-fg)]")} title={mono ? value : undefined}>
         {ok !== undefined && (ok ? <CircleCheck className="tw:mt-0.5 tw:size-3.5 tw:flex-none" /> : <CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />)}{value}
       </dd>
     </div>

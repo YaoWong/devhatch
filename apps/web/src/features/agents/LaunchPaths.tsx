@@ -11,11 +11,11 @@ import type { AgentLaunchPath } from "../../types/agents";
 import type { LaunchPathDisplay } from "../../types/app";
 import { displayPath, workspaceName } from "../../shared/lib/utils";
 import { dispatchCustomSelectOpenChange } from "../../shared/ui/customSelectPortal";
-import { InlineRename } from "../../shared/ui/InlineRename";
+import { RenameDialog } from "../../shared/ui/RenameDialog";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
-const pathMainClass = "path-main tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:shrink tw:justify-start tw:gap-0 tw:rounded-md tw:border-0 tw:bg-transparent tw:p-1 tw:text-left tw:font-normal tw:whitespace-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[10px] tw:[&_small]:leading-tight tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:leading-tight tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap";
+const pathMainClass = "path-main tw:flex tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:shrink tw:items-center tw:justify-start tw:gap-0 tw:rounded-md tw:border-0 tw:bg-transparent tw:p-1 tw:text-left tw:font-normal tw:whitespace-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-tight tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:leading-tight tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap";
 const pathActionClass = "tw:pointer-events-none tw:size-10 tw:min-h-0 tw:flex-none tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:opacity-0 tw:transition-[background,color,opacity] tw:hover:bg-muted! tw:hover:text-foreground! tw:group-hover/path:pointer-events-auto tw:group-hover/path:opacity-100 tw:group-focus-within/path:pointer-events-auto tw:group-focus-within/path:opacity-100 tw:data-popup-open:pointer-events-auto tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:data-popup-open:opacity-100 tw:[@media(hover:none)]:pointer-events-auto tw:[@media(hover:none)]:opacity-100 tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 const paginationButtonClass = "tw:size-10 tw:rounded-lg tw:border-input tw:bg-card tw:p-0 tw:text-muted-foreground tw:hover:bg-muted! tw:hover:text-foreground! tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 
@@ -99,20 +99,7 @@ export function LaunchPaths({
                 className={`agent-path-row tw:group/path tw:relative tw:flex tw:min-h-12 tw:w-full tw:min-w-0 tw:items-center tw:gap-1 tw:rounded-[10px] tw:border tw:px-1 tw:py-1 tw:transition-[background,border-color] ${selectedPathId === item.id ? "active tw:border-input tw:bg-card" : "tw:border-transparent tw:bg-transparent tw:hover:border-border tw:hover:bg-background"}`}
               >
                 <Folder className="tw:size-3.5 tw:flex-none tw:text-[var(--color-warning-fg)]" />
-                {renaming ? (
-                  <div className={pathMainClass}>
-                    <span>
-                      <InlineRename
-                        initialValue={item.alias || workspaceName(item.path)}
-                        label="launch path alias"
-                        allowEmpty
-                        onSubmit={(alias) => onRenameSubmit(item, alias)}
-                        onCancel={onRenameCancel}
-                      />
-                      {pathDisplay === "folder" && <small>{displayPath(item.path, homePaths?.home, homePaths?.resolvedHome)}</small>}
-                    </span>
-                  </div>
-                ) : onSelect ? (
+                {onSelect ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -141,7 +128,7 @@ export function LaunchPaths({
                     </span>
                   </div>
                 )}
-                <span className={`tw:flex tw:w-10 tw:flex-none tw:overflow-hidden tw:transition-[width] tw:group-hover/path:w-[120px] tw:group-focus-within/path:w-[120px] tw:has-[[data-popup-open]]:w-[120px] tw:[@media(hover:none)]:w-[120px] tw:[@media(pointer:coarse)]:w-[132px] ${renaming ? "tw:hidden" : ""}`}>
+                <span className={`path-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))] tw:flex-none tw:overflow-hidden tw:transition-[width] tw:group-hover/path:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:group-focus-within/path:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:has-[[data-popup-open]]:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:[@media(hover:none)]:w-[max(132px,calc(132px*var(--app-ui-scale)))] tw:[@media(pointer:coarse)]:w-[max(132px,calc(132px*var(--app-ui-scale)))] ${renaming ? "tw:hidden" : ""}`}>
                   <Button
                     type="button"
                     variant="ghost"
@@ -170,9 +157,31 @@ export function LaunchPaths({
                     }}
                   >
                     <Play />
-                  </Button>
-                  <DropdownMenu
-                    modal={false}
+                   </Button>
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="icon"
+                     className={`path-wide-action ${pathActionClass}`}
+                     aria-label={`Rename alias for ${item.alias || workspaceName(item.path)}`}
+                     title="Rename alias"
+                     onClick={() => onRename(item)}
+                   >
+                     <Pencil />
+                   </Button>
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="icon"
+                     className={`path-wide-action ${pathActionClass} tw:hover:text-destructive!`}
+                     aria-label={`Delete ${item.alias || workspaceName(item.path)} from launch paths`}
+                     title="Delete saved path"
+                     onClick={() => onDelete(item)}
+                   >
+                     <Trash2 />
+                   </Button>
+                   <DropdownMenu
+                     modal={false}
                     onOpenChange={(open) => {
                       openMenuRef.current = open;
                       dispatchCustomSelectOpenChange(portalOwnerRef.current, open);
@@ -187,7 +196,10 @@ export function LaunchPaths({
                       <Ellipsis />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent portalOwner={portalOwnerId} align="end" side="bottom" sideOffset={6} className="tw:w-44">
-                      <DropdownMenuItem onClick={() => onRename(item)}>
+                       <DropdownMenuItem onClick={() => {
+                         menuTriggerRef.current?.focus();
+                         queueMicrotask(() => onRename(item));
+                       }}>
                         <Pencil />
                         Rename alias
                       </DropdownMenuItem>
@@ -211,8 +223,13 @@ export function LaunchPaths({
           <div className="quiet-message">{emptyMessage}</div>
         )}
       </div>
-      {paths.length > 24 && (
-        <div className="tw:mt-1.5 tw:flex tw:items-center tw:justify-between tw:font-mono tw:text-[10px] tw:text-muted-foreground">
+       {renamingId && (() => {
+         const path = paths.find((item) => item.id === renamingId);
+         if (!path) return null;
+         return <RenameDialog initialValue={path.alias || workspaceName(path.path)} label="launch path alias" allowEmpty onSubmit={(alias) => onRenameSubmit(path, alias)} onClose={onRenameCancel} />;
+       })()}
+       {paths.length > 24 && (
+        <div className="tw:mt-1.5 tw:flex tw:items-center tw:justify-between tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:text-muted-foreground">
           <Button type="button" variant="outline" size="icon" className={paginationButtonClass} aria-label="Previous page" disabled={page === 1} onClick={() => onPageChange(page - 1)}>
             <ChevronLeft />
           </Button>

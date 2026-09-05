@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { InlineRename } from "../../shared/ui/InlineRename";
+import { RenameDialog } from "../../shared/ui/RenameDialog";
 import type { ConfirmAction } from "../../types/app";
 import type { Skill } from "../../types/skills";
 import type { SkillsController } from "./controller";
@@ -54,22 +54,15 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
           const plan = controller.syncPlan?.repositoryId === repository.id ? controller.syncPlan : null;
           return (
             <Card role="article" className={`repository-card tw:block tw:gap-0 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0 ${isExpanded ? "expanded tw:border-input" : ""}`} key={repository.id}>
-              <div className="repository-card-header">
-                  {renaming === repository.id ? <div className="repository-summary tw:grid tw:grid-cols-[18px_20px_minmax(0,1fr)]">
+               <div className="repository-card-header">
+                  <Button variant="ghost" className="repository-summary tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-none tw:hover:bg-transparent!" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
                     <span className="repository-disclosure">{isExpanded ? <ChevronDown className="tw:size-[13px]" /> : <ChevronRight className="tw:size-[13px]" />}</span>
                     <FolderGit2 className="tw:size-[19px]" />
-                   <span>
-                     <InlineRename presentation="field" initialValue={repository.name} label="repository name" maxLength={2048} onSubmit={(name) => controller.renameRepository(repository.id, name)} onCancel={() => setRenaming(null)} />
-                     <small title={repository.url}>{repository.gitRef ?? "Default branch"} · {repositorySkills.length} skills · {repository.commitHash.slice(0, 10)}</small>
-                   </span>
-                  </div> : <Button variant="ghost" className="repository-summary tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-none tw:hover:bg-transparent!" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
-                    <span className="repository-disclosure">{isExpanded ? <ChevronDown className="tw:size-[13px]" /> : <ChevronRight className="tw:size-[13px]" />}</span>
-                    <FolderGit2 className="tw:size-[19px]" />
-                   <span>
-                     <strong>{repository.name}</strong>
-                     <small title={repository.url}>{repository.gitRef ?? "Default branch"} · {repositorySkills.length} skills · {repository.commitHash.slice(0, 10)}</small>
-                   </span>
-                  </Button>}
+                    <span>
+                      <strong>{repository.name}</strong>
+                      <small title={repository.url}>{repository.gitRef ?? "Default branch"} · {repositorySkills.length} skills · {repository.commitHash.slice(0, 10)}</small>
+                    </span>
+                  </Button>
                  <div className="repository-actions">
                     <Button variant="outline" size="icon" className="skills-icon-button tw:size-10 tw:rounded-[9px] tw:[@media(pointer:coarse)]:size-11" type="button" disabled={renaming === repository.id} aria-label={`Rename ${repository.name}`} onClick={() => setRenaming(repository.id)}><Pencil /></Button>
                     <Button variant="secondary" className="skills-button quiet tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" disabled={controller.busy || renaming === repository.id} onClick={() => void controller.previewSync(repository.id)}>Check updates</Button>
@@ -104,6 +97,11 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
         })}
         {!controller.repositories.length && <Empty text="No repositories added." />}
       </div>
+      {renaming && (() => {
+        const repository = controller.repositories.find((item) => item.id === renaming);
+        if (!repository) return null;
+        return <RenameDialog initialValue={repository.name} label="repository" maxLength={2048} onSubmit={(name) => controller.renameRepository(repository.id, name)} onClose={() => setRenaming(null)} />;
+      })()}
       {viewer && <SkillManifestDialog skill={viewer} onClose={() => setViewer(null)} />}
     </WorkspaceSection>
   );

@@ -6,8 +6,10 @@ export function getSettings() {
     .then(({ settings }) => settings);
 }
 
+export type UpdateSettingsPatch = Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx" | "fontSizePx" | "uiScalePercent">>;
+
 export function updateSettings(
-  patch: Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx">>,
+  patch: UpdateSettingsPatch,
 ) {
   return requestJson<{ settings: AppSettings }>(
     "/api/settings",

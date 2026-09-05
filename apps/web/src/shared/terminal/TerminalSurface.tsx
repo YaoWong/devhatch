@@ -61,15 +61,17 @@ export function TerminalSurface({
   onOpenLink: (url: string) => void;
   onError: (message: string) => void;
 }) {
-  const { themeId } = useTheme();
+  const { themeId, fontSizePx } = useTheme();
   const [imagePastePhase, setImagePastePhase] = useState<ImagePastePhase>(null);
   const initialThemeRef = useRef(themeId);
+  const initialFontSizeRef = useRef(fontSizePx);
   const themeIdRef = useRef(themeId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const activateRef = useRef<(() => void) | null>(null);
   const activationFrameRef = useRef<number | null>(null);
+  const fontUpdateFrameRef = useRef<number | null>(null);
   const visibleRef = useRef(visible);
   const focusedRef = useRef(focused);
   visibleRef.current = visible;
@@ -120,6 +122,24 @@ export function TerminalSurface({
     requestThumbnailRef.current?.();
   }, [themeId]);
   useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || terminal.options.fontSize === fontSizePx) return;
+    terminal.options.fontSize = fontSizePx;
+    terminal.clearTextureAtlas();
+    if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+    fontUpdateFrameRef.current = requestAnimationFrame(() => {
+      fontUpdateFrameRef.current = null;
+      if (terminalRef.current !== terminal) return;
+      activateRef.current?.();
+      terminal.refresh(0, terminal.rows - 1);
+      requestThumbnailRef.current?.();
+    });
+    return () => {
+      if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+      fontUpdateFrameRef.current = null;
+    };
+  }, [fontSizePx]);
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     let disposed = false;
@@ -147,7 +167,7 @@ export function TerminalSurface({
         cursorBlink: true,
         cursorStyle: "bar",
         fontFamily: terminalFontFamily,
-        fontSize: 13,
+        fontSize: initialFontSizeRef.current,
         fontWeight: "normal",
         fontWeightBold: "bold",
         lineHeight: 1,
@@ -392,8 +412,8 @@ export function TerminalSurface({
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
     void Promise.all([
-      document.fonts.load('400 13px "JetBrainsMono Nerd Font Web"'),
-      document.fonts.load('700 13px "JetBrainsMono Nerd Font Web"'),
+      document.fonts.load(`400 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
+      document.fonts.load(`700 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
     ]).then(() => {
       if (disposed) return;
       terminal.options.fontFamily = "monospace";
@@ -416,6 +436,8 @@ export function TerminalSurface({
       connection.stop();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+      if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+      fontUpdateFrameRef.current = null;
       if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
       thumbnailGenerationRef.current += 1;
       observer.disconnect();

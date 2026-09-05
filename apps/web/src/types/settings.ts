@@ -3,6 +3,8 @@ export type AppSettings = {
   theme: ThemeId;
   agentLaunchPathsMaxHeightPx: number;
   navigationRailWidthPx: number;
+  fontSizePx: number;
+  uiScalePercent: number;
   createdAt: number;
   updatedAt: number;
 };

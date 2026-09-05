@@ -32,11 +32,20 @@
   --border: var(--color-border);
   --input: var(--color-border-strong);
   --ring: var(--color-accent);
-  --radius: 0.625rem;
+  --radius: calc(0.625rem * var(--app-ui-scale));
 }
 }
 
 @theme inline {
+  --spacing: calc(0.25rem * var(--app-ui-scale));
+  --text-xs: calc(0.75rem * var(--app-font-scale));
+  --text-sm: calc(0.875rem * var(--app-font-scale));
+  --text-base: calc(1rem * var(--app-font-scale));
+  --text-lg: calc(1.125rem * var(--app-font-scale));
+  --text-xl: calc(1.25rem * var(--app-font-scale));
+  --text-2xl: calc(1.5rem * var(--app-font-scale));
+  --text-3xl: calc(1.875rem * var(--app-font-scale));
+  --text-4xl: calc(2.25rem * var(--app-font-scale));
   --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
   --color-background: var(--background);
@@ -79,5 +88,35 @@
 
   [data-slot="button"] {
     background: transparent;
+  }
+}
+
+@layer utilities {
+  [data-slot="button"] {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  [data-slot="input"],
+  [data-slot="select-trigger"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="slider"],
+  [data-settings-section-link] {
+    min-height: 40px;
+  }
+
+  @media (pointer: coarse) {
+    [data-slot="button"] {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    [data-slot="input"],
+    [data-slot="select-trigger"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="slider"],
+    [data-settings-section-link] {
+      min-height: 44px;
+    }
   }
 }

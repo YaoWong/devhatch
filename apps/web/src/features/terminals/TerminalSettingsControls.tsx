@@ -88,7 +88,7 @@ export function TerminalSettingsControls({
     </div>
     {showLaunchPathsHeight && <div className="terminal-setting-row terminal-setting-range">
       <span>Launch paths height</span>
-      <PixelRangeControl compact label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
+       <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
     </div>}
     {showConfirmClose && <label className="terminal-setting-row tw:cursor-pointer">
       <span>Confirm close</span>

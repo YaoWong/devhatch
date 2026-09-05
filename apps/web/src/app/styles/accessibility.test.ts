@@ -5,6 +5,7 @@ const { readFileSync } = (globalThis as typeof globalThis & {
   process: { getBuiltinModule: (name: "node:fs") => { readFileSync: (url: URL, encoding: "utf8") => string } };
 }).process.getBuiltinModule("node:fs");
 const responsiveCss = readFileSync(new URL("./responsive.css", import.meta.url), "utf8");
+const shadcnCss = readFileSync(new URL("./shadcn.css", import.meta.url), "utf8");
 const terminalCss = readFileSync(new URL("./terminal.css", import.meta.url), "utf8");
 
 describe("terminal accessibility styles", () => {
@@ -19,5 +20,13 @@ describe("terminal accessibility styles", () => {
     expect(responsiveCss).toMatch(/\.spin, \.picker-spinner, \.profile-skills\.loading::after, \.terminal-image-paste-status svg \{ animation: none !important; \}/);
     expect(responsiveCss).toMatch(/::view-transition-group\(\*\), ::view-transition-old\(\*\), ::view-transition-new\(\*\) \{ animation: none !important; \}/);
     expect(responsiveCss).not.toMatch(/\*, \*::before, \*::after \{[^}]*transform: none/s);
+  });
+
+  it("keeps global scale tokens dynamic without shrinking interaction targets", () => {
+    expect(shadcnCss).toMatch(/@theme inline \{[\s\S]*--spacing: calc\(0\.25rem \* var\(--app-ui-scale\)\);/);
+    expect(shadcnCss).toMatch(/@theme inline \{[\s\S]*--text-sm: calc\(0\.875rem \* var\(--app-font-scale\)\);/);
+    expect(shadcnCss).toMatch(/@layer utilities \{[\s\S]*?\[data-slot="button"\] \{[^}]*min-width: 40px;[^}]*min-height: 40px;/);
+    expect(shadcnCss).toMatch(/\[data-settings-section-link\] \{\s*min-height: 40px;/);
+    expect(shadcnCss).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?\[data-slot="button"\] \{[^}]*min-width: 44px;[^}]*min-height: 44px;/);
   });
 });

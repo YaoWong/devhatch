@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
-import { InlineRename } from "../../shared/ui/InlineRename";
+import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
   minimizeTerminal,
@@ -625,66 +625,60 @@ export function TerminalWorkspace({
                 aria-current={focused ? "true" : undefined}
               >
                 <header className="terminal-window-titlebar">
-                  {renamingSession?.id === session.id ? (
-                    <InlineRename
-                      initialValue={session.name}
-                      label={`${sessionLabel} name`}
-                      onSubmit={(name) => onRename(session, name)}
-                      onCancel={() => setRenamingSession(null)}
-                    />
-                  ) : (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="tw:h-10 tw:min-w-0 tw:flex-1 tw:justify-start tw:gap-2 tw:rounded-lg tw:px-1 tw:text-left tw:font-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[&>span:not(.tab-dot)]:min-w-0 tw:[&>span:not(.tab-dot)]:flex-1 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[10px] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:max-[640px]:[&_small]:hidden tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:font-mono tw:[&_strong]:text-xs tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
-                        aria-label={`Activate ${sessionDisplayName(session)} ${sessionLabel}, ${phase}`}
-                        aria-pressed={focused}
-                        onClick={() => activateAndStage(session.id)}
-                      >
-                        <span className={`tab-dot ${phase}`} aria-hidden="true" />
-                        <span>
-                          <strong>{sessionDisplayName(session)}</strong>
-                          <small>{session.cwd}</small>
-                        </span>
-                      </Button>
-                      <DropdownMenu
-                        modal={false}
-                        open={visible && openActionSessionId === session.id}
-                        onOpenChange={(open) => setOpenActionSessionId(open ? session.id : null)}
-                      >
-                        <DropdownMenuTrigger
-                          ref={(node) => { if (node) titleActionRefs.current.set(session.id, node); else titleActionRefs.current.delete(session.id); }}
-                          aria-label={`Actions for ${sessionDisplayName(session)}`}
-                          render={<Button type="button" variant="ghost" size="icon" className={paneActionClass} />}
-                        >
-                          <Ellipsis />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="tw:w-44">
-                          <DropdownMenuItem onClick={() => setRenamingSession(session)}>
-                            <Pencil />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => minimize(session.id)}>
-                            <Minus />
-                            Minimize
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => {
-                              const trigger = titleActionRefs.current.get(session.id);
-                              const fallback = closeFallback(session.id);
-                              trigger?.focus();
-                              queueMicrotask(() => onClose(session, trigger, fallback));
-                            }}
-                          >
-                            <X />
-                            Close
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
+                  <Button
+                    ref={(node) => { if (node) titleActionRefs.current.set(session.id, node); else titleActionRefs.current.delete(session.id); }}
+                    type="button"
+                    variant="ghost"
+                    className="tw:h-10 tw:min-w-0 tw:flex-1 tw:justify-start tw:gap-2 tw:rounded-lg tw:px-1 tw:text-left tw:font-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[&>span:not(.tab-dot)]:min-w-0 tw:[&>span:not(.tab-dot)]:flex-1 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:max-[640px]:[&_small]:hidden tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:font-mono tw:[&_strong]:text-xs tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
+                    aria-label={`Activate ${sessionDisplayName(session)} ${sessionLabel}, ${phase}`}
+                    aria-pressed={focused}
+                    onClick={() => activateAndStage(session.id)}
+                  >
+                    <span className={`tab-dot ${phase}`} aria-hidden="true" />
+                    <span>
+                      <strong>{sessionDisplayName(session)}</strong>
+                      <small>{session.cwd}</small>
+                    </span>
+                  </Button>
+                  <div className="terminal-pane-actions">
+                    <Button type="button" variant="ghost" size="icon" className={paneActionClass} aria-label={`Rename ${sessionDisplayName(session)}`} title="Rename" onClick={() => setRenamingSession(session)}><Pencil /></Button>
+                    <Button type="button" variant="ghost" size="icon" className={paneActionClass} aria-label={`Minimize ${sessionDisplayName(session)}`} title="Minimize" onClick={() => minimize(session.id)}><Minus /></Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={`${paneActionClass} tw:hover:text-destructive!`}
+                      aria-label={`Close ${sessionDisplayName(session)}`}
+                      title="Close"
+                      onClick={(event) => onClose(session, event.currentTarget, closeFallback(session.id))}
+                    ><X /></Button>
+                  </div>
+                  <DropdownMenu
+                    modal={false}
+                    open={visible && openActionSessionId === session.id}
+                    onOpenChange={(open) => setOpenActionSessionId(open ? session.id : null)}
+                  >
+                    <DropdownMenuTrigger
+                      aria-label={`Actions for ${sessionDisplayName(session)}`}
+                      render={<Button type="button" variant="ghost" size="icon" className={`terminal-pane-overflow ${paneActionClass}`} />}
+                    >
+                      <Ellipsis />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="tw:w-44">
+                      <DropdownMenuItem onClick={() => {
+                        titleActionRefs.current.get(session.id)?.focus();
+                        queueMicrotask(() => setRenamingSession(session));
+                      }}><Pencil />Rename</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => minimize(session.id)}><Minus />Minimize</DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => {
+                          const trigger = titleActionRefs.current.get(session.id);
+                          queueMicrotask(() => onClose(session, trigger, closeFallback(session.id)));
+                        }}
+                      ><X />Close</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </header>
                 <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(session.id); }} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onPasteImage={runtimeImagePaste?.(session)} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
               </section>
@@ -711,6 +705,7 @@ export function TerminalWorkspace({
             );
           })}
         </div>
+        {renamingSession && <RenameDialog initialValue={renamingSession.name} label={`${sessionLabel} session`} onSubmit={(name) => onRename(renamingSession, name)} onClose={() => setRenamingSession(null)} />}
         {error && visible && (
           <div className="error-banner" role="alert">
             <span>{error}</span>

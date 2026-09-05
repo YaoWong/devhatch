@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { LogOut, PanelLeft, Palette, X } from "lucide-react";
+import { LogOut, PanelLeft, Palette, Scan, Type, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
@@ -31,11 +31,15 @@ export function SettingsView({
   const {
     themeId,
     navigationRailWidthPx,
+    fontSizePx,
+    uiScalePercent,
     saving,
     error,
     dismissError,
     selectTheme,
     setNavigationRailWidthPx,
+    setFontSizePx,
+    setUiScalePercent,
   } = useTheme();
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
@@ -91,10 +95,10 @@ export function SettingsView({
     <div ref={workspaceRef} className="tw:@container/settings-workspace tw:min-h-0 tw:overflow-auto tw:bg-[var(--color-canvas)]">
       <div className="tw:mx-auto tw:grid tw:w-[min(1020px,calc(100%-40px))] tw:grid-cols-[148px_minmax(0,820px)] tw:gap-9 tw:pt-9 tw:pb-12 tw:@max-[920px]/settings-workspace:w-[calc(100%-28px)] tw:@max-[920px]/settings-workspace:grid-cols-1 tw:@max-[920px]/settings-workspace:gap-5 tw:@max-[920px]/settings-workspace:pt-3 tw:@max-[920px]/settings-workspace:pb-8">
         <nav className="tw:sticky tw:top-7 tw:self-start tw:@max-[920px]/settings-workspace:top-0 tw:@max-[920px]/settings-workspace:z-2 tw:@max-[920px]/settings-workspace:-mx-3.5 tw:@max-[920px]/settings-workspace:overflow-x-auto tw:@max-[920px]/settings-workspace:border-b tw:@max-[920px]/settings-workspace:border-border tw:@max-[920px]/settings-workspace:bg-[color-mix(in_srgb,var(--color-canvas)_92%,transparent)] tw:@max-[920px]/settings-workspace:px-3.5 tw:@max-[920px]/settings-workspace:py-2.5 tw:@max-[920px]/settings-workspace:backdrop-blur-xl" aria-label="Settings sections">
-          <span className="tw:mx-2.5 tw:mb-3 tw:block tw:text-[11px] tw:font-bold tw:tracking-[0.08em] tw:text-muted-foreground tw:uppercase tw:@max-[920px]/settings-workspace:hidden">Settings</span>
+          <span className="tw:mx-2.5 tw:mb-3 tw:block tw:text-[calc(11px*var(--app-font-scale))] tw:font-bold tw:tracking-[0.08em] tw:text-muted-foreground tw:uppercase tw:@max-[920px]/settings-workspace:hidden">Settings</span>
           <div className="tw:grid tw:gap-1 tw:@max-[920px]/settings-workspace:flex tw:@max-[920px]/settings-workspace:w-max">
             {sections.map(({ id, label }) => (
-              <a className="tw:flex tw:min-h-10 tw:items-center tw:rounded-lg tw:px-2.5 tw:text-xs tw:font-semibold tw:text-muted-foreground tw:no-underline tw:outline-none tw:hover:bg-muted tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[@media(pointer:coarse)]:min-h-11 tw:aria-[current=location]:bg-muted tw:aria-[current=location]:text-foreground tw:@max-[920px]/settings-workspace:px-3" key={id} href={`#settings-${id}`} aria-current={activeSection === id ? "location" : undefined} onClick={(event) => selectSection(event, id)}>
+              <a data-settings-section-link="" className="tw:flex tw:min-h-10 tw:items-center tw:rounded-lg tw:px-2.5 tw:text-xs tw:font-semibold tw:text-muted-foreground tw:no-underline tw:outline-none tw:hover:bg-muted tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[@media(pointer:coarse)]:min-h-11 tw:aria-[current=location]:bg-muted tw:aria-[current=location]:text-foreground tw:@max-[920px]/settings-workspace:px-3" key={id} href={`#settings-${id}`} aria-current={activeSection === id ? "location" : undefined} onClick={(event) => selectSection(event, id)}>
                 {label}
               </a>
             ))}
@@ -126,6 +130,26 @@ export function SettingsView({
                     renderOption={(theme) => <span className="select-copy"><strong>{theme.name}</strong><small>{theme.description}</small></span>}
                     onChange={selectTheme}
                   />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <Type className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Font size</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Adjust text throughout DevHatch, including terminals.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="Font size" min={12} max={20} value={fontSizePx} disabled={saving} onChange={setFontSizePx} />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <Scan className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">UI scale</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Scale common controls, icons, and spacing.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="UI scale" min={80} max={125} step={5} unit="percent" value={uiScalePercent} disabled={saving} onChange={setUiScalePercent} />
                 </div>
               </div>
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">

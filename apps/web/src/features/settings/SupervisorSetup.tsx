@@ -392,7 +392,7 @@ function SupervisorDetail({ label, value }: { label: string; value: string }) {
   return (
     <div className="tw:grid tw:min-w-0 tw:grid-cols-[90px_minmax(0,1fr)] tw:gap-3 tw:py-1 tw:@max-[480px]/settings-card:grid-cols-1 tw:@max-[480px]/settings-card:gap-1">
       <dt className="tw:text-muted-foreground">{label}</dt>
-      <dd className="tw:m-0 tw:min-w-0 tw:break-all tw:font-mono tw:text-[11px] tw:leading-relaxed tw:text-foreground">{value}</dd>
+      <dd className="tw:m-0 tw:min-w-0 tw:break-all tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-relaxed tw:text-foreground">{value}</dd>
     </div>
   );
 }

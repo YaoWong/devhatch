@@ -9,8 +9,9 @@ function Slider({
   min = 0,
   max = 100,
   thumbLabel,
+  getAriaValueText,
   ...props
-}: SliderPrimitive.Root.Props & { thumbLabel?: string }) {
+}: SliderPrimitive.Root.Props & { thumbLabel?: string; getAriaValueText?: SliderPrimitive.Thumb.Props["getAriaValueText"] }) {
   const values = Array.isArray(value)
     ? value
     : typeof value === "number"
@@ -51,6 +52,7 @@ function Slider({
             key={index}
             index={index}
             aria-label={thumbLabel}
+            getAriaValueText={getAriaValueText}
             className="tw:relative tw:block tw:size-3 tw:shrink-0 tw:rounded-full tw:border tw:border-ring tw:bg-background tw:ring-ring/50 tw:transition-[color,box-shadow] tw:select-none tw:after:absolute tw:after:-inset-2 tw:hover:ring-3 tw:has-[:focus-visible]:ring-3 tw:has-[:focus-visible]:outline-hidden tw:active:ring-3 tw:disabled:pointer-events-none tw:disabled:opacity-50"
           />
         ))}
