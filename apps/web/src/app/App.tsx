@@ -158,6 +158,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const {
     agentLaunchPathsMaxHeightPx,
     navigationRailWidthPx,
+    error: settingsError,
+    dismissError: dismissSettingsError,
     setAgentLaunchPathsMaxHeightPx,
     setNavigationRailWidthPx,
   } = useTheme();
@@ -782,8 +784,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            agentThumbnailsAutoHide={agentThumbnailsAutoHide}
            agentThumbnailSide={agentThumbnailSide}
            agentWorkspaceLayouts={agentWorkspaceLayouts}
-           error={error}
-           skillsSection={skillsSection}
+           error={navigation.workspaceMode !== "settings" && !navigationSheetOpen && settingsError ? settingsError : error}
+            skillsSection={skillsSection}
             onCloseSession={requestClose}
           onPickAgentPath={() => setPickerPurpose("agent")}
           onPhaseChange={setPhase}
@@ -792,7 +794,10 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
            onAgentLayoutCountChange={setAgentLayoutCount}
            onAgentWorkspaceLayoutChange={updateAgentWorkspaceLayout}
            onError={reportError}
-           onDismissError={() => setError(null)}
+            onDismissError={() => {
+              if (navigation.workspaceMode !== "settings" && !navigationSheetOpen && settingsError) dismissSettingsError();
+              else setError(null);
+            }}
             onConfirm={setConfirmAction}
             onOpenTerminalLink={requestOpenTerminalLink}
             onLogout={onLogout}

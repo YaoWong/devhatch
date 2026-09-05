@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { LogOut, PanelLeft, Palette } from "lucide-react";
+import { LogOut, PanelLeft, Palette, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
@@ -28,6 +28,7 @@ export function SettingsView({
     navigationRailWidthPx,
     saving,
     error,
+    dismissError,
     selectTheme,
     setNavigationRailWidthPx,
   } = useTheme();
@@ -132,7 +133,7 @@ export function SettingsView({
                   <PixelRangeControl label="Sidebar width" min={240} max={480} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
                 </div>
               </div>
-              {error && <p className="tw:m-0 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert">{error}</p>}
+              {error && <div className="tw:flex tw:min-h-10 tw:items-center tw:gap-2 tw:border-t tw:border-border tw:py-1 tw:pr-1 tw:pl-3.5 tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert"><span className="tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-lg tw:text-destructive tw:hover:bg-destructive/10! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss settings error" onClick={dismissError}><X className="tw:size-3" /></Button></div>}
             </Card>
           </section>
           <section id="settings-account" data-settings-section="account" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:border-b tw:border-border tw:py-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-account-heading">

@@ -98,9 +98,9 @@ export function WebAppsWorkspace({
 }) {
   const showLoading = useDelayedLoading(!settled);
   if (!app) {
-    if (showLoading) return <WebAppsEmpty busy message="Loading Web Apps…" />;
-    if (!settled) return <div className="webapps-workspace tw:min-h-0 tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]" aria-busy="true" />;
-    return <WebAppsEmpty error={loadError} message={loadError ? "Web Apps unavailable" : "No Web Apps available"} onRetry={loadError ? onRetry : undefined} />;
+    if (showLoading) return <WebAppsEmpty busy message="Loading Web Apps…" notice={error} onDismissNotice={onDismissError} />;
+    if (!settled) return <div className="webapps-workspace tw:relative tw:min-h-0 tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]" aria-busy="true">{error && <WebAppError error={error} onDismiss={onDismissError} />}</div>;
+    return <WebAppsEmpty error={loadError} message={loadError ? "Web Apps unavailable" : "No Web Apps available"} onRetry={loadError ? onRetry : undefined} notice={error} onDismissNotice={onDismissError} />;
   }
   const ready = app.prerequisites.git && app.prerequisites.node24 && app.prerequisites.corepack;
   const install = () =>
@@ -197,9 +197,9 @@ export function WebAppsWorkspace({
   );
 }
 
-function WebAppsEmpty({ busy = false, error, message, onRetry }: { busy?: boolean; error?: string | null; message: string; onRetry?: () => Promise<void> }) {
+function WebAppsEmpty({ busy = false, error, message, notice, onRetry, onDismissNotice }: { busy?: boolean; error?: string | null; message: string; notice?: string | null; onRetry?: () => Promise<void>; onDismissNotice?: () => void }) {
   return (
-    <div className="webapps-workspace tw:min-h-0 tw:overflow-auto tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]" aria-busy={busy || undefined}>
+    <div className="webapps-workspace tw:relative tw:min-h-0 tw:overflow-auto tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]" aria-busy={busy || undefined}>
       <div className="tw:min-h-full tw:p-10 tw:@max-[640px]/webapps-workspace:px-3.5 tw:@max-[640px]/webapps-workspace:py-5">
         <div className="empty-state" role={busy ? "status" : error ? "alert" : undefined}>
           <strong>{message}</strong>
@@ -207,6 +207,7 @@ function WebAppsEmpty({ busy = false, error, message, onRetry }: { busy?: boolea
           {onRetry && <Button className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" onClick={() => void onRetry()}>Retry</Button>}
         </div>
       </div>
+      {notice && <WebAppError error={notice} onDismiss={onDismissNotice} />}
     </div>
   );
 }

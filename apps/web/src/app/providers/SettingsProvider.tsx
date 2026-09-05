@@ -208,6 +208,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     };
   }, [initialTheme]);
 
+  const dismissError = useCallback(() => setError(null), []);
+
   const selectTheme = useCallback((next: ThemeId) => {
     desiredRef.current = next;
     setThemeId(next);
@@ -227,6 +229,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         navigationRailWidthPx,
         saving,
         error,
+        dismissError,
         selectTheme,
         setAgentLaunchPathsMaxHeightPx,
         setNavigationRailWidthPx,

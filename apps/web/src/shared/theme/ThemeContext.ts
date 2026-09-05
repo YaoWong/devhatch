@@ -7,6 +7,7 @@ export const ThemeContext = createContext<{
   navigationRailWidthPx: number;
   saving: boolean;
   error: string | null;
+  dismissError: () => void;
   selectTheme: (themeId: ThemeId) => void;
   setAgentLaunchPathsMaxHeightPx: (value: number) => void;
   setNavigationRailWidthPx: (value: number) => void;

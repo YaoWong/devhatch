@@ -80,11 +80,7 @@ export function DeleteSessionDialog({
       }}
     >
       <AlertDialogPortal>
-        <AlertDialogOverlay
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !deleting) onCancel();
-          }}
-        />
+        <AlertDialogOverlay />
         <AlertDialogContent
           ref={contentRef}
           id={contentId}
@@ -142,12 +138,7 @@ export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction;
       }}
     >
       <AlertDialogPortal>
-        <AlertDialogOverlay
-          className="tw:z-[140]"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !busy) onClose();
-          }}
-        />
+        <AlertDialogOverlay className="tw:z-[140]" />
         <AlertDialogContent
           ref={contentRef}
           id={contentId}
