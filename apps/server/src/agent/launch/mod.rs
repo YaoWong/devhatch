@@ -299,6 +299,7 @@ pub(super) fn spawn_opencode(
     command.env_remove("OPENCODE_CONFIG");
     command.env_remove("OPENCODE_CONFIG_CONTENT");
     command.env_remove("OPENCODE_CONFIG_DIR");
+    command.env_remove("BYTE_API_API_KEY");
     command.env_remove("BYTE_API_PROVIDER_ID");
     command.env_remove("BYTE_API_SERVER_URL");
     if skill_generation.is_some() {

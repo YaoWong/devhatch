@@ -152,6 +152,7 @@ export function TerminalSurface({
         fontWeightBold: "bold",
         lineHeight: 1,
         linkHandler: { activate: (_event, url) => onOpenLink(url) },
+        screenReaderMode: true,
         scrollback: 5000,
         theme: terminalThemes[initialThemeRef.current],
       });

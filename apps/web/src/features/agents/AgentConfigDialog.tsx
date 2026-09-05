@@ -148,6 +148,7 @@ export function AgentConfigDialog({
       description: `“${name}” will be permanently deleted.`,
       confirmLabel: "Delete config",
       danger: true,
+      preserveMobileNavigation: true,
       onClose: () => setConfirmingDelete(false),
       action: async () => {
         try {

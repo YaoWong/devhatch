@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AgentIcon } from "../../shared/branding/Branding";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type {
   Agent,
@@ -135,6 +136,11 @@ export function AgentRailPage({
   const [renameWorkspace, setRenameWorkspace] = useState<AgentWorkspace | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const showAgentLoading = useDelayedLoading(busy);
+  const agentAnnouncement = showAgentLoading
+    ? "Loading agents…"
+    : busy
+      ? ""
+      : "Agents loaded.";
   const launchSetupStorageKey = selectedAgentId
     ? `devhatch-agent-launch-setup-collapsed:${selectedAgentId}`
     : null;
@@ -161,6 +167,7 @@ export function AgentRailPage({
 
   return (
     <div className="agent-rail-layout">
+      <LiveRegion>{agentAnnouncement}</LiveRegion>
       {configOpen && (
         <AgentConfigDialog
           key={selectedAgent?.id}
@@ -192,7 +199,7 @@ export function AgentRailPage({
       <div className="menu-section">
         <p className="menu-label">Agent CLI</p>
         {busy ? (
-          showAgentLoading ? <div className="quiet-message" role="status">Loading agents…</div> : null
+          showAgentLoading ? <div className="quiet-message">Loading agents…</div> : null
         ) : agents.length ? (
           <>
             <CustomSelect

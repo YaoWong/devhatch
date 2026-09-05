@@ -13,6 +13,7 @@ import {
 import { listDirectories } from "../../api/terminals";
 import type { DirectoryListing } from "../../types/terminals";
 import { displayPath } from "../../shared/lib/utils";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function WorkspacePicker({
@@ -93,11 +94,21 @@ export function WorkspacePicker({
   }, [listing]);
   const title = purpose === "agent" ? "Add Agent Launch Path" : "Add Launch Path";
   const confirmLabel = "Add Launch Path";
+  const announcement = pickerError
+    ? ""
+    : showLoading
+      ? "Loading folders…"
+      : loading
+        ? ""
+        : listing
+          ? `${displayPath(listing.path, listing.home, listing.resolvedHome)} loaded.`
+          : "";
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogPortal>
         <DialogOverlay />
         <DialogContent className="folder-picker tw:grid tw:h-[min(680px,calc(100dvh-48px))] tw:w-[min(760px,calc(100%-48px))] tw:grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] tw:overflow-hidden tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:shadow-[0_28px_80px_rgb(0_0_0/24%)] tw:max-sm:inset-0 tw:max-sm:size-full tw:max-sm:translate-none tw:max-sm:rounded-none tw:max-sm:border-0" finalFocus={resolveFinalFocus}>
+          <LiveRegion>{announcement}</LiveRegion>
           <header className="picker-header">
             <div className="picker-title-icon">
               <FolderOpen />
@@ -136,20 +147,20 @@ export function WorkspacePicker({
           <nav className="picker-breadcrumbs" aria-label="Current folder">
             {breadcrumbs.map((crumb, index) => (
               <span key={crumb.path}>
-                <Button variant="ghost" className="tw:min-h-8 tw:max-w-[180px] tw:rounded-md tw:px-[7px] tw:font-mono tw:text-xs tw:font-normal tw:text-[var(--color-text-subtle)] tw:[@media(pointer:coarse)]:min-h-11" onClick={() => void openDirectory(crumb.path)}>{crumb.name}</Button>
+                <Button variant="ghost" className="tw:min-h-10 tw:max-w-[180px] tw:rounded-md tw:px-[7px] tw:font-mono tw:text-xs tw:font-normal tw:text-[var(--color-text-subtle)] tw:[@media(pointer:coarse)]:min-h-11" onClick={() => void openDirectory(crumb.path)}>{crumb.name}</Button>
                 {index < breadcrumbs.length - 1 && <ChevronRight />}
               </span>
             ))}
           </nav>
           <div className="picker-browser">
             {showLoading && (
-              <div className="picker-loading" role="status">
+              <div className="picker-loading">
                 <span className="picker-spinner" />
                 Loading folders…
               </div>
             )}
             {!loading && pickerError && (
-              <div className="picker-message error">
+              <div className="picker-message error" role="alert">
                 <strong>{pickerError}</strong>
                 <Button variant="outline" className="tw:h-10 tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" onClick={() => void openDirectory(listing?.path ?? initialPath)}>Try again</Button>
               </div>

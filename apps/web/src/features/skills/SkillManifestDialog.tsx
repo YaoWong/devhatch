@@ -12,12 +12,15 @@ import {
 } from "@/components/ui/dialog";
 import { getSkillManifest } from "../../api/skills";
 import type { Skill } from "../../types/skills";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const showLoading = useDelayedLoading(content === null && error === null);
+  const loading = content === null && error === null;
+  const showLoading = useDelayedLoading(loading);
+  const announcement = error ? "" : showLoading ? "Loading skill manifest…" : loading ? "" : "Skill manifest loaded.";
   useEffect(() => {
     let current = true;
     void getSkillManifest(skill.id)
@@ -32,6 +35,7 @@ export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose:
       <DialogPortal>
         <DialogOverlay />
         <DialogContent className="skill-manifest-dialog tw:grid tw:h-[min(760px,calc(100dvh-64px))] tw:w-[min(900px,calc(100%-48px))] tw:grid-rows-[auto_minmax(0,1fr)] tw:overflow-hidden tw:rounded-[18px] tw:border tw:border-input tw:bg-card tw:shadow-[0_24px_70px_rgb(0_0_0/24%)] tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:h-[calc(100dvh-14px)] tw:max-sm:w-[calc(100%-28px)] tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none">
+          <LiveRegion>{announcement}</LiveRegion>
           <header>
             <span><FileText className="tw:size-5" /><div><DialogTitle>{skill.slug}</DialogTitle><DialogDescription>SKILL.md</DialogDescription></div></span>
             <DialogClose
@@ -42,8 +46,8 @@ export function SkillManifestDialog({ skill, onClose }: { skill: Skill; onClose:
               <X />
             </DialogClose>
           </header>
-          <div className="skill-manifest-body" aria-busy={content === null && error === null}>
-            {showLoading && <div className="skill-manifest-loading" role="status"><LoaderCircle className="spin tw:size-[15px]" />Loading content…</div>}
+          <div className="skill-manifest-body" aria-busy={loading}>
+            {showLoading && <div className="skill-manifest-loading"><LoaderCircle className="spin tw:size-[15px]" />Loading content…</div>}
             {error && <div className="skill-manifest-error" role="alert">{error}</div>}
             {content !== null && <pre>{content}</pre>}
           </div>

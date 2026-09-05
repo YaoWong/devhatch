@@ -170,6 +170,7 @@ export function AppWorkspaceContent({
           onLogout={onLogout}
           logoutBusy={logoutBusy}
           logoutError={logoutError}
+          onConfirm={onConfirm}
         />
       )}
     </>

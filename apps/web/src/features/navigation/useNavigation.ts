@@ -1,6 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
+
+type RailFocusRequest = {
+  mode: DetailMode;
+  target: "back" | "mode";
+};
+
+export function getRailFocusRequest(
+  page: RailPage,
+  motion: Exclude<RailMotion, null>,
+  currentPage: RailPage,
+  workspaceMode: WorkspaceMode,
+): RailFocusRequest {
+  return {
+    mode: page === "modes" ? (currentPage === "modes" ? workspaceMode : currentPage) : page,
+    target: motion === "forward" ? "back" : "mode",
+  };
+}
 
 export function useNavigation(bumpFocus: () => void) {
   const [railPage, setRailPage] = useState<RailPage>("modes");
@@ -23,6 +40,7 @@ export function useNavigation(bumpFocus: () => void) {
     webapp: null,
     settings: null,
   });
+  const focusRequestRef = useRef<RailFocusRequest | null>(null);
   const titleRefs = useRef<Record<DetailMode, HTMLSpanElement | null>>({
     terminal: null,
     agent: null,
@@ -41,11 +59,29 @@ export function useNavigation(bumpFocus: () => void) {
     [],
   );
 
+  useLayoutEffect(() => {
+    const request = focusRequestRef.current;
+    if (!request) return;
+    const target = request.target === "back"
+      ? railPage === request.mode
+        ? pageRefs.current[request.mode]?.querySelector<HTMLButtonElement>(".rail-back")
+        : null
+      : railPage === "modes"
+        ? modeRefs.current[request.mode]
+        : null;
+    if (!target) return;
+    focusRequestRef.current = null;
+    if (target.closest('[inert], [aria-hidden="true"]')) return;
+    target.focus({ preventScroll: true });
+  }, [railPage]);
+
   const animateRail = useCallback(
     (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn = false) => {
-      const detailMode: DetailMode = page === "modes" ? (railPage === "modes" ? workspaceMode : railPage) : page;
+      const focusRequest = getRailFocusRequest(page, motion, railPage, workspaceMode);
+      const detailMode = focusRequest.mode;
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         if (motionTimer.current) window.clearTimeout(motionTimer.current);
+        focusRequestRef.current = focusRequest;
         setRailMotion(null);
         setRailPage(page);
         if (motion === "forward" && page !== "modes") {
@@ -62,6 +98,7 @@ export function useNavigation(bumpFocus: () => void) {
       const targetPage = pageRefs.current[detailMode];
       if (!source || !detail || !modesPage || !targetPage) return;
       if (motionTimer.current) window.clearTimeout(motionTimer.current);
+      focusRequestRef.current = focusRequest;
       const measuring = motion === "forward" ? targetPage : modesPage;
       measuring.classList.add("is-measuring");
       const sourceRect = source.getBoundingClientRect();

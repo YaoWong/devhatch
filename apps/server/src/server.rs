@@ -82,6 +82,7 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
         .unwrap_or_else(|| workspace_root.join("data"));
     prepare_data_dir(&data_dir)?;
     let public_origin = validated_public_origin()?;
+    let public_origin_value = public_origin.as_ref().map(url::Url::to_string);
     let secure_cookie = public_origin
         .as_ref()
         .is_some_and(|origin| origin.scheme() == "https");
@@ -125,6 +126,49 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
         println!("DevHatch setup token: {token}");
         token
     });
+    let web_dist = resolve_web_dist(
+        env::var_os("DEVHATCH_WEB_DIST").as_deref().map(Path::new),
+        env::current_exe().ok().as_deref().and_then(Path::parent),
+        env::current_dir().ok().as_deref(),
+        &workspace_root.join("apps/web/dist"),
+    )
+    .and_then(|path| match std::fs::canonicalize(&path) {
+        Ok(path) => Some(path),
+        Err(error) => {
+            eprintln!(
+                "Failed to canonicalize DevHatch web distribution {}: {error}",
+                path.display()
+            );
+            None
+        }
+    });
+    if web_dist.is_none() {
+        eprintln!(
+            "No DevHatch web distribution containing index.html was found; static web fallback is disabled"
+        );
+    }
+    let bind_host = env::var("DEVHATCH_BIND").unwrap_or_else(|_| HOST.to_string());
+    let supervisor = match env::current_exe() {
+        Ok(current_exe) => {
+            match crate::supervisor::SupervisorContext::capture(
+                current_exe,
+                web_dist.clone(),
+                data_dir.clone(),
+                bind_host.clone(),
+                public_origin_value,
+            ) {
+                Ok(context) => Some(crate::supervisor::Supervisor::new(context)),
+                Err(error) => {
+                    eprintln!("Supervisor unavailable: {error}");
+                    None
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("Supervisor unavailable: {error}");
+            None
+        }
+    };
     let state = Arc::new(AppState::new(
         data_dir,
         pool,
@@ -133,19 +177,10 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
         setup_token.as_deref(),
         secure_cookie,
     ));
-    let web_dist = resolve_web_dist(
-        env::var_os("DEVHATCH_WEB_DIST").as_deref().map(Path::new),
-        env::current_exe().ok().as_deref().and_then(Path::parent),
-        env::current_dir().ok().as_deref(),
-        &workspace_root.join("apps/web/dist"),
-    );
-    if web_dist.is_none() {
-        eprintln!(
-            "No DevHatch web distribution containing index.html was found; static web fallback is disabled"
-        );
+    if let Some(supervisor) = supervisor {
+        let _ = state.set_supervisor(supervisor);
     }
     let app = crate::router::build(state.clone(), web_dist);
-    let bind_host = env::var("DEVHATCH_BIND").unwrap_or_else(|_| HOST.to_string());
     let address = format!("{bind_host}:{PORT}");
     let listener = TcpListener::bind(&address).await?;
     println!("DevHatch listening on http://{address}");
@@ -154,7 +189,10 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
     let (cleanup_complete, cleanup_completed) = oneshot::channel();
     let shutdown_state = state.clone();
     tokio::spawn(async move {
-        shutdown_signal().await;
+        tokio::select! {
+            () = shutdown_signal() => {},
+            () = shutdown_state.wait_for_internal_shutdown() => {},
+        }
         let _ = stop.send(true);
         let _ = accept_stopped.await;
         if !shutdown_state

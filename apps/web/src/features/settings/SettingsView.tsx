@@ -6,22 +6,27 @@ import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { themes } from "../../shared/theme/themes";
+import type { ConfirmAction } from "../../types/app";
+import { SupervisorSetup } from "./SupervisorSetup";
 
-type SettingsSection = "appearance" | "account";
+type SettingsSection = "appearance" | "account" | "help";
 
 const sections: ReadonlyArray<{ id: SettingsSection; label: string }> = [
   { id: "appearance", label: "Appearance" },
   { id: "account", label: "Account" },
+  { id: "help", label: "Help & setup" },
 ];
 
 export function SettingsView({
   onLogout,
   logoutBusy,
   logoutError,
+  onConfirm,
 }: {
   onLogout: () => Promise<void>;
   logoutBusy: boolean;
   logoutError: string | null;
+  onConfirm: (action: ConfirmAction) => void;
 }) {
   const {
     themeId,
@@ -41,7 +46,7 @@ export function SettingsView({
     const sectionElements = sections.map(({ id }) => document.getElementById(`settings-${id}`)).filter((element): element is HTMLElement => Boolean(element));
     const updateActiveSection = () => {
       if (workspace.scrollHeight > workspace.clientHeight + 1 && workspace.scrollTop + workspace.clientHeight >= workspace.scrollHeight - 1) {
-        setActiveSection("account");
+        setActiveSection(sections.at(-1)?.id ?? "appearance");
         return;
       }
       const workspaceTop = workspace.getBoundingClientRect().top;
@@ -154,6 +159,13 @@ export function SettingsView({
               </div>
               {logoutError && <p id="logout-error" className="tw:m-0 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert">{logoutError}</p>}
             </Card>
+          </section>
+          <section id="settings-help" data-settings-section="help" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:pt-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-help-heading">
+            <div className="tw:min-w-0">
+              <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-help-heading">Help &amp; setup</h2>
+              <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Install and inspect the managed DevHatch supervisor.</p>
+            </div>
+            <SupervisorSetup onConfirm={onConfirm} />
           </section>
         </div>
       </div>

@@ -31,6 +31,9 @@ pub struct AppState {
     skillink: Skillink,
     skill_repository_operations: SkillRepositoryOperationCoordinator,
     auth: AuthState,
+    supervisor: std::sync::OnceLock<crate::supervisor::Supervisor>,
+    internal_shutdown: tokio::sync::Notify,
+    internal_shutdown_requested: std::sync::atomic::AtomicBool,
 }
 
 impl AppState {
@@ -55,6 +58,9 @@ impl AppState {
             skillink,
             skill_repository_operations: SkillRepositoryOperationCoordinator::default(),
             auth: AuthState::new(setup_token, secure_cookie),
+            supervisor: std::sync::OnceLock::new(),
+            internal_shutdown: tokio::sync::Notify::new(),
+            internal_shutdown_requested: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -153,6 +159,39 @@ impl AppState {
 
     pub(crate) fn auth(&self) -> &AuthState {
         &self.auth
+    }
+
+    pub(crate) fn set_supervisor(
+        &self,
+        supervisor: crate::supervisor::Supervisor,
+    ) -> Result<(), crate::supervisor::Supervisor> {
+        self.supervisor.set(supervisor)
+    }
+
+    pub(crate) fn supervisor(&self) -> Option<&crate::supervisor::Supervisor> {
+        self.supervisor.get()
+    }
+
+    pub(crate) fn request_internal_shutdown(&self) {
+        if !self
+            .internal_shutdown_requested
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            self.internal_shutdown.notify_waiters();
+        }
+    }
+
+    pub(crate) async fn wait_for_internal_shutdown(&self) {
+        loop {
+            let notified = self.internal_shutdown.notified();
+            if self
+                .internal_shutdown_requested
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return;
+            }
+            notified.await;
+        }
     }
 
     pub(crate) fn session_registry(&self) -> Arc<SessionRegistry> {

@@ -32,11 +32,11 @@
 .app > .rail, [data-slot="sheet-content"] > .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 40; width: var(--navigation-rail-width, 288px); background: color-mix(in srgb, var(--color-surface) 92%, transparent); backdrop-filter: blur(18px) saturate(120%); }
 .canvas-rail-auto > .rail { transform: translateX(calc(-100% - 20px)); opacity: 0; pointer-events: none; transition: transform 220ms cubic-bezier(.23, 1, .32, 1), opacity 160ms ease, width 360ms cubic-bezier(.28, 0, .22, 1); }
 .canvas-rail-auto.canvas-rail-open > .rail { transform: translateX(0); opacity: 1; pointer-events: auto; }
-.app > .rail-resize-handle { position: fixed; z-index: 41; top: 12px; bottom: 12px; left: calc(12px + var(--navigation-rail-width, 288px)); width: 16px; }
-.canvas-rail-pinned > .rail-resize-handle { top: 12px; bottom: 12px; left: calc(4px + var(--navigation-rail-width, 288px)); }
+.app > .rail-resize-handle { position: fixed; z-index: 41; top: 12px; bottom: 12px; left: calc(-8px + var(--navigation-rail-width, 288px)); width: 40px; }
+.canvas-rail-pinned > .rail-resize-handle { top: 12px; bottom: 12px; left: calc(-8px + var(--navigation-rail-width, 288px)); }
 .canvas-rail-auto:not(.canvas-rail-open) > .rail-resize-handle { display: none; }
 @media (pointer: coarse) {
-  .app > .rail-resize-handle { left: calc(-2px + var(--navigation-rail-width, 288px)); width: 44px; }
+  .app > .rail-resize-handle { left: calc(-10px + var(--navigation-rail-width, 288px)); width: 44px; }
   .canvas-rail-pinned > .rail-resize-handle { left: calc(-10px + var(--navigation-rail-width, 288px)); }
 }
 
@@ -126,7 +126,7 @@
 .menu-section { min-width: 0; }
 .menu-label { margin: 0 0 8px; padding: 0 12px; color: var(--color-text-faint); font: 10px/1 var(--font-family-mono); letter-spacing: .08em; text-transform: uppercase; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.agent-detail { flex: 1; gap: 16px; overflow: hidden; }
+.agent-detail { flex: 1; gap: 16px; overflow-x: hidden; overflow-y: auto; }
 .agent-rail-layout { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto auto fit-content(var(--agent-launch-paths-max-height, 286px)) minmax(0, 1fr); gap: 16px; flex: 1; }
 .agent-rail-layout > .menu-section { min-width: 0; min-height: 0; }
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }

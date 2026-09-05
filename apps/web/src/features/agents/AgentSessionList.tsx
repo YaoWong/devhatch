@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ConfirmAction } from "../../types/app";
 import type { AgentLaunchPath, AgentSession, HistorySession } from "../../types/agents";
 import { displayPath } from "../../shared/lib/utils";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { shouldShowAgentSessionSearch } from "./selectors";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
@@ -78,7 +79,17 @@ export function AgentSessionList({
   const historyUnavailable =
     supportsHistory && historySettled && (!historyAvailable || Boolean(historyLoadError));
   const historyMessage = historyLoadError ?? historyDiagnostic;
+  const historyError = historyUnavailable || Boolean(historyMessage);
   const showHistoryLoading = useDelayedLoading(historyLoading && !historySettled);
+  const announcement = historyError
+    ? ""
+    : showHistoryLoading
+      ? "Loading sessions…"
+      : historyLoading && !historySettled
+        ? ""
+        : historySettled
+          ? "Sessions loaded."
+          : "";
   const retryHistory = async () => {
     if (retrying || historyLoading) return;
     setRetrying(true);
@@ -96,6 +107,7 @@ export function AgentSessionList({
   );
   return (
     <div className="menu-section sessions-section">
+      <LiveRegion>{announcement}</LiveRegion>
       <div className="sessions-heading">
         <div className="sessions-title-row">
           <p className="menu-label">Sessions</p>
@@ -140,7 +152,7 @@ export function AgentSessionList({
         {rows.length ? (
           <>
             {(historyUnavailable || historyMessage) && (
-              <div className={`quiet-message history-status ${historyUnavailable ? "unavailable" : ""}`}>
+              <div className={`quiet-message history-status ${historyUnavailable ? "unavailable" : ""}`} role="alert">
                 {historyUnavailable && <strong>History unavailable</strong>}
                 {historyMessage && <span>{historyMessage}</span>}
                 {historyUnavailable && (
@@ -227,9 +239,9 @@ export function AgentSessionList({
             })}
           </>
         ) : showHistoryLoading ? (
-          <div className="quiet-message" role="status">Loading sessions…</div>
+          <div className="quiet-message">Loading sessions…</div>
         ) : historyUnavailable ? (
-          <div className="quiet-message history-status unavailable">
+          <div className="quiet-message history-status unavailable" role="alert">
             <strong>History unavailable</strong>
             {historyMessage && <span>{historyMessage}</span>}
             <Button type="button" variant="outline" size="xs" className={retryButtonClass} disabled={retrying || historyLoading} onClick={() => void retryHistory()}>

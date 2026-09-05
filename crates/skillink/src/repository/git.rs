@@ -174,6 +174,7 @@ async fn run_git_command_with_progress(
 ) -> Result<Output> {
     command.env_remove("DEVHATCH_ADMIN_PASSWORD");
     command.env_remove("DEVHATCH_ADMIN_PASSWORD_FILE");
+    command.env_remove("BYTE_API_API_KEY");
     #[cfg(unix)]
     command.process_group(0);
     command

@@ -34,7 +34,7 @@ import {
   hasOpenCustomSelectPortalOwnedBy,
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
-import type { ConfirmAction, DeleteTarget, LaunchPathDisplay } from "../types/app";
+import { resolveDialogNavigationState, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
 const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
@@ -299,7 +299,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const navigation = useNavigation(bumpFocus);
   const { selectMode, showGlobalSettings, closeSidebar, sidebarOpen } = navigation;
   const navigationSheetOpen = mobileNavigation && sidebarOpen;
-  const dialogOpen = pickerPurpose !== null || confirmAction !== null || deleteCandidate !== null;
+  const { anyDialogOpen, requiresMobileNavigationClose } = resolveDialogNavigationState({
+    pickerOpen: pickerPurpose !== null,
+    confirmAction,
+    sessionDeleteOpen: deleteCandidate !== null,
+  });
   const cancelCanvasClose = useCallback(() => {
     if (canvasCloseTimerRef.current !== null) window.clearTimeout(canvasCloseTimerRef.current);
     canvasCloseTimerRef.current = null;
@@ -379,11 +383,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     return () => window.cancelAnimationFrame(frame);
   }, [cancelCanvasClose, canvasPinned, closeSidebar, mobileNavigation]);
   useEffect(() => {
-    if (dialogOpen && mobileNavigation && sidebarOpen) {
+    if (requiresMobileNavigationClose && mobileNavigation && sidebarOpen) {
       setRestoreMobileNavigationFocus(false);
       closeSidebar();
     }
-  }, [closeSidebar, dialogOpen, mobileNavigation, sidebarOpen]);
+  }, [closeSidebar, mobileNavigation, requiresMobileNavigationClose, sidebarOpen]);
   useEffect(() => {
     if (railResizing || navigation.railMotion !== null) cancelCanvasClose();
     else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) scheduleCanvasClose();
@@ -394,7 +398,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (event.key === "Escape") {
-        if (dialogOpen || document.querySelector('[aria-modal="true"]') || isCanvasRailOwnedTarget(canvasRailRef.current, target)) return;
+        if (anyDialogOpen || document.querySelector('[aria-modal="true"]') || isCanvasRailOwnedTarget(canvasRailRef.current, target)) return;
         if (!canvasPinned && canvasOpen) {
           event.preventDefault();
           closeCanvasRail(true);
@@ -419,7 +423,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canvasOpen, canvasPinned, closeCanvasRail, closeSidebar, dialogOpen, selectMode, showGlobalSettings, sidebarOpen]);
+  }, [anyDialogOpen, canvasOpen, canvasPinned, closeCanvasRail, closeSidebar, selectMode, showGlobalSettings, sidebarOpen]);
   const terminal = useTerminalWorkspace(homePaths, setHomePaths, reportError, navigation.closeSidebar, bumpFocus);
   const terminalLayoutPreset = terminal.selectedWorkspaceId && terminalLayoutCount
     ? terminalWorkspaceLayouts[terminal.selectedWorkspaceId]?.presets[terminalLayoutCount] ?? defaultTerminalLayoutPreset(terminalLayoutCount)
@@ -617,7 +621,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }}
       />
       {!mobileNavigation && !canvasPinned && (
-        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:inset-y-0 tw:left-0 tw:z-39 tw:h-auto tw:w-2.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:w-11" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
+        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:top-1/2 tw:left-0 tw:z-39 tw:size-10 tw:-translate-y-1/2 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:-translate-y-1/2! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
           if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
           else openCanvasRail();
         }} onBlur={(event) => {

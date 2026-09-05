@@ -183,6 +183,8 @@ export function NavigationRail({
             `${railMotion === "forward" ? "forward-exit" : ""} ` +
             `${railMotion === "return" ? "return-enter" : ""}`
           }
+          aria-hidden={railPage !== "modes"}
+          inert={railPage !== "modes" ? true : undefined}
         >
           <nav className="primary-nav" aria-label="Workspace modes">
             <ModeButton
@@ -217,6 +219,7 @@ export function NavigationRail({
           mode="terminal"
           className={pageClass("terminal")}
           railMotion={railMotion}
+          active={railPage === "terminal"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -227,6 +230,7 @@ export function NavigationRail({
           mode="agent"
           className={pageClass("agent")}
           railMotion={railMotion}
+          active={railPage === "agent"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -237,6 +241,7 @@ export function NavigationRail({
           mode="skills"
           className={pageClass("skills")}
           railMotion={railMotion}
+          active={railPage === "skills"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -247,6 +252,7 @@ export function NavigationRail({
           mode="webapp"
           className={pageClass("webapp")}
           railMotion={railMotion}
+          active={railPage === "webapp"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -377,6 +383,7 @@ function DetailPage({
   mode,
   className,
   railMotion,
+  active,
   pageRefs,
   titleRefs,
   onNavigate,
@@ -385,6 +392,7 @@ function DetailPage({
   mode: RailDetailMode;
   className: string;
   railMotion: RailMotion;
+  active: boolean;
   pageRefs: PageRefs;
   titleRefs: TitleRefs;
   onNavigate: (page: "modes", motion: "return", showSettingsOnReturn?: boolean) => void;
@@ -403,6 +411,8 @@ function DetailPage({
         pageRefs.current[mode] = node;
       }}
       className={className}
+      aria-hidden={!active}
+      inert={!active ? true : undefined}
     >
       <div className="rail-page-title">
         <Button variant="ghost" size="icon" className="rail-back tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-subtle)] tw:transition-none tw:hover:bg-[var(--color-canvas)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>

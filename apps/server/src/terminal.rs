@@ -227,6 +227,8 @@ pub(crate) fn spawn_with_cwd(
 pub(crate) fn configure_environment(command: &mut CommandBuilder, cwd: &std::path::Path) {
     command.cwd(cwd);
     command.env_remove(crate::process::ADMIN_PASSWORD_ENV);
+    command.env_remove(crate::process::ADMIN_PASSWORD_FILE_ENV);
+    command.env_remove(crate::process::BYTE_API_KEY_ENV);
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     if npm_default_editor() {
@@ -260,4 +262,24 @@ fn resolve_shell() -> String {
 
 pub(crate) fn error(status: StatusCode, code: &str) -> Response {
     ApiError::new(status, code.to_string()).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use portable_pty::CommandBuilder;
+
+    use super::configure_environment;
+
+    #[test]
+    fn environment_removes_secret_but_keeps_key_file() {
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.env("BYTE_API_API_KEY", "secret");
+        command.env("BYTE_API_API_KEY_FILE", "/private/key");
+        configure_environment(&mut command, std::path::Path::new("/tmp"));
+        assert!(command.get_env("BYTE_API_API_KEY").is_none());
+        assert_eq!(
+            command.get_env("BYTE_API_API_KEY_FILE"),
+            Some(std::ffi::OsStr::new("/private/key"))
+        );
+    }
 }
