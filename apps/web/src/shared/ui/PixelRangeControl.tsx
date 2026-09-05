@@ -32,9 +32,9 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
     setDraft(String(next));
     if (next !== value) onChange(next);
   };
-  const buttonClassName = "tw:size-10 tw:rounded-none tw:border-0 tw:p-0 tw:transition-colors tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:size-11";
+  const buttonClassName = "tw:size-10 tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-muted-foreground tw:transition-colors tw:hover:bg-muted! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:size-11";
   return (
-    <div className={cn("tw:grid tw:min-w-0 tw:items-center tw:gap-2", compact ? "tw:w-full tw:grid-cols-1 tw:justify-items-end" : "tw:grid-cols-[minmax(96px,1fr)_auto]")} role="group" aria-labelledby={labelId}>
+    <div className={cn("tw:grid tw:min-w-0 tw:grid-cols-[minmax(40px,1fr)_auto] tw:items-center tw:gap-0.5 tw:[@media(pointer:coarse)]:grid-cols-[minmax(44px,1fr)_auto]", compact && "tw:w-full")} role="group" aria-labelledby={labelId}>
       <span id={labelId} className="tw:sr-only">{label}</span>
       <Slider
         className="tw:h-10 tw:min-w-0 tw:cursor-pointer tw:px-1.5 tw:data-disabled:cursor-not-allowed tw:[&_[data-slot=slider-control]]:h-full tw:[@media(pointer:coarse)]:h-11"
@@ -49,13 +49,13 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
           if (typeof nextValue === "number") onChange(nextValue);
         }}
       />
-      <div className="tw:grid tw:h-10 tw:grid-cols-[40px_56px_40px] tw:overflow-hidden tw:rounded-lg tw:border tw:border-input tw:bg-background tw:transition-[color,box-shadow] tw:focus-within:border-ring tw:focus-within:ring-3 tw:focus-within:ring-ring/50 tw:has-[input:disabled]:opacity-50 tw:[@media(pointer:coarse)]:h-11 tw:[@media(pointer:coarse)]:grid-cols-[44px_56px_44px]">
-        <Button variant="ghost" size="icon" className={cn(buttonClassName, "tw:border-r tw:border-r-border")} type="button" disabled={disabled || value <= min} aria-label={`Decrease ${label}`} onClick={() => adjust(-1)}>
+      <div className="tw:grid tw:h-10 tw:grid-cols-[40px_40px_40px] tw:has-[input:disabled]:opacity-50 tw:[@media(pointer:coarse)]:h-11 tw:[@media(pointer:coarse)]:grid-cols-[44px_44px_44px]">
+        <Button variant="ghost" size="icon" className={buttonClassName} type="button" disabled={disabled || value <= min} aria-label={`Decrease ${label}`} onClick={() => adjust(-1)}>
           <Minus className="tw:size-3.5" />
         </Button>
         <Input
           variant="bare"
-          className="tw:h-full tw:w-14 tw:min-w-0 tw:border-0 tw:bg-transparent tw:px-1 tw:text-center tw:font-mono tw:text-xs tw:outline-none tw:[appearance:textfield] tw:disabled:cursor-not-allowed tw:[&::-webkit-inner-spin-button]:appearance-none tw:[&::-webkit-outer-spin-button]:appearance-none"
+          className="tw:h-full tw:w-10 tw:min-w-0 tw:rounded-md tw:border tw:border-transparent tw:bg-transparent tw:px-0.5 tw:text-center tw:font-mono tw:text-xs tw:outline-none tw:[appearance:textfield] tw:hover:bg-muted/60 tw:focus-visible:border-ring tw:focus-visible:bg-background tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:disabled:cursor-not-allowed tw:[&::-webkit-inner-spin-button]:appearance-none tw:[&::-webkit-outer-spin-button]:appearance-none tw:[@media(pointer:coarse)]:w-11"
           type="number"
           min={min}
           max={max}
@@ -71,7 +71,7 @@ export function PixelRangeControl({ label, value, min, max, step = 1, disabled =
           onBlur={commit}
           onKeyDown={handleKeyDown}
         />
-        <Button variant="ghost" size="icon" className={cn(buttonClassName, "tw:border-l tw:border-l-border")} type="button" disabled={disabled || value >= max} aria-label={`Increase ${label}`} onClick={() => adjust(1)}>
+        <Button variant="ghost" size="icon" className={buttonClassName} type="button" disabled={disabled || value >= max} aria-label={`Increase ${label}`} onClick={() => adjust(1)}>
           <Plus className="tw:size-3.5" />
         </Button>
       </div>

@@ -16,6 +16,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   disabled,
   className,
   density,
+  appearance = "field",
   renderTrigger,
   renderOption,
   getOptionLabel,
@@ -28,6 +29,7 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
   disabled?: boolean;
   className?: string;
   density: "compact" | "comfortable" | "spacious";
+  appearance?: "field" | "quiet";
   renderTrigger: (option: T | undefined) => ReactNode;
   renderOption: (option: T) => ReactNode;
   getOptionLabel?: (option: T) => string;
@@ -65,8 +67,10 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
           ref={triggerRef}
           id={triggerId}
           className={cn(
-            "tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:border-border tw:bg-card tw:text-foreground tw:hover:border-input tw:hover:bg-popover tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
-             density === "spacious" && "tw:min-h-[58px] tw:rounded-[10px] tw:px-2.5 tw:py-2",
+            "tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:text-foreground tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
+            appearance === "field" && "tw:border-border tw:bg-card tw:hover:border-input tw:hover:bg-popover",
+            appearance === "quiet" && "tw:border-transparent tw:bg-transparent tw:hover:border-transparent tw:hover:bg-muted tw:data-popup-open:bg-muted",
+            density === "spacious" && "tw:min-h-[58px] tw:rounded-[10px] tw:px-2.5 tw:py-2",
             density === "comfortable" && "tw:min-h-12 tw:rounded-[10px] tw:px-2.5 tw:py-2",
             density === "compact" && "tw:min-h-10 tw:rounded-lg tw:px-2 tw:py-[5px] tw:[@media(pointer:coarse)]:min-h-11",
           )}

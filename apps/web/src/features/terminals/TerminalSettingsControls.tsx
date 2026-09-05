@@ -52,13 +52,15 @@ export function TerminalSettingsControls({
   onDefaultAgentChange?: (agentId: string) => void;
 }) {
   const availableAgents = agents?.filter((agent) => agent.enabled && agent.available) ?? [];
-  const segmentClassName = "tw:h-10 tw:min-w-10 tw:rounded-full tw:border-0 tw:px-2 tw:font-mono tw:text-xs tw:font-semibold tw:text-muted-foreground tw:transition-none tw:hover:bg-muted! tw:aria-pressed:bg-foreground tw:aria-pressed:text-[var(--color-on-solid)] tw:aria-pressed:hover:bg-foreground! tw:aria-pressed:hover:text-[var(--color-on-solid)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[@media(pointer:coarse)]:min-w-11";
+  const segmentGroupClassName = "tw:ml-auto tw:flex tw:max-w-full tw:flex-none tw:flex-nowrap tw:gap-0.5";
+  const segmentClassName = "tw:h-10 tw:min-w-10 tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-2 tw:font-mono tw:text-xs tw:font-semibold tw:text-muted-foreground tw:transition-none tw:hover:bg-muted! tw:aria-pressed:bg-muted tw:aria-pressed:text-foreground tw:aria-pressed:hover:bg-muted! tw:aria-pressed:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[@media(pointer:coarse)]:min-w-11";
   return <>
     {availableAgents.length > 0 && onDefaultAgentChange && <div className="terminal-setting-row">
       <span>Default agent</span>
       <CustomSelect
         className="tw:ml-auto tw:w-[min(150px,58%)]"
         density="compact"
+        appearance="quiet"
         label="Default agent"
         value={availableAgents.some((agent) => agent.id === defaultAgentId) ? defaultAgentId ?? availableAgents[0].id : availableAgents[0].id}
         options={availableAgents}
@@ -70,7 +72,7 @@ export function TerminalSettingsControls({
     </div>}
     <div className="terminal-setting-row">
       <span>Capacity</span>
-      <div className="tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5 tw:[@media(pointer:coarse)]:max-w-[94px] tw:[@media(pointer:coarse)]:flex-wrap" role="group" aria-label="Stage capacity">
+      <div className={segmentGroupClassName} role="group" aria-label="Stage capacity">
         {([1, 2, 3, 4] as const).map((value) => <Button variant="ghost" className={segmentClassName} key={value} type="button" aria-label={`Capacity ${value}`} aria-pressed={capacity === value} onClick={() => onCapacityChange(value)}>{value}</Button>)}
       </div>
     </div>
@@ -80,7 +82,7 @@ export function TerminalSettingsControls({
     </div>}
     <div className="terminal-setting-row">
       <span>Path display</span>
-      <div className="tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5" role="group" aria-label="Launch path display">
+      <div className={segmentGroupClassName} role="group" aria-label="Launch path display">
         {(["folder", "full"] as const).map((mode) => <Button variant="ghost" className={`${segmentClassName} tw:min-w-16 tw:px-3 tw:font-sans`} key={mode} type="button" aria-label={mode === "folder" ? "Show relative paths" : "Show absolute paths"} aria-pressed={pathDisplay === mode} onClick={() => onPathDisplayChange(mode)}>{mode === "folder" ? "Relative" : "Absolute"}</Button>)}
       </div>
     </div>
@@ -98,7 +100,7 @@ export function TerminalSettingsControls({
     </label>
     <div className="terminal-setting-row">
       <span>Thumbnail side</span>
-      <div className="tw:ml-auto tw:flex tw:max-w-full tw:rounded-full tw:border tw:border-input tw:bg-card tw:p-0.5 tw:[@media(pointer:coarse)]:max-w-[94px] tw:[@media(pointer:coarse)]:flex-wrap" role="group" aria-label="Thumbnail side">
+      <div className={segmentGroupClassName} role="group" aria-label="Thumbnail side">
         {(["left", "right"] as const).map((side) => <Button variant="ghost" className={segmentClassName} key={side} type="button" aria-label={side === "left" ? "Show thumbnails on the left" : "Show thumbnails on the right"} aria-pressed={thumbnailSide === side} onClick={() => onThumbnailSideChange(side)}>{side === "left" ? "L" : "R"}</Button>)}
       </div>
     </div>
