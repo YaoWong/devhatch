@@ -67,5 +67,5 @@ button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, va
 .auth-card h1 { margin: 0; font-size: calc(24px * var(--app-font-scale)); letter-spacing: -.04em; }
 .auth-card p { margin: 0; color: var(--color-text-muted); font-size: calc(14px * var(--app-font-scale)); line-height: 1.5; }
 .auth-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); font: 700 calc(13px * var(--app-font-scale))/1 var(--font-family-mono); }
-.auth-card label { display: grid; gap: 7px; color: var(--color-text-subtle); font-size: calc(12px * var(--app-font-scale)); font-weight: 600; }
+.auth-card label { display: grid; gap: 7px; color: var(--color-text-subtle); font-size: calc(14px * var(--app-font-scale)); font-weight: 600; }
 }

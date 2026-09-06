@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import railSource from "./NavigationRail.tsx?raw";
+import appSource from "../../app/App.tsx?raw";
+import settingsSource from "../settings/SettingsView.tsx?raw";
+import webAppsSource from "../web-apps/WebApps.tsx?raw";
+import resizeHandleSource from "../../shared/ui/RailResizeHandle.tsx?raw";
 import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
 import navigationSource from "./useNavigation.ts?raw";
 import { getRailFocusRequest } from "./useNavigation";
@@ -8,6 +12,7 @@ const { readFileSync } = (globalThis as typeof globalThis & {
   process: { getBuiltinModule: (name: "node:fs") => { readFileSync: (url: URL, encoding: "utf8") => string } };
 }).process.getBuiltinModule("node:fs");
 const shellStyles = readFileSync(new URL("../../app/styles/shell.css", import.meta.url), "utf8");
+const responsiveStyles = readFileSync(new URL("../../app/styles/responsive.css", import.meta.url), "utf8");
 const terminalStyles = readFileSync(new URL("../../app/styles/terminal.css", import.meta.url), "utf8");
 
 describe("navigation rail accessibility", () => {
@@ -47,9 +52,31 @@ describe("navigation rail accessibility", () => {
   });
 
   it("reveals direct actions when their containers are wide enough", () => {
-    expect(shellStyles).toMatch(/@container navigation-rail \(min-width: 340px\) \{[\s\S]*?\.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
-    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 340px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}/);
+    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{\s*@container navigation-rail \(min-width: 262px\) \{[\s\S]*?\.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
+    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 280px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
+  });
+
+  it("keeps rail placement authoritative across desktop and portaled mobile layouts", () => {
+    expect(appSource).toContain("if (!mobile) return children;");
+    expect(appSource).toMatch(/<SheetContent[\s\S]*?\{children\}[\s\S]*?<\/SheetContent>/);
+    expect(appSource).toContain('window.matchMedia("(max-width: 920px)")');
+    expect(resizeHandleSource).toContain('window.matchMedia("(max-width: 920px)")');
+    expect(resizeHandleSource).toContain('window.addEventListener("pageshow", cancel)');
+    expect(resizeHandleSource).toContain('window.addEventListener("orientationchange", cancel)');
+    expect(shellStyles).toMatch(/\.canvas-rail-pinned[^{}]*> \.rail ~ \.shell/);
+    expect(shellStyles).toMatch(/\.app > \.rail\s*\{/);
+    expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*container-name:\s*navigation-rail/);
+    expect(responsiveStyles).not.toMatch(/\[data-slot="sheet-content"\] > \.rail/);
+  });
+
+  it("contains enlarged text at narrow widths", () => {
+    expect(shellStyles).toMatch(/\.path-section-head \.menu-label \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+    expect(shellStyles).toMatch(/\.sessions-title-row \{[^}]*flex-wrap: wrap;/);
+    expect(settingsSource).toContain("tw:@max-[540px]/settings-workspace:flex-col");
+    expect(webAppsSource).toMatch(/<strong className="[^"]*tw:overflow-hidden[^"]*tw:text-ellipsis[^"]*tw:whitespace-nowrap[^"]*">\{app\.name\}<\/strong>/);
+    expect(terminalStyles).toMatch(/\.error-banner \{[^}]*max-width: min\(560px, calc\(100% - 32px\)\)/);
+    expect(terminalStyles).toMatch(/\.error-banner > span \{[^}]*overflow-wrap: anywhere;/);
   });
 
   it("keeps the agent page scrollable and resize targets large", () => {

@@ -65,7 +65,7 @@ export function TerminalSettingsControls({
         value={availableAgents.some((agent) => agent.id === defaultAgentId) ? defaultAgentId ?? availableAgents[0].id : availableAgents[0].id}
         options={availableAgents}
         getOptionLabel={(agent) => agent.name}
-        renderTrigger={(agent) => <strong className="tw:min-w-0 tw:overflow-hidden tw:text-xs tw:text-ellipsis tw:whitespace-nowrap">{agent?.name ?? "Select agent"}</strong>}
+        renderTrigger={(agent) => <strong className="tw:min-w-0 tw:overflow-hidden tw:text-sm tw:text-ellipsis tw:whitespace-nowrap">{agent?.name ?? "Select agent"}</strong>}
         renderOption={(agent) => <strong>{agent.name}</strong>}
         onChange={onDefaultAgentChange}
       />

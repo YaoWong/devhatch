@@ -108,10 +108,10 @@ export function SettingsView({
     <div ref={workspaceRef} className="tw:@container/settings-workspace tw:min-h-0 tw:overflow-auto tw:bg-[var(--color-canvas)]">
       <div className="tw:mx-auto tw:grid tw:w-[min(1020px,calc(100%-40px))] tw:grid-cols-[148px_minmax(0,820px)] tw:gap-9 tw:pt-9 tw:pb-12 tw:@max-[920px]/settings-workspace:w-[calc(100%-28px)] tw:@max-[920px]/settings-workspace:grid-cols-1 tw:@max-[920px]/settings-workspace:gap-5 tw:@max-[920px]/settings-workspace:pt-3 tw:@max-[920px]/settings-workspace:pb-8">
         <nav className="tw:sticky tw:top-7 tw:self-start tw:@max-[920px]/settings-workspace:top-0 tw:@max-[920px]/settings-workspace:z-2 tw:@max-[920px]/settings-workspace:-mx-3.5 tw:@max-[920px]/settings-workspace:overflow-x-auto tw:@max-[920px]/settings-workspace:border-b tw:@max-[920px]/settings-workspace:border-border tw:@max-[920px]/settings-workspace:bg-[color-mix(in_srgb,var(--color-canvas)_92%,transparent)] tw:@max-[920px]/settings-workspace:px-3.5 tw:@max-[920px]/settings-workspace:py-2.5 tw:@max-[920px]/settings-workspace:backdrop-blur-xl" aria-label="Settings sections">
-          <span className="tw:mx-2.5 tw:mb-3 tw:block tw:text-[calc(11px*var(--app-font-scale))] tw:font-bold tw:tracking-[0.08em] tw:text-muted-foreground tw:uppercase tw:@max-[920px]/settings-workspace:hidden">Settings</span>
+          <span className="tw:mx-2.5 tw:mb-3 tw:block tw:text-xs tw:font-bold tw:tracking-[0.08em] tw:text-muted-foreground tw:uppercase tw:@max-[920px]/settings-workspace:hidden">Settings</span>
           <div className="tw:grid tw:gap-1 tw:@max-[920px]/settings-workspace:flex tw:@max-[920px]/settings-workspace:w-max">
             {sections.map(({ id, label }) => (
-              <a data-settings-section-link="" className="tw:flex tw:min-h-10 tw:items-center tw:rounded-lg tw:px-2.5 tw:text-xs tw:font-semibold tw:text-muted-foreground tw:no-underline tw:outline-none tw:hover:bg-muted tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[@media(pointer:coarse)]:min-h-11 tw:aria-[current=location]:bg-muted tw:aria-[current=location]:text-foreground tw:@max-[920px]/settings-workspace:px-3" key={id} href={`#settings-${id}`} aria-current={activeSection === id ? "location" : undefined} onClick={(event) => selectSection(event, id)}>
+              <a data-settings-section-link="" className="tw:flex tw:min-h-10 tw:items-center tw:rounded-lg tw:px-2.5 tw:text-sm tw:font-semibold tw:text-muted-foreground tw:no-underline tw:outline-none tw:hover:bg-muted tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[@media(pointer:coarse)]:min-h-11 tw:aria-[current=location]:bg-muted tw:aria-[current=location]:text-foreground tw:@max-[920px]/settings-workspace:px-3" key={id} href={`#settings-${id}`} aria-current={activeSection === id ? "location" : undefined} onClick={(event) => selectSection(event, id)}>
                 {label}
               </a>
             ))}
@@ -119,10 +119,10 @@ export function SettingsView({
         </nav>
         <div className="tw:min-w-0">
           <section id="settings-appearance" data-settings-section="appearance" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:border-b tw:border-border tw:pb-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-appearance-heading">
-            <div className="tw:flex tw:min-w-0 tw:items-start tw:justify-between tw:gap-4 tw:@max-[540px]/settings-workspace:items-center">
+            <div className="tw:flex tw:min-w-0 tw:items-start tw:justify-between tw:gap-4 tw:@max-[540px]/settings-workspace:flex-col tw:@max-[540px]/settings-workspace:items-start">
               <span className="tw:min-w-0">
-                <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-appearance-heading">Appearance</h2>
-                <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Choose a theme for DevHatch and its terminals.</p>
+                <h2 className="tw:m-0 tw:text-xl tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-appearance-heading">Appearance</h2>
+                <p className="tw:mt-2 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">Choose a theme for DevHatch and its terminals.</p>
               </span>
               <Button variant="secondary" className="tw:h-10 tw:flex-none tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" disabled={saving || !appearanceDirty} onClick={resetAppearance}>
                 <RotateCcw className="tw:size-3.5" />
@@ -186,8 +186,8 @@ export function SettingsView({
           </section>
           <section id="settings-account" data-settings-section="account" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:border-b tw:border-border tw:py-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-account-heading">
             <div className="tw:min-w-0">
-              <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-account-heading">Account</h2>
-              <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Manage the administrator session for this browser.</p>
+              <h2 className="tw:m-0 tw:text-xl tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-account-heading">Account</h2>
+              <p className="tw:mt-2 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">Manage the administrator session for this browser.</p>
             </div>
             <Card className="tw:@container/settings-card tw:gap-0 tw:rounded-xl tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0">
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_auto] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:px-3.5 tw:py-2.5 tw:@max-[540px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
@@ -205,8 +205,8 @@ export function SettingsView({
           </section>
           <section id="settings-help" data-settings-section="help" className="tw:grid tw:scroll-mt-7 tw:gap-3.5 tw:pt-6 tw:@max-[920px]/settings-workspace:scroll-mt-[68px] tw:@max-[920px]/settings-workspace:gap-3" aria-labelledby="settings-help-heading">
             <div className="tw:min-w-0">
-              <h2 className="tw:m-0 tw:text-lg tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-help-heading">Help &amp; setup</h2>
-              <p className="tw:mt-2 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Install and inspect the managed DevHatch supervisor.</p>
+              <h2 className="tw:m-0 tw:text-xl tw:font-semibold tw:tracking-[-0.02em] tw:text-foreground" id="settings-help-heading">Help &amp; setup</h2>
+              <p className="tw:mt-2 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">Install and inspect the managed DevHatch supervisor.</p>
             </div>
             <SupervisorSetup onConfirm={onConfirm} />
           </section>

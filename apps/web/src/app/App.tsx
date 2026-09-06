@@ -34,7 +34,7 @@ import {
   hasOpenCustomSelectPortalOwnedBy,
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
-import { resolveDialogNavigationState, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
+import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
 
 const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
@@ -179,6 +179,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const canvasHandleRef = useRef<HTMLDivElement | null>(null);
   const breakpointFocusTargetRef = useRef<"mobile" | "desktop" | null>(null);
   const [draftRailWidth, setDraftRailWidth] = useState(navigationRailWidthPx);
+  const confirmedRailWidthRef = useRef(navigationRailWidthPx);
   const [railResizing, setRailResizing] = useState(false);
   const railResizingRef = useRef(false);
   const [focusVersion, setFocusVersion] = useState(0);
@@ -277,12 +278,22 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const setAgentCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
     setWorkspaceCapacity(value, setAgentCapacityState, agentCapacityTransitionRef, AGENT_WORKSPACE_CAPACITY_STORAGE_KEY, "agent-stage-transition");
   }, [setWorkspaceCapacity]);
-  useEffect(() => setDraftRailWidth(navigationRailWidthPx), [navigationRailWidthPx]);
+  useEffect(() => {
+    confirmedRailWidthRef.current = navigationRailWidthPx;
+    setDraftRailWidth(navigationRailWidthPx);
+  }, [navigationRailWidthPx]);
+  const cancelRailResize = useCallback(() => {
+    if (!railResizingRef.current) return;
+    railResizingRef.current = false;
+    setRailResizing(false);
+    setDraftRailWidth(confirmedRailWidthRef.current);
+  }, []);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 920px)");
-    const update = () => {
+    return subscribeMobileNavigationLifecycle(query, window, (movingToMobile) => {
+      cancelRailResize();
+      if (movingToMobile === previousMobileNavigationRef.current) return;
       const active = document.activeElement;
-      const movingToMobile = query.matches;
       const activeCanvasRailPopover = active instanceof Element ? active.closest(CANVAS_RAIL_POPOVER_SELECTOR) : null;
       const focusWillBeLost = movingToMobile
         ? canvasEdgeTriggerRef.current === active || canvasHandleRef.current?.contains(active) || canvasRailRef.current?.contains(active) || isCanvasRailOwnedTarget(canvasRailRef.current, active) || Boolean(activeCanvasRailPopover)
@@ -290,10 +301,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       breakpointFocusTargetRef.current = focusWillBeLost ? (movingToMobile ? "mobile" : "desktop") : null;
       if (!movingToMobile && focusWillBeLost) setRestoreMobileNavigationFocus(false);
       setMobileNavigation(movingToMobile);
-    };
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
+    });
+  }, [cancelRailResize]);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
   const closePicker = useCallback(() => setPickerPurpose(null), []);

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { resolveDialogNavigationState, type ConfirmAction } from "../types/app";
+import { describe, expect, it, vi } from "vitest";
+import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction } from "../types/app";
 
 const sources = import.meta.glob("../**/*.{ts,tsx}", { eager: true, import: "default", query: "?raw" }) as Record<string, string>;
 
@@ -34,6 +34,35 @@ describe("dialog mobile navigation policy", () => {
       .map(([path]) => path);
     expect(optIns).toHaveLength(1);
     expect(optIns[0]).toMatch(/\/features\/agents\/AgentConfigDialog\.tsx$/);
+  });
+
+  it("synchronizes navigation on setup, media changes, restoration, and orientation changes", () => {
+    const query = new EventTarget() as EventTarget & { matches: boolean };
+    const lifecycle = new EventTarget();
+    const onChange = vi.fn();
+    query.matches = false;
+
+    const cleanup = subscribeMobileNavigationLifecycle(query, lifecycle, onChange);
+    expect(onChange).toHaveBeenLastCalledWith(false);
+
+    query.matches = true;
+    query.dispatchEvent(new Event("change"));
+    expect(onChange).toHaveBeenLastCalledWith(true);
+
+    query.matches = false;
+    lifecycle.dispatchEvent(new Event("pageshow"));
+    expect(onChange).toHaveBeenLastCalledWith(false);
+
+    query.matches = true;
+    lifecycle.dispatchEvent(new Event("orientationchange"));
+    expect(onChange).toHaveBeenLastCalledWith(true);
+
+    cleanup();
+    query.matches = false;
+    query.dispatchEvent(new Event("change"));
+    lifecycle.dispatchEvent(new Event("pageshow"));
+    lifecycle.dispatchEvent(new Event("orientationchange"));
+    expect(onChange).toHaveBeenCalledTimes(4);
   });
 
   it("keeps the desktop edge target at least 40px and the coarse target at least 44px", () => {

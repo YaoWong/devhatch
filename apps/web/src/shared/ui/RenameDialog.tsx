@@ -110,7 +110,7 @@ export function RenameDialog({
             </DialogDescription>
           </DialogHeader>
           <form className="tw:grid tw:gap-4" noValidate onSubmit={(event) => void save(event)}>
-            <label className="tw:grid tw:gap-2 tw:text-xs tw:font-semibold tw:text-[var(--color-text-subtle)]">
+            <label className="tw:grid tw:gap-2 tw:text-sm tw:font-semibold tw:text-[var(--color-text-subtle)]">
               Name
               <Input
                 ref={inputRef}

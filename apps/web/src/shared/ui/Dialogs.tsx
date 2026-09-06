@@ -96,7 +96,7 @@ export function DeleteSessionDialog({
             <AlertDialogTitle className="tw:text-[calc(18px*var(--app-font-scale))] tw:tracking-[-0.025em]">
               Close {target.kind}?
             </AlertDialogTitle>
-            <AlertDialogDescription className="tw:mt-1.5 tw:text-xs tw:leading-[1.55]">
+            <AlertDialogDescription className="tw:mt-1.5 tw:text-sm tw:leading-[1.55]">
               This will stop the running process and close <strong className="tw:text-[var(--color-text-subtle)]">{target.name}</strong>. OpenCode history will be preserved.
             </AlertDialogDescription>
             <span className="tw:mt-[9px] tw:block tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:rounded-lg tw:bg-background tw:px-2.5 tw:py-2 tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.3] tw:text-muted-foreground">
@@ -148,8 +148,8 @@ export function ActionDialog({ action, busy, onClose }: { action: ConfirmAction;
           className="tw:z-[141] tw:max-w-[420px] tw:rounded-2xl tw:p-[22px]"
         >
           <AlertDialogHeader>
-            <AlertDialogTitle className="tw:text-[calc(17px*var(--app-font-scale))]">{action.title}</AlertDialogTitle>
-            <AlertDialogDescription className="tw:text-xs tw:leading-[1.5]">
+            <AlertDialogTitle>{action.title}</AlertDialogTitle>
+            <AlertDialogDescription className="tw:text-sm tw:leading-[1.5]">
               {action.description}
             </AlertDialogDescription>
           </AlertDialogHeader>

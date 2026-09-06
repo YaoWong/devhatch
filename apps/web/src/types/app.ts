@@ -23,6 +23,24 @@ export function resolveDialogNavigationState({
       pickerOpen || sessionDeleteOpen || (confirmAction !== null && !confirmAction.preserveMobileNavigation),
   };
 }
+
+export function subscribeMobileNavigationLifecycle(
+  query: EventTarget & { readonly matches: boolean },
+  lifecycle: EventTarget,
+  onChange: (mobile: boolean) => void,
+) {
+  const update = () => onChange(query.matches);
+  update();
+  query.addEventListener("change", update);
+  lifecycle.addEventListener("pageshow", update);
+  lifecycle.addEventListener("orientationchange", update);
+  return () => {
+    query.removeEventListener("change", update);
+    lifecycle.removeEventListener("pageshow", update);
+    lifecycle.removeEventListener("orientationchange", update);
+  };
+}
+
 export type DetailMode = "terminal" | "agent" | "skills" | "webapp" | "settings";
 export type RailPage = "modes" | DetailMode;
 export type WorkspaceMode = DetailMode;

@@ -70,8 +70,8 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
             "tw:w-full tw:min-w-0 tw:max-w-full tw:gap-2.5 tw:text-foreground tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
             appearance === "field" && "tw:border-border tw:bg-card tw:hover:border-input tw:hover:bg-popover",
             appearance === "quiet" && "tw:border-transparent tw:bg-transparent tw:hover:border-transparent tw:hover:bg-muted tw:data-popup-open:bg-muted",
-            density === "spacious" && "tw:min-h-[58px] tw:rounded-[10px] tw:px-2.5 tw:py-2",
-            density === "comfortable" && "tw:min-h-12 tw:rounded-[10px] tw:px-2.5 tw:py-2",
+            density === "spacious" && "tw:h-auto tw:min-h-[64px] tw:rounded-[11px] tw:px-3 tw:py-2.5",
+            density === "comfortable" && "tw:h-auto tw:min-h-12 tw:rounded-[10px] tw:px-2.5 tw:py-2",
             density === "compact" && "tw:min-h-10 tw:rounded-lg tw:px-2 tw:py-[5px] tw:[@media(pointer:coarse)]:min-h-11",
           )}
           aria-label={label}
@@ -96,9 +96,9 @@ export function CustomSelect<Id extends string, T extends { readonly id: Id }>({
               disabled={isOptionDisabled?.(option)}
               className={cn(
                 "tw:gap-[9px] tw:rounded-[7px] tw:data-highlighted:bg-background tw:data-highlighted:text-foreground tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring",
-                density === "spacious" && "tw:min-h-[50px] tw:px-[9px] tw:py-[7px]",
+                density === "spacious" && "tw:min-h-[58px] tw:px-2.5 tw:py-2",
                 density === "comfortable" && "tw:min-h-[46px] tw:px-[9px] tw:py-[7px]",
-                density === "compact" && "tw:min-h-10 tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap tw:[@media(pointer:coarse)]:min-h-11",
+                density === "compact" && "tw:min-h-10 tw:px-[7px] tw:py-[5px] tw:[&_strong]:min-w-0 tw:[&_strong]:overflow-hidden tw:[&_strong]:text-sm tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap tw:[@media(pointer:coarse)]:min-h-11",
               )}
             >
               <span className="tw:flex tw:w-0 tw:min-w-0 tw:max-w-full tw:flex-1 tw:items-center tw:gap-[inherit] tw:overflow-hidden tw:[&>*]:min-w-0 tw:[&>*]:max-w-full">{renderOption(option)}</span>

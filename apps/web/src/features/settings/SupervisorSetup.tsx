@@ -299,7 +299,7 @@ export function SupervisorSetup({ onConfirm }: { onConfirm: (action: ConfirmActi
                   {status.active && status.currentProcessManaged ? <CircleCheck className="tw:size-3.5 tw:text-[var(--color-success-fg)]" /> : pending ? <LoaderCircle className="spin tw:size-3.5" /> : null}
                   {supervisorStatusLabel(status)}
                 </strong>
-                <p className="tw:mt-1 tw:mb-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">{supervisorDescription(status)}</p>
+                <p className="tw:mt-1 tw:mb-0 tw:text-[calc(13px*var(--app-font-scale))] tw:leading-relaxed tw:text-muted-foreground">{supervisorDescription(status)}</p>
               </div>
               {!action && <Button variant="outline" className="tw:h-10 tw:rounded-lg tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" disabled={operation === "installing"} onClick={refreshStatus}>Refresh status</Button>}
             </div>
@@ -315,7 +315,7 @@ export function SupervisorSetup({ onConfirm }: { onConfirm: (action: ConfirmActi
             )}
             {action && (
               <div className="tw:grid tw:gap-3 tw:border-t tw:border-border tw:px-3.5 tw:py-3.5">
-                <label className="tw:grid tw:gap-1.5 tw:text-xs tw:font-semibold tw:text-foreground" htmlFor="supervisor-byte-api-key-file">
+                <label className="tw:grid tw:gap-1.5 tw:text-sm tw:font-semibold tw:text-foreground" htmlFor="supervisor-byte-api-key-file">
                   Byte API key file
                   <Input
                     ref={keyPathRef}

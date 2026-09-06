@@ -276,7 +276,7 @@ export function NavigationRail({
               render={
                 <Button
                   variant="ghost"
-                  className="settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:data-popup-open:bg-[var(--color-canvas)]!"
+                  className="settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:data-popup-open:bg-[var(--color-canvas)]!"
                   type="button"
                   aria-hidden={!settingsAvailable}
                   tabIndex={settingsAvailable ? undefined : -1}
@@ -345,7 +345,7 @@ function ModeButton({
       }}
       variant="ghost"
       type="button"
-      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >

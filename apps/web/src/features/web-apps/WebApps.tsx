@@ -60,7 +60,7 @@ export function WebAppsRailPage({
       <Button variant="outline" className="webapp-rail-card tw:h-auto tw:min-h-16 tw:w-full tw:justify-start tw:gap-2.5 tw:rounded-xl tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:border-input tw:hover:bg-popover!" type="button" onClick={action} disabled={operation !== null || app.running || (!app.installed && !ready)}>
         <img className="tw:size-9 tw:flex-none tw:rounded-[10px]" src={openDesignIcon} alt="" />
         <span className="tw:min-w-0 tw:flex-1">
-          <strong className="tw:block tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:text-foreground">{app.name}</strong>
+          <strong className="tw:block tw:min-w-0 tw:overflow-hidden tw:text-sm tw:font-semibold tw:text-ellipsis tw:whitespace-nowrap tw:text-foreground">{app.name}</strong>
           <small className="tw:mt-1 tw:block tw:text-xs tw:leading-snug tw:text-muted-foreground">{app.running ? "Running" : app.installed ? `Installed · v${app.version}` : "Not installed"}</small>
         </span>
         {app.installing || app.updating ? <LoaderCircle className="spin tw:size-4 tw:text-muted-foreground" /> : app.running ? <CircleCheck className="tw:size-4 tw:text-[var(--color-success-fg)]" /> : <Play className="tw:size-4 tw:text-muted-foreground" />}
@@ -139,7 +139,7 @@ export function WebAppsWorkspace({
               {app.running ? "Running" : phase}
             </span>
             <h2 className="tw:mt-2 tw:mb-0 tw:text-[calc(28px*var(--app-font-scale))] tw:leading-tight tw:tracking-[-0.035em] tw:text-foreground tw:@max-[520px]/webapps-workspace:text-[calc(22px*var(--app-font-scale))]">OpenDesign</h2>
-            <p className="tw:mt-2 tw:mb-0 tw:text-[calc(13px*var(--app-font-scale))] tw:leading-relaxed tw:text-muted-foreground">{app.description}</p>
+            <p className="tw:mt-2 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{app.description}</p>
             {app.updateAvailable && <span className="webapp-update-badge tw:mt-2.5 tw:inline-block tw:rounded-full tw:bg-[var(--color-accent-soft)] tw:px-2 tw:py-1 tw:text-[calc(11px*var(--app-font-scale))] tw:font-semibold tw:text-[var(--color-warning-fg)]">Update available · v{app.latestVersion ?? "unknown"}</span>}
             <div className="webapp-actions tw:mt-5 tw:flex tw:flex-wrap tw:gap-2">
               {!app.installed && (
@@ -178,7 +178,7 @@ export function WebAppsWorkspace({
           </Card>
         )}
         <Card className="webapp-details tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-0 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:px-[30px] tw:py-[26px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[640px]/webapps-workspace:px-5 tw:@max-[640px]/webapps-workspace:py-[22px]">
-          <h3 className="tw:mt-0 tw:mb-[18px] tw:text-base tw:font-semibold tw:text-foreground">Local installation</h3>
+          <h3 className="tw:mt-0 tw:mb-[18px] tw:text-lg tw:font-semibold tw:text-foreground">Local installation</h3>
           <dl className="webapp-detail-grid tw:m-0 tw:grid tw:grid-cols-2 tw:gap-px tw:overflow-hidden tw:rounded-xl tw:border tw:border-border tw:bg-border tw:@max-[640px]/webapps-workspace:grid-cols-1">
             <Detail label="Version" value={app.version ? `v${app.version}` : "0.18.2"} />
             <Detail label="Install path" value={app.installPath} mono />

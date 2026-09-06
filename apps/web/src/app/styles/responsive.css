@@ -7,9 +7,8 @@
 
 @media (max-width: 920px) {
   .app { padding: 0; gap: 0; }
-  .shell, .canvas-rail-pinned:is(.mode-terminal, .mode-agent, .mode-skills, .mode-settings) > .shell { margin-left: 0; border: 0; border-radius: 0; box-shadow: none; grid-template-rows: minmax(0, 1fr); }
+  .shell, .canvas-rail-pinned:is(.mode-terminal, .mode-agent, .mode-skills, .mode-settings) > .rail ~ .shell { margin-left: 0; border: 0; border-radius: 0; box-shadow: none; grid-template-rows: minmax(0, 1fr); }
   .rail-resize-handle { display: none; }
-  [data-slot="sheet-content"] > .rail { position: relative; inset: auto; z-index: auto; width: 100%; height: 100%; padding: 12px; border: 0; border-radius: inherit; opacity: 1; pointer-events: auto; transform: none; transition: none; box-shadow: none; backdrop-filter: none; }
   .skills-rail-page .rail-page-title { min-height: 44px; padding-block: 2px; }
   .skills-rail-page .rail-detail { gap: 12px; padding-top: 4px; }
   .skills-rail-page .skills-section-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }

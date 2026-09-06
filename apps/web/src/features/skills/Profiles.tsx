@@ -82,7 +82,7 @@ export function Profiles({ controller }: { controller: SkillsController }) {
         <nav className="profile-list">
           <p>Profiles</p>
           {controller.profiles.map((profile) => (
-            <Button variant="ghost" key={profile.id} className={`tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:text-xs tw:font-semibold tw:transition-colors tw:duration-150 tw:hover:bg-muted/70! tw:[@media(pointer:coarse)]:h-11 ${controller.selectedProfileId === profile.id ? "active tw:bg-muted" : ""}`} aria-current={controller.selectedProfileId === profile.id ? "page" : undefined} onClick={() => void controller.selectProfile(profile.id)}>
+            <Button variant="ghost" key={profile.id} className={`tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:text-sm tw:font-semibold tw:transition-colors tw:duration-150 tw:hover:bg-muted/70! tw:[@media(pointer:coarse)]:h-11 ${controller.selectedProfileId === profile.id ? "active tw:bg-muted" : ""}`} aria-current={controller.selectedProfileId === profile.id ? "page" : undefined} onClick={() => void controller.selectProfile(profile.id)}>
               <span>{profile.slug}</span>
               {controller.selectedProfileId === profile.id && <b>{draft.size}</b>}
             </Button>

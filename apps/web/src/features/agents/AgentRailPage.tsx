@@ -229,10 +229,10 @@ export function AgentRailPage({
               renderTrigger={(agent) => <AgentOption agent={agent} fallback="Select agent" />}
               renderOption={(agent) => <AgentOption agent={agent} />}
             />
-            <Card className={`launch-setup tw:mt-2 tw:grid tw:w-full tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:p-1 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-1"}`}>
+            <Card className={`launch-setup tw:mt-1.5 tw:grid tw:w-full tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:px-0.5 tw:py-0 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-0.5"}`}>
               <Button
                 variant="ghost"
-                className="tw:h-10 tw:w-full tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-[7px] tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-bold tw:tracking-[0.08em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
+                className="tw:h-10 tw:w-full tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-1.5 tw:py-0 tw:text-xs tw:leading-[1.2] tw:font-bold tw:tracking-[0.06em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
                 type="button"
                 aria-expanded={!launchSetupCollapsed}
                 aria-controls="agent-launch-setup-body"
@@ -242,15 +242,15 @@ export function AgentRailPage({
                   writeLaunchSetupCollapsed(launchSetupStorageKey, collapsed);
                 }}
               >
-                <span className="tw:flex tw:h-8 tw:w-full tw:items-center tw:justify-between tw:px-1">
+                <span className="tw:flex tw:w-full tw:items-center tw:justify-between tw:px-0.5">
                   <span>Launch setup</span>
                   <ChevronDown />
                 </span>
               </Button>
               {!launchSetupCollapsed && (
-                <div className="tw:grid tw:gap-1" id="agent-launch-setup-body">
+                <div className="tw:grid tw:gap-0.5" id="agent-launch-setup-body">
                   {selectedAgent && !selectedAgent.available && (
-                    <Card className="tw:grid tw:min-w-0 tw:gap-1 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-[calc(11px*var(--app-font-scale))]">
+                    <Card className="tw:grid tw:min-w-0 tw:gap-1 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-sm">
                       <strong>{selectedAgent.name} is not installed</strong>
                       {selectedAgent.id === "opencode" ? (
                         <>
@@ -280,7 +280,7 @@ export function AgentRailPage({
                       getOptionLabel={(profile) => profile.slug}
                       onChange={(id) => onSelectProfile(id === "none" ? null : id)}
                       renderTrigger={(profile) => (
-                        <span className="tw:flex tw:min-w-0 tw:flex-1 tw:items-center tw:gap-[9px] tw:[&>svg]:size-[18px] tw:[&>svg]:shrink-0 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mb-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-[calc(11px*var(--app-font-scale))] tw:[&_strong]:leading-[1.2] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap">
+                        <span className="tw:flex tw:min-w-0 tw:flex-1 tw:items-center tw:gap-[9px] tw:[&>svg]:size-[18px] tw:[&>svg]:shrink-0 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mb-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-sm tw:[&_strong]:leading-[1.2] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap">
                           <Layers3 />
                           <span><small>Skills</small><strong>{profile?.slug ?? "None"}</strong></span>
                         </span>
@@ -290,7 +290,7 @@ export function AgentRailPage({
                   )}
                   <Button
                     variant="ghost"
-                    className="tw:min-h-[46px] tw:w-full tw:justify-start tw:gap-[9px] tw:rounded-[9px] tw:border tw:border-border tw:bg-card tw:px-[9px] tw:py-[7px] tw:text-base tw:font-normal tw:leading-[normal] tw:text-foreground tw:text-left tw:transition-none tw:hover:border-input tw:hover:bg-card! tw:hover:text-foreground tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-border! tw:hover:focus-visible:border-input! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:dark:hover:bg-card! tw:[&>svg:first-child]:size-[18px] tw:[&>svg:first-child]:shrink-0 tw:[&>svg:last-child]:size-3 tw:[&>svg:last-child]:text-[var(--color-text-faint)] tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mb-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-[calc(11px*var(--app-font-scale))] tw:[&_strong]:leading-[1.2] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
+                    className="tw:h-auto tw:min-h-[46px] tw:w-full tw:justify-start tw:gap-[9px] tw:rounded-[9px] tw:border tw:border-border tw:bg-card tw:px-[9px] tw:py-[7px] tw:text-base tw:font-normal tw:leading-[normal] tw:text-foreground tw:text-left tw:transition-none tw:hover:border-input tw:hover:bg-card! tw:hover:text-foreground tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-border! tw:hover:focus-visible:border-input! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:dark:hover:bg-card! tw:[&>svg:first-child]:size-[18px] tw:[&>svg:first-child]:shrink-0 tw:[&>svg:last-child]:size-3 tw:[&>svg:last-child]:text-[var(--color-text-faint)] tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mb-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-sm tw:[&_strong]:leading-[1.2] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
                     type="button"
                     aria-haspopup="dialog"
                     onClick={() => setConfigOpen(true)}
@@ -373,7 +373,7 @@ function AgentOption({ agent, fallback }: { agent?: Agent; fallback?: string }) 
           : "Installed"
         : "Not installed";
   return (
-    <>
+    <span className="agent-option">
       <span className="agent-brand">
         <AgentIcon id={agent?.id} className="agent-option-icon" />
       </span>
@@ -383,6 +383,6 @@ function AgentOption({ agent, fallback }: { agent?: Agent; fallback?: string }) 
           {agent ? (descriptions[agent.id] ?? "Agent CLI integration") : fallback} · {detail}
         </small>
       </span>
-    </>
+    </span>
   );
 }
