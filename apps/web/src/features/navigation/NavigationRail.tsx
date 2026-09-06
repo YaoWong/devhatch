@@ -345,7 +345,7 @@ function ModeButton({
       }}
       variant="ghost"
       type="button"
-      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-3 tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-[12px] tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650] tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >

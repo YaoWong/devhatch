@@ -49,8 +49,29 @@ describe("navigation rail accessibility", () => {
     expect(terminalSettingsSource).toContain("tw:gap-[7px]");
     expect(terminalSettingsSource).toContain("tw:pt-[3px]");
     expect(railSource).toContain("nav-item tw:h-auto");
+    expect(railSource).toContain("tw:gap-[12px]");
+    expect(railSource).toContain("tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650]");
     expect(railSource).toContain("tw:h-[20px] tw:min-w-[20px]");
-    expect(shellStyles).toContain(".return-enter .nav-item");
+    expect(shellStyles).not.toContain(".return-enter .nav-item");
+  });
+
+  it("keeps rail motion typographically continuous without background flashes", () => {
+    expect(navigationSource).toContain('const sourceLabel = source.querySelector<HTMLElement>("span")');
+    expect(navigationSource).toContain('const detailLabel = detail.querySelector<HTMLElement>("strong")');
+    expect(navigationSource).toContain('flight.setAttribute("aria-hidden", "true")');
+    expect(navigationSource).toContain("const sourceBackground = sourceStyle.backgroundColor");
+    expect(navigationSource).toContain("fontSize: numericStyle(labelStyle.fontSize)");
+    expect(navigationSource).toContain("fontWeight: numericStyle(labelStyle.fontWeight, 400)");
+    expect(navigationSource).toContain('const toBackground = motion === "forward" || showSettingsOnReturn ? "transparent" : sourceBackground');
+    expect(navigationSource).not.toContain("requestAnimationFrame(() => {");
+    expect(navigationSource).not.toContain("shared-title-backdrop");
+    expect(shellStyles).toContain("[data-rail-flight-source] > * { opacity: 0 !important; }");
+    expect(shellStyles).toContain(".mode-title strong { min-width: 0; overflow: hidden; font-weight: inherit;");
+    expect(shellStyles).toContain("@keyframes detail-enter { from { opacity: 0; transform: translateX(16px);");
+    expect(shellStyles).toContain("@keyframes modes-return { from { opacity: 0; transform: translateX(-16px);");
+    expect(shellStyles).toContain("@keyframes rail-detail-enter { from { opacity: 0; } to { opacity: 1; } }");
+    expect(shellStyles).not.toContain("rail-item-reveal");
+    expect(shellStyles).not.toMatch(/\.rail-page[^{]*{[^}]*filter:/);
   });
 
   it("keeps settings floating and the compact range control contained", () => {
