@@ -12,31 +12,18 @@
   .skills-rail-page .rail-page-title { min-height: 44px; padding-block: 2px; }
   .skills-rail-page .rail-detail { gap: 12px; padding-top: 4px; }
   .skills-rail-page .skills-section-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }
-  .skills-rail-page .skills-section-nav > .menu-label,
-  .skills-rail-page .skills-section-nav > .skills-rail-note { display: none; }
+  .skills-rail-page .skills-section-nav > .menu-label { display: none; }
   .skills-rail-page .skills-section-nav > [data-slot="button"] { min-width: 0; border-radius: 9px !important; padding-inline: 8px !important; }
   .skills-rail-page .skills-section-nav > [data-slot="button"]:not(.active) { color: var(--color-text-muted); }
   .skills-rail-page .skills-section-nav > [data-slot="button"].active { background: var(--color-surface) !important; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
   .skills-rail-page .skills-section-nav > [data-slot="button"] svg { display: none; }
   .skills-rail-page .skills-section-nav > [data-slot="button"] span { text-align: center; }
-  .mode-skills .skills-workspace { padding-top: 58px !important; }
   .mode-webapp .webapps-workspace:not(.is-running) { padding-top: 58px !important; }
   .mode-settings .shell > div:last-child { padding-top: 58px !important; }
 }
 
 @media (max-width: 640px) {
-  .config-body { min-height: 0; grid-template-columns: 1fr; overflow-y: auto; }
-  .config-body aside { min-height: 132px; max-height: 150px; border-right: 0; border-bottom: 1px solid var(--color-border); }
-  .config-editor { overflow: visible; padding: 16px; }
-  .picker-header { padding: 18px 16px 14px; }
-  .picker-toolbar { padding: 0 16px 12px; }
-  .picker-breadcrumbs { padding-inline: 16px; }
-  .picker-footer { display: grid; grid-template-columns: 1fr 1fr; padding: 14px 16px 18px; }
-  .picker-selection { grid-column: 1 / -1; margin: 0 0 6px; }
-  .picker-selection strong { max-width: calc(100vw - 32px); }
   .shell { margin-left: 0; grid-template-rows: minmax(0, 1fr); }
-  .skills-workspace { padding: 20px 14px 96px; }
-  .skills-scroll-controls { right: 14px; bottom: 14px; }
   .terminal-workspace { grid-template-rows: minmax(0, 1fr); }
   .terminal-surface { padding: 8px 10px; }
   .terminal-thumbnail-dock { inset: 0 0 auto; width: 100%; height: 87px; }
@@ -54,5 +41,4 @@
   .terminal-window, .terminal-window.shown { position: absolute; inset: 0; display: none; }
   .terminal-window.thumbnail-source { position: absolute; left: 0; right: auto; top: 0; bottom: auto; width: 960px; height: 600px; display: block; }
   .terminal-window.focused { display: block; }
-  .terminal-stage-empty { inset: 0; }
 }

@@ -1,8 +1,6 @@
 @import "@xterm/xterm/css/xterm.css" layer(vendor);
-@import "./shell.css" layer(product);
-@import "./dialogs.css" layer(product);
-@import "./workspace.css" layer(product);
-@import "./skills.css" layer(product);
-@import "./webapps-settings.css" layer(product);
-@import "./terminal.css" layer(product);
-@import "./responsive.css" layer(product);
+@import "./shell.css" layer(components.authored);
+@import "./dialogs.css" layer(components.authored);
+@import "./skills.css" layer(components.authored);
+@import "./terminal.css" layer(components.authored);
+@import "./responsive.css" layer(components.authored);

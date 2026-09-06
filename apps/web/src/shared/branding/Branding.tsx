@@ -36,7 +36,7 @@ export function AgentIcon({ id, className = "agent-logo" }: { id?: string; class
 
 export function DevHatchLogo() {
   return (
-    <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
+    <svg className="tw:size-[32px]" viewBox="0 0 40 40" fill="none" aria-hidden="true">
       <defs>
         <radialGradient id="devhatch-ring" cx="20" cy="20" r="10.2" gradientUnits="userSpaceOnUse">
           <stop stopColor="currentColor" />
@@ -85,13 +85,13 @@ export function DevHatchLogo() {
 
 export function Brand() {
   return (
-    <div className="brand">
-      <div className="brand-mark">
+    <div className="tw:flex tw:min-h-[48px] tw:items-center tw:gap-[12px] tw:px-[4px] tw:pt-0 tw:pb-[12px]">
+      <div className="tw:grid tw:size-[40px] tw:flex-none tw:place-items-center tw:rounded-[12px] tw:bg-[var(--color-surface)] tw:text-[var(--color-text)] tw:shadow-[inset_0_0_0_1px_var(--color-border)]">
         <DevHatchLogo />
       </div>
       <div>
-        <strong>DevHatch</strong>
-        <small>Developer Workspace</small>
+        <strong className="tw:block tw:whitespace-nowrap tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650]">DevHatch</strong>
+        <small className="tw:mt-[3px] tw:block tw:whitespace-nowrap tw:text-[calc(10px*var(--app-font-scale))] tw:text-[var(--color-text-faint)]">Developer Workspace</small>
       </div>
     </div>
   );

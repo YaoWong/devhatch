@@ -169,12 +169,12 @@ export function WebAppsWorkspace({
           </div>
         </Card>
         {(app.installing || app.updating) && (
-          <Card className="webapp-progress-card tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-2.5 tw:rounded-2xl tw:border tw:border-border tw:bg-card tw:px-[22px] tw:py-[18px] tw:ring-0">
+          <Card className="tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-2.5 tw:rounded-2xl tw:border tw:border-border tw:bg-card tw:px-[22px] tw:py-[18px] tw:ring-0">
             <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-xs">
               <strong className="tw:text-foreground">{phase}</strong>
               <span className="tw:text-right tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:text-muted-foreground">{app.downloadedBytes !== null ? `${formatBytes(app.downloadedBytes)}${app.totalBytes !== null ? ` / ~${formatBytes(app.totalBytes)}` : ""} · ` : ""}{app.progress}%</span>
             </div>
-            <progress className="tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:border-0" max="100" value={app.progress} aria-label={`${phase} progress`} />
+            <progress className="tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:border-0 tw:accent-[var(--color-text)]" max="100" value={app.progress} aria-label={`${phase} progress`} />
           </Card>
         )}
         <Card className="webapp-details tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-0 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:px-[30px] tw:py-[26px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[640px]/webapps-workspace:px-5 tw:@max-[640px]/webapps-workspace:py-[22px]">
@@ -201,7 +201,7 @@ function WebAppsEmpty({ busy = false, error, message, notice, onRetry, onDismiss
   return (
     <div className="webapps-workspace tw:relative tw:min-h-0 tw:overflow-auto tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]" aria-busy={busy || undefined}>
       <div className="tw:min-h-full tw:p-10 tw:@max-[640px]/webapps-workspace:px-3.5 tw:@max-[640px]/webapps-workspace:py-5">
-        <div className="empty-state" role={busy ? "status" : error ? "alert" : undefined}>
+        <div className="tw:grid tw:h-full tw:place-content-center tw:justify-items-center tw:gap-[14px] tw:text-center tw:font-sans tw:text-[calc(13px*var(--app-font-scale))] tw:font-normal tw:leading-[1.5] tw:text-[var(--color-text-faint)] tw:[&_strong]:text-[calc(16px*var(--app-font-scale))] tw:[&_strong]:font-[650] tw:[&_strong]:leading-[1.3] tw:[&_strong]:text-[var(--color-text-subtle)]" role={busy ? "status" : error ? "alert" : undefined}>
           <strong>{message}</strong>
           {error && <span>{error}</span>}
           {onRetry && <Button className="tw:h-10 tw:rounded-full tw:px-4 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" onClick={() => void onRetry()}>Retry</Button>}
@@ -218,7 +218,7 @@ function WebAppAction({ variant = "default", fullWidth = false, className, ...pr
 
 function WebAppError({ error, onDismiss }: { error: string; onDismiss?: () => void }) {
   return (
-    <div className="error-banner webapp-error-banner tw:w-max tw:max-w-[min(560px,calc(100%-32px))]" role="alert">
+    <div className="tw:absolute tw:left-1/2 tw:bottom-[18px] tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100%-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]" role="alert">
       <span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span>
       {onDismiss && <Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss" onClick={onDismiss}><X className="tw:size-3" /></Button>}
     </div>

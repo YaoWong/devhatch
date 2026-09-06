@@ -11,6 +11,8 @@
   :root[data-theme="macchiato"] *,
   :root[data-theme="mocha"] *
 ));
+@custom-variant skills-max-860 (@container skills-workspace (max-width: 860px));
+@custom-variant skills-max-480 (@container skills-workspace (max-width: 480px));
 
 @layer theme {
 :root {

@@ -175,11 +175,11 @@ export function AgentConfigDialog({
     >
       <DialogPortal>
         <DialogOverlay />
-        <DialogContent className="config-dialog tw:grid tw:h-[min(620px,calc(100dvh-48px))] tw:w-[min(760px,calc(100%-48px))] tw:grid-rows-[auto_minmax(0,1fr)] tw:overflow-hidden tw:rounded-[18px] tw:bg-card tw:shadow-[0_28px_80px_rgb(0_0_0/24%)] tw:max-sm:top-auto tw:max-sm:bottom-0 tw:max-sm:h-[calc(100dvh-14px)] tw:max-sm:w-[calc(100%-28px)] tw:max-sm:translate-y-0 tw:max-sm:rounded-b-none" initialFocus={nameRef} finalFocus={resolveFinalFocus} aria-busy={saving}>
-          <header>
-            <div className="config-header-copy">
-              <DialogTitle>{agentName} launch configs</DialogTitle>
-              <DialogDescription>Scripts run in order in one shell with your user permissions.</DialogDescription>
+        <DialogContent className="tw:grid tw:h-[min(620px,calc(100dvh-48px))] tw:w-[min(760px,calc(100%-48px))] tw:grid-rows-[auto_minmax(0,1fr)] tw:overflow-hidden tw:rounded-[18px] tw:bg-card tw:shadow-[0_28px_80px_rgb(0_0_0/24%)] tw:[@media(max-width:640px)]:top-auto tw:[@media(max-width:640px)]:bottom-0 tw:[@media(max-width:640px)]:h-[calc(100dvh-14px)] tw:[@media(max-width:640px)]:w-[calc(100%-28px)] tw:[@media(max-width:640px)]:translate-y-0 tw:[@media(max-width:640px)]:rounded-b-none" initialFocus={nameRef} finalFocus={resolveFinalFocus} aria-busy={saving}>
+          <header className="tw:flex tw:min-w-0 tw:items-center tw:border-b tw:border-border tw:px-[21px] tw:py-[19px]">
+            <div className="tw:min-w-0">
+              <DialogTitle className="tw:m-0 tw:overflow-hidden tw:text-[calc(18px*var(--app-font-scale))] tw:leading-[1.25] tw:text-ellipsis tw:whitespace-nowrap">{agentName} launch configs</DialogTitle>
+              <DialogDescription className="tw:mt-[4px] tw:mr-0 tw:mb-0 tw:ml-0 tw:text-sm tw:leading-[1.45] tw:text-muted-foreground">Scripts run in order in one shell with your user permissions.</DialogDescription>
             </div>
             <DialogClose
               aria-label="Close launch configs"
@@ -187,44 +187,44 @@ export function AgentConfigDialog({
               className="tw:ml-auto tw:size-10 tw:rounded-full tw:bg-background tw:text-muted-foreground tw:hover:bg-muted! tw:hover:text-foreground! tw:[@media(pointer:coarse)]:size-11"
               render={<Button variant="ghost" size="icon" />}
             >
-              <X />
+              <X className="tw:size-[14px]" />
             </DialogClose>
           </header>
-          <div className="config-body">
-            <aside aria-label="Launch configs">
+          <div className="tw:grid tw:min-h-0 tw:grid-cols-[210px_minmax(0,1fr)] tw:overflow-hidden tw:[@media(max-width:640px)]:grid-cols-1 tw:[@media(max-width:640px)]:overflow-y-auto">
+            <aside className="tw:flex tw:min-h-0 tw:flex-col tw:gap-[3px] tw:overflow-y-auto tw:border-r tw:border-border tw:bg-[var(--color-surface-raised)] tw:p-[12px] tw:[@media(max-width:640px)]:min-h-[132px] tw:[@media(max-width:640px)]:max-h-[150px] tw:[@media(max-width:640px)]:border-r-0 tw:[@media(max-width:640px)]:border-b" aria-label="Launch configs">
               <Button
                 variant="ghost"
-                className="new-config tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:border tw:border-dashed tw:border-input tw:px-2.5 tw:text-xs tw:[@media(pointer:coarse)]:h-11"
+                className="tw:mb-[6px] tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:border tw:border-dashed tw:border-input tw:px-2.5 tw:text-xs tw:[@media(pointer:coarse)]:h-11"
                 type="button"
                 disabled={locked}
                 onClick={() => { setScriptError(null); setDraft(emptyDraft(agentId)); }}
               >
-                <Plus /> New config
+                <Plus className="tw:size-[14px]" /> New config
               </Button>
               {configs.map((config) => (
                 <Button
                   key={config.id}
                   type="button"
                   variant="ghost"
-                  className={`config-option tw:h-auto tw:min-h-12 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:transition-none tw:[@media(pointer:coarse)]:min-h-14 ${draft.id === config.id ? "active tw:bg-muted" : ""}`}
+                  className={`tw:h-auto tw:min-h-12 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:transition-none tw:[@media(pointer:coarse)]:min-h-14 ${draft.id === config.id ? "active tw:bg-muted" : ""}`}
                   aria-current={draft.id === config.id ? "true" : undefined}
                   disabled={locked}
                   onClick={() => select(config)}
                 >
-                  <span><strong>{config.name}</strong><small>{config.isDefault ? "Default" : "Named config"}</small></span>
+                  <span className="tw:w-full tw:min-w-0"><strong className="tw:block tw:overflow-hidden tw:text-sm tw:leading-[1.25] tw:text-ellipsis tw:whitespace-nowrap">{config.name}</strong><small className="tw:mt-[3px] tw:block tw:overflow-hidden tw:text-[calc(11px*var(--app-font-scale))] tw:leading-[1.25] tw:text-muted-foreground tw:text-ellipsis tw:whitespace-nowrap">{config.isDefault ? "Default" : "Named config"}</small></span>
                 </Button>
               ))}
             </aside>
-            <form className="config-editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-              <label>
+            <form className="tw:min-h-0 tw:overflow-y-auto tw:p-[20px] tw:[@media(max-width:640px)]:overflow-visible tw:[@media(max-width:640px)]:p-[16px]" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+              <label className="tw:grid tw:gap-[7px] tw:text-sm tw:font-semibold tw:leading-[1.3] tw:text-[var(--color-text-subtle)]">
                 Name
                 <Input ref={nameRef} className="tw:h-10 tw:text-sm tw:[@media(pointer:coarse)]:h-11" required maxLength={120} value={draft.name} disabled={locked} onChange={(event) => update("name", event.target.value)} />
               </label>
-              <label className="default-check">
+              <label className="tw:mt-[10px] tw:flex tw:min-h-[40px] tw:cursor-pointer tw:items-center tw:gap-[9px] tw:text-sm tw:leading-[1.3] tw:text-[var(--color-text-subtle)]">
                 <Checkbox className="tw:[@media(pointer:coarse)]:after:-inset-3" checked={draft.isDefault} disabled={locked} onCheckedChange={(checked) => update("isDefault", checked)} />
                 <span>Make this the default config</span>
               </label>
-              <p className="form-message">Runs in /bin/sh before {agentName}. Environment changes remain available to {agentName}.</p>
+              <p className="tw:mt-[10px] tw:mr-0 tw:mb-0 tw:ml-0 tw:text-xs tw:leading-[1.5] tw:text-muted-foreground">Runs in /bin/sh before {agentName}. Environment changes remain available to {agentName}.</p>
               <ScriptField
                 label="Launch script"
                 value={draft.launchScript}
@@ -234,11 +234,11 @@ export function AgentConfigDialog({
                   update("launchScript", value);
                 }}
               />
-              {scriptError && <p className="form-error" role="alert">{scriptError}</p>}
-              <footer>
+              {scriptError && <p className="tw:mt-[7px] tw:mr-0 tw:mb-0 tw:ml-0 tw:text-xs tw:leading-[1.45] tw:text-destructive" role="alert">{scriptError}</p>}
+              <footer className="tw:mt-[18px] tw:flex tw:flex-wrap tw:items-center tw:gap-[8px]">
                 {draft.id && !draft.isDefault && (
                   <Button variant="destructive" className="tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" disabled={locked} onClick={requestDelete}>
-                    <Trash2 /> Delete
+                    <Trash2 className="tw:size-[13px]" /> Delete
                   </Button>
                 )}
                 <DialogClose className="tw:ml-auto tw:h-10 tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" disabled={locked} render={<Button variant="outline" />}>
@@ -258,7 +258,7 @@ export function AgentConfigDialog({
 
 function ScriptField({ label, value, disabled, onChange }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void }) {
   return (
-    <label className="script-field">
+    <label className="tw:mt-[14px] tw:grid tw:gap-[7px] tw:text-sm tw:font-semibold tw:leading-[1.3] tw:text-[var(--color-text-subtle)]">
       {label}
       <Textarea value={value} disabled={disabled} spellCheck={false} className="tw:min-h-[250px] tw:resize-y tw:bg-[var(--color-surface-raised)] tw:p-3 tw:font-mono tw:text-xs tw:leading-[1.55] tw:md:text-xs tw:dark:bg-[var(--color-surface-raised)] tw:max-[640px]:min-h-[220px]" onChange={(event) => onChange(event.target.value)} />
     </label>

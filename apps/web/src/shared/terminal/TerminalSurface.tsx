@@ -462,8 +462,8 @@ export function TerminalSurface({
     >
       <div ref={containerRef} className="terminal-xterm-host" />
       {imagePastePhase && (
-        <div className="terminal-image-paste-status" role="status" aria-live="polite">
-          <LoaderCircle className="spin" />
+        <div className="terminal-image-paste-status tw:pointer-events-none tw:absolute tw:top-[12px] tw:right-[14px] tw:z-[4] tw:flex tw:items-center tw:gap-[7px] tw:rounded-[99px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface-raised)_92%,transparent)] tw:px-[10px] tw:py-[7px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:font-normal tw:leading-none tw:text-muted-foreground tw:shadow-[0_6px_18px_rgb(0_0_0/12%)] tw:backdrop-blur-[8px]" role="status" aria-live="polite">
+          <LoaderCircle className="spin tw:size-[13px]" />
           {imagePastePhase === "preparing" ? "Preparing image…" : "Pasting image…"}
         </div>
       )}

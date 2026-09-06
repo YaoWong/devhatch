@@ -17,13 +17,6 @@
   .canvas-rail-footer.has-settings { grid-template-columns: minmax(0, 1fr) 44px; }
 }
 .canvas-terminal-settings { display: grid; gap: 10px; }
-.terminal-setting-row { min-height: 40px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--color-text-subtle); font-size: calc(14px * var(--app-font-scale)); font-weight: 600; }
-.terminal-setting-row > span:not([data-slot="switch"]) { flex: 1; }
-.terminal-setting-range { align-items: stretch; flex-direction: column; gap: 7px; padding-top: 3px; }
-@media (pointer: coarse) {
-  .terminal-setting-row { min-height: 44px; }
-}
-.canvas-mode-actions { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--color-border); }
 
 .app > .shell { min-width: 0; width: auto; margin-right: 0; border: 0; border-radius: 0; box-shadow: none; grid-template-rows: minmax(0, 1fr); transition: margin-left 220ms cubic-bezier(.23, 1, .32, 1); }
 .canvas-rail-pinned:is(.mode-terminal, .mode-agent, .mode-skills, .mode-settings) > .rail ~ .shell { margin-left: calc(12px + var(--navigation-rail-width, 288px) + 8px); background: var(--color-canvas); }
@@ -66,30 +59,6 @@
 .rail-resizing, .rail-resizing * { cursor: col-resize !important; user-select: none; }
 .rail-resizing .rail { transition: none; }
 
-.brand {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 4px 12px;
-}
-
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  border-radius: 12px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  box-shadow: inset 0 0 0 1px var(--color-border);
-}
-.brand-mark svg { width: 32px; height: 32px; }
-.brand strong, .brand small { display: block; white-space: nowrap; }
-.brand strong { font-size: calc(16px * var(--app-font-scale)); font-weight: 650; }
-.brand small { margin-top: 3px; color: var(--color-text-faint); font-size: calc(10px * var(--app-font-scale)); }
-
 .rail-pages { position: relative; min-width: 0; min-height: 0; flex: 1; overflow: hidden; border-top: 1px solid var(--color-border); perspective: 900px; }
 .modes-page { overflow-y: auto; overscroll-behavior: contain; }
 .rail-page { position: absolute; inset: 0; min-width: 0; display: flex; min-height: 0; flex-direction: column; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(12px) scale(.975); filter: blur(5px); transform-origin: 50% 18%; transition: opacity 220ms cubic-bezier(.22, 1, .36, 1), transform 360ms cubic-bezier(.22, 1, .36, 1), filter 260ms cubic-bezier(.22, 1, .36, 1), visibility 0s linear 360ms; }
@@ -106,10 +75,6 @@
 .shared-title-flight { position: fixed; z-index: 101; display: inline-flex; align-items: center; gap: 12px; overflow: hidden; color: var(--color-text); font-size: calc(16px * var(--app-font-scale)); font-weight: 650; line-height: 1.2; pointer-events: none; white-space: nowrap; will-change: left, top, width, height, padding, color, border-radius; }
 .shared-title-flight svg { width: 22px; height: 22px; flex: none; }
 .shared-title-backdrop { position: fixed; z-index: 100; pointer-events: none; background: var(--color-text); transform-origin: center; will-change: transform, opacity; }
-.primary-nav { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 12px; }
-.nav-item svg { width: 22px; height: 22px; flex: none; }
-.nav-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-item b { margin-left: auto; min-width: 20px; height: 20px; display: grid; place-items: center; flex: none; padding: 0 6px; border-radius: 99px; background: var(--color-surface); color: var(--color-text); font: calc(10px * var(--app-font-scale))/1 var(--font-family-mono); }
 .return-enter .nav-item { animation: rail-item-reveal 480ms cubic-bezier(.22, 1, .36, 1) both; }
 .return-enter .nav-item:nth-child(2) { animation-delay: 110ms; }
 .return-enter .nav-item:nth-child(3) { animation-delay: 200ms; }
@@ -188,4 +153,3 @@
 }
 .settings-nav-item:hover { background: var(--color-surface-hover); color: var(--color-text); }
 .settings-nav-item.active { background: var(--color-canvas); color: var(--color-text); }
-.settings-nav-item svg { width: 19px; height: 19px; color: currentColor; }

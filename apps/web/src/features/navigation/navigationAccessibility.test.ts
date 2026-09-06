@@ -3,6 +3,8 @@ import railSource from "./NavigationRail.tsx?raw";
 import appSource from "../../app/App.tsx?raw";
 import settingsSource from "../settings/SettingsView.tsx?raw";
 import webAppsSource from "../web-apps/WebApps.tsx?raw";
+import terminalWorkspaceSource from "../terminals/TerminalWorkspace.tsx?raw";
+import terminalSettingsSource from "../terminals/TerminalSettingsControls.tsx?raw";
 import resizeHandleSource from "../../shared/ui/RailResizeHandle.tsx?raw";
 import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
 import navigationSource from "./useNavigation.ts?raw";
@@ -40,6 +42,17 @@ describe("navigation rail accessibility", () => {
     expect(navigationSource.match(/focusRequestRef\.current = focusRequest;/g)).toHaveLength(2);
   });
 
+  it("owns static navigation and terminal setting leaves in components", () => {
+    expect(shellStyles).not.toMatch(/\.terminal-setting-(?:row|range)|\.canvas-mode-actions|\.primary-nav|\.nav-item (?:svg|> span|b)|\.settings-nav-item svg/);
+    expect(terminalSettingsSource).toContain("tw:min-h-[40px]");
+    expect(terminalSettingsSource).toContain("tw:[@media(pointer:coarse)]:min-h-[44px]");
+    expect(terminalSettingsSource).toContain("tw:gap-[7px]");
+    expect(terminalSettingsSource).toContain("tw:pt-[3px]");
+    expect(railSource).toContain("nav-item tw:h-auto");
+    expect(railSource).toContain("tw:h-[20px] tw:min-w-[20px]");
+    expect(shellStyles).toContain(".return-enter .nav-item");
+  });
+
   it("keeps settings floating and the compact range control contained", () => {
     expect(railSource).toContain('<Popover open={settingsAvailable && terminalSettingsOpen}');
     expect(railSource).not.toContain('className="canvas-terminal-settings pinned"');
@@ -68,6 +81,7 @@ describe("navigation rail accessibility", () => {
     expect(shellStyles).toMatch(/\.app > \.rail\s*\{/);
     expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*container-name:\s*navigation-rail/);
     expect(responsiveStyles).not.toMatch(/\[data-slot="sheet-content"\] > \.rail/);
+    expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .menu-label { display: none; }');
   });
 
   it("contains enlarged text at narrow widths", () => {
@@ -75,8 +89,11 @@ describe("navigation rail accessibility", () => {
     expect(shellStyles).toMatch(/\.sessions-title-row \{[^}]*flex-wrap: wrap;/);
     expect(settingsSource).toContain("tw:@max-[540px]/settings-workspace:flex-col");
     expect(webAppsSource).toMatch(/<strong className="[^"]*tw:overflow-hidden[^"]*tw:text-ellipsis[^"]*tw:whitespace-nowrap[^"]*">\{app\.name\}<\/strong>/);
-    expect(terminalStyles).toMatch(/\.error-banner \{[^}]*max-width: min\(560px, calc\(100% - 32px\)\)/);
-    expect(terminalStyles).toMatch(/\.error-banner > span \{[^}]*overflow-wrap: anywhere;/);
+    expect(terminalStyles).not.toMatch(/\.error-banner\b/);
+    expect(terminalWorkspaceSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
+    expect(terminalWorkspaceSource).toContain("tw:[overflow-wrap:anywhere]");
+    expect(webAppsSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
+    expect(webAppsSource).toContain("tw:[overflow-wrap:anywhere]");
   });
 
   it("keeps the agent page scrollable and resize targets large", () => {

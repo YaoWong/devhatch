@@ -1,5 +1,4 @@
-.stage { position: relative; min-height: 0; overflow: hidden; background: var(--color-surface); }
-.terminal-stage { view-transition-name: none; background: var(--color-canvas); }
+.terminal-stage { view-transition-name: none; }
 .terminal-thumbnail-dock { position: absolute; inset: 0 auto 0 0; z-index: 5; width: 202px; pointer-events: none; }
 .terminal-thumbnail-dock.side-right { inset: 0 0 0 auto; }
 .terminal-thumbnail-stack { position: absolute; top: 50%; left: 10px; width: 192px; max-height: calc(100% - 20px); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; scrollbar-width: none; transform: translateY(-50%); transition: opacity 180ms ease, transform 220ms cubic-bezier(.23, 1, .32, 1); pointer-events: auto; }
@@ -12,8 +11,6 @@
 .terminal-thumbnail-dock.expanded .terminal-thumbnail-edge-trigger:not(:focus-visible) { opacity: 0; pointer-events: none; }
 .terminal-thumbnail-stack::-webkit-scrollbar { display: none; }
 .terminal-thumbnail { position: relative; width: 100%; aspect-ratio: 16 / 10; flex: none; padding: 24px 0 0; overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: 10px; background: var(--color-surface); color: var(--color-text); cursor: pointer; box-shadow: 0 4px 10px rgb(var(--overlay-color) / 12%); transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
-.terminal-thumbnail img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.terminal-thumbnail img:not([src]) { visibility: hidden; }
 .terminal-thumbnail-caption { position: absolute; inset: 0 0 auto; height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 8px; overflow: hidden; border-bottom: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); font: calc(10px * var(--app-font-scale))/1.2 var(--font-family-mono); text-overflow: ellipsis; white-space: nowrap; }
 .terminal-thumbnail-caption .tab-dot { width: 6px; height: 6px; }
 .terminal-thumbnail:focus-visible, .terminal-thumbnail-edge-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
@@ -80,7 +77,6 @@
   .terminal-split-handle[aria-orientation="horizontal"]::before { inset-block: 21px; }
 }
 .terminal-split-handle:hover::before, .terminal-split-handle:focus-visible::before, .terminal-split-handle.dragging::before { background: var(--color-accent); }
-.terminal-stage-empty { position: absolute; inset: 0; }
 .terminal-window { display: none; min-width: 0; min-height: 0; overflow: hidden; container-type: inline-size; container-name: terminal-pane; border: 1px solid var(--color-border-strong); border-radius: 14px; background: var(--color-surface); box-shadow: none; }
 .terminal-window.shown { position: relative; display: block; }
 .terminal-window.thumbnail-source { position: absolute; left: 0; top: 0; z-index: 0; width: 960px; height: 600px; display: block; opacity: .001; pointer-events: none; contain: strict; }
@@ -105,13 +101,6 @@
 .terminal-xterm-host .xterm .composition-view { background: var(--color-surface); color: var(--color-text); }
 .terminal-xterm-host .xterm-viewport { scrollbar-color: var(--color-border-strong) transparent; scrollbar-width: thin; }
 .terminal-xterm-host .xterm-screen canvas { image-rendering: auto; }
-.terminal-image-paste-status { position: absolute; z-index: 4; top: 12px; right: 14px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 99px; background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent); color: var(--color-text-muted); box-shadow: 0 6px 18px rgb(0 0 0 / 12%); font: calc(10px * var(--app-font-scale))/1 var(--font-family-mono); pointer-events: none; backdrop-filter: blur(8px); }
-.terminal-image-paste-status svg { width: 13px; height: 13px; }
-.empty-state { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; color: var(--color-text-faint); font: calc(13px * var(--app-font-scale))/1.5 var(--font-family-sans); text-align: center; }
-.empty-state strong { color: var(--color-text-subtle); font-size: calc(16px * var(--app-font-scale)); font-weight: 650; line-height: 1.3; }
-.empty-state > svg { width: 30px; height: 30px; color: var(--color-border-strong); }
-.error-banner { position: absolute; left: 50%; bottom: 18px; z-index: 10; width: max-content; max-width: min(560px, calc(100% - 32px)); display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); box-shadow: 0 12px 32px rgb(0 0 0 / 18%); font-size: calc(13px * var(--app-font-scale)); transform: translateX(-50%); }
-.error-banner > span { min-width: 0; overflow-wrap: anywhere; }
 .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
 .tab-dot.connecting, .tab-dot.reconnecting { background: var(--color-warning-fg); }
 .tab-dot.disconnected, .tab-dot.exited { background: var(--color-text-faint); }

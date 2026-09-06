@@ -791,7 +791,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           }}
         />
       )}
-      <section className="shell">
+      <section className="shell tw:min-w-0 tw:flex-1 tw:grid tw:grid-rows-[minmax(0,1fr)] tw:overflow-hidden">
         <AppWorkspaceContent
           mode={navigation.workspaceMode}
           terminal={terminal}

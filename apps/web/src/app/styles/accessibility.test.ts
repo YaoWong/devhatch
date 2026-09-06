@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import agentConfigSource from "../../features/agents/AgentConfigDialog.tsx?raw";
+import terminalWorkspaceSource from "../../features/terminals/TerminalWorkspace.tsx?raw";
+import workspacePickerSource from "../../features/terminals/WorkspacePicker.tsx?raw";
+import brandingSource from "../../shared/branding/Branding.tsx?raw";
 import terminalSurfaceSource from "../../shared/terminal/TerminalSurface.tsx?raw";
 
 const { readFileSync } = (globalThis as typeof globalThis & {
@@ -6,26 +10,67 @@ const { readFileSync } = (globalThis as typeof globalThis & {
 }).process.getBuiltinModule("node:fs");
 const responsiveCss = readFileSync(new URL("./responsive.css", import.meta.url), "utf8");
 const baseCss = readFileSync(new URL("./base.css", import.meta.url), "utf8");
+const dialogsCss = readFileSync(new URL("./dialogs.css", import.meta.url), "utf8");
 const indexCss = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 const shadcnCss = readFileSync(new URL("./shadcn.css", import.meta.url), "utf8");
+const shellCss = readFileSync(new URL("./shell.css", import.meta.url), "utf8");
 const terminalCss = readFileSync(new URL("./terminal.css", import.meta.url), "utf8");
 
 describe("terminal accessibility styles", () => {
-  it("keeps product styles between vendor and shadcn layers", () => {
-    expect(baseCss).toContain("@layer theme, base, vendor, product, components, utilities;");
-    expect(baseCss).toContain("@layer product {");
+  it("keeps authored components before direct shadcn components", () => {
+    expect(baseCss).toContain("@layer theme, base, vendor, components, utilities;");
+    expect(baseCss).toContain("@layer components.authored;");
+    expect(baseCss).toContain("@layer components.authored {");
+    expect(baseCss).not.toMatch(/\bproduct\b/);
     expect(indexCss).toBe([
       '@import "@xterm/xterm/css/xterm.css" layer(vendor);',
-      '@import "./shell.css" layer(product);',
-      '@import "./dialogs.css" layer(product);',
-      '@import "./workspace.css" layer(product);',
-      '@import "./skills.css" layer(product);',
-      '@import "./webapps-settings.css" layer(product);',
-      '@import "./terminal.css" layer(product);',
-      '@import "./responsive.css" layer(product);',
+      '@import "./shell.css" layer(components.authored);',
+      '@import "./dialogs.css" layer(components.authored);',
+      '@import "./skills.css" layer(components.authored);',
+      '@import "./terminal.css" layer(components.authored);',
+      '@import "./responsive.css" layer(components.authored);',
       "",
     ].join("\n"));
     expect(`${baseCss}\n${indexCss}`).not.toMatch(/\blegacy\b/);
+  });
+
+  it("keeps migrated config dialog presentation colocated", () => {
+    expect(dialogsCss).not.toMatch(/\.config-|\.new-config|\.default-check|\.form-(?:message|error)|\.script-field/);
+    expect(responsiveCss).not.toMatch(/\.config-(?:body|editor)/);
+    expect(agentConfigSource).not.toMatch(/\b(?:config-dialog|config-header-copy|config-body|new-config|config-option|config-editor|default-check|form-message|form-error|script-field)\b/);
+    expect(agentConfigSource).toContain("tw:grid-cols-[210px_minmax(0,1fr)]");
+    expect(agentConfigSource).toContain("tw:[@media(max-width:640px)]:min-h-[132px]");
+    expect(agentConfigSource).toContain("tw:[@media(max-width:640px)]:max-h-[150px]");
+    expect(agentConfigSource).toContain("tw:[@media(max-width:640px)]:p-[16px]");
+    expect(agentConfigSource).not.toMatch(/tw:max-sm:(?:grid-cols-1|overflow-y-auto|min-h-\[132px\]|max-h-\[150px\]|p-\[16px\])/);
+  });
+
+  it("keeps only picker pseudo-element and motion hooks authored", () => {
+    expect(dialogsCss).toMatch(/^\.picker-breadcrumbs::-webkit-scrollbar \{ display: none; \}\n\.picker-spinner \{/);
+    expect(dialogsCss).not.toMatch(/\.picker-(?:header|title|close|toolbar|location|browser|message|loading|footer|selection)\b|\.folder-(?:row|icon)\b/);
+    expect(workspacePickerSource).toContain("picker-breadcrumbs tw:flex");
+    expect(workspacePickerSource).toContain("picker-spinner tw:size-[13px]");
+    expect(workspacePickerSource).toContain("tw:active:[transform:scale(.995)]");
+    expect(workspacePickerSource).toContain("tw:[fill-opacity:0.12]");
+    expect(workspacePickerSource).not.toContain("tw:fill-opacity-[0.12]");
+    expect(workspacePickerSource).toContain("tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:font-normal");
+    expect(workspacePickerSource).toContain("tw:[@media(max-width:640px)]:grid-cols-2");
+    expect(workspacePickerSource).not.toMatch(/tw:max-sm:(?:px-\[16px\]|grid|grid-cols-2|col-span-full)/);
+    expect(responsiveCss).not.toMatch(/\.picker-(?:header|toolbar|breadcrumbs|footer|selection)\b/);
+  });
+
+  it("keeps migrated brand and terminal leaves colocated", () => {
+    expect(shellCss).not.toMatch(/\.brand(?:-mark)?\b/);
+    expect(brandingSource).toContain("tw:size-[40px]");
+    expect(brandingSource).toContain("tw:size-[32px]");
+    expect(terminalCss).not.toMatch(/\.stage\s*\{|\.terminal-stage-empty|\.empty-state|\.error-banner|\.terminal-thumbnail img|\.terminal-image-paste-status\s*\{/);
+    expect(terminalWorkspaceSource).toContain("terminal-stage tw:relative tw:min-h-0 tw:overflow-hidden");
+    expect(terminalWorkspaceSource).toContain("tw:place-content-center");
+    expect(terminalWorkspaceSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
+    expect(terminalWorkspaceSource).toContain("tw:[overflow-wrap:anywhere]");
+    expect(terminalWorkspaceSource).toContain("tw:[&:not([src])]:invisible");
+    expect(terminalSurfaceSource).toContain("terminal-image-paste-status tw:pointer-events-none");
+    expect(terminalSurfaceSource).toContain("spin tw:size-[13px]");
   });
 
   it("enables xterm screen reader mode and themed IME composition", () => {

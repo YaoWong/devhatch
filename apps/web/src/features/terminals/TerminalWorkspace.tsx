@@ -527,18 +527,20 @@ export function TerminalWorkspace({
 
   const sessionDisplayName = (session: TerminalInfo) => sessionIdentity ? `${sessionIdentity(session)} · ${session.name}` : session.name;
   const layoutDescriptors = !isMobile && layoutCount && layoutPreset ? terminalLayoutDescriptors(layoutCount, layoutPreset) : [];
+  const emptyStateClass = "tw:grid tw:h-full tw:place-content-center tw:justify-items-center tw:gap-[14px] tw:text-center tw:font-sans tw:text-[calc(13px*var(--app-font-scale))] tw:font-normal tw:leading-[1.5] tw:text-[var(--color-text-faint)] tw:[&_strong]:text-[calc(16px*var(--app-font-scale))] tw:[&_strong]:font-[650] tw:[&_strong]:leading-[1.3] tw:[&_strong]:text-[var(--color-text-subtle)] tw:[&>svg]:size-[30px] tw:[&>svg]:text-[var(--color-border-strong)]";
+  const errorBannerClass = "tw:absolute tw:left-1/2 tw:bottom-[18px] tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100%-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]";
   const emptyActionClass = "tw:h-10 tw:rounded-full tw:bg-foreground tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11";
   const paneActionClass = "tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-faint)] tw:hover:bg-muted! tw:hover:text-foreground! tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 
   return (
     <div
-      className={`terminal-workspace ${visible ? "" : "workspace-hidden"}`}
+      className={`terminal-workspace tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${visible ? "" : "workspace-hidden tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`}
       aria-hidden={!visible}
       inert={!visible ? true : undefined}
     >
       <div
         ref={stageRef}
-        className="stage terminal-stage tw:focus-visible:outline-2 tw:focus-visible:outline-offset-[-2px] tw:focus-visible:outline-ring"
+        className="terminal-stage tw:relative tw:min-h-0 tw:overflow-hidden tw:bg-[var(--color-canvas)] tw:focus-visible:outline-2 tw:focus-visible:outline-offset-[-2px] tw:focus-visible:outline-ring"
         role="region"
         aria-label={`${workspaceLabel} stage`}
         tabIndex={-1}
@@ -577,7 +579,7 @@ export function TerminalWorkspace({
                 onClick={() => activateAndStage(session.id)}
                 onKeyDown={(event) => activateThumbnailByKey(event, index)}
               >
-                <img ref={thumbnailImageRef(session.id)} alt="" aria-hidden="true" />
+                <img className="tw:block tw:h-full tw:w-full tw:object-cover tw:[&:not([src])]:invisible" ref={thumbnailImageRef(session.id)} alt="" aria-hidden="true" />
                 <span className="terminal-thumbnail-caption">
                   <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} aria-hidden="true" />
                   {sessionDisplayName(session)}
@@ -586,9 +588,9 @@ export function TerminalWorkspace({
             ))}
           </nav>
         </div>}
-        {showInitialLoading && <div className="empty-state" role="status">Starting DevHatch…</div>}
+        {showInitialLoading && <div className={emptyStateClass} role="status">Starting DevHatch…</div>}
         {!busy && !workspaceId && (
-          <div className="empty-state">
+          <div className={emptyStateClass}>
             {emptyIcon}
             <strong>No {workspaceLabel} selected</strong>
             {onChoosePath && <Button type="button" className={emptyActionClass} disabled={launching} onClick={onChoosePath}>Choose launch path</Button>}
@@ -596,14 +598,14 @@ export function TerminalWorkspace({
           </div>
         )}
         {!busy && workspaceId && !visibleSessions.length && (
-          <div className="empty-state">
+          <div className={emptyStateClass}>
             {emptyIcon}
             <strong>No {sessionLabel}s in this {workspaceLabel}</strong>
             {onChoosePath && <Button type="button" className={emptyActionClass} disabled={launching} onClick={onChoosePath}>Choose launch path</Button>}
             {onCreate && <Button type="button" className={emptyActionClass} disabled={launching} onClick={() => onCreate()}>Create {sessionLabel}</Button>}
           </div>
         )}
-        {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className="empty-state terminal-stage-empty">Select a {sessionLabel} thumbnail</div>}
+        {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className={`${emptyStateClass} tw:absolute tw:inset-0`}>Select a {sessionLabel} thumbnail</div>}
         <div ref={gridRef} className={`terminal-card-grid count-${currentState.stagedIds.length} ${layoutClassName} ${thumbnailsReserveSpace ? `with-thumbnails thumbnails-${thumbnailSide}` : ""}`} style={layoutStyle} role="list" aria-label={`Staged ${sessionLabel}s`}>
           {orderedSessions.map((session) => {
             const shown = visible && workspaceId !== null && staged.has(session.id) && memberIds.includes(session.id);
@@ -707,8 +709,8 @@ export function TerminalWorkspace({
         </div>
         {renamingSession && <RenameDialog initialValue={renamingSession.name} label={`${sessionLabel} session`} onSubmit={(name) => onRename(renamingSession, name)} onClose={() => setRenamingSession(null)} />}
         {error && visible && (
-          <div className="error-banner" role="alert">
-            <span>{error}</span>
+          <div className={errorBannerClass} role="alert">
+            <span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span>
             <Button
               type="button"
               variant="ghost"

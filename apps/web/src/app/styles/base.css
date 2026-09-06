@@ -1,10 +1,11 @@
-@layer theme, base, vendor, product, components, utilities;
+@layer theme, base, vendor, components, utilities;
+@layer components.authored;
 
 @import "./themes.css" layer(theme);
 @import "./shadcn.css";
 @import "./index.css";
 
-@layer product {
+@layer components.authored {
 @font-face {
   font-family: "JetBrainsMono Nerd Font Web";
   src: url("/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");

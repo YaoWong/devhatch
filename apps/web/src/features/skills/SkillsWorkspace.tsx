@@ -53,25 +53,25 @@ export function SkillsWorkspace({ section, controller, error, onDismissError, on
     };
   }, [section]);
   return (
-    <div className="skills-workspace" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
+    <div className="tw:relative tw:min-h-0 tw:overflow-x-hidden tw:overflow-y-scroll tw:bg-[var(--color-canvas)] tw:px-[38px] tw:pt-[38px] tw:pb-[96px] tw:[scrollbar-gutter:stable] tw:[@media(max-width:920px)]:pt-[58px]! tw:[@media(max-width:640px)]:px-[14px] tw:[@media(max-width:640px)]:pb-[96px]" ref={scrollRef} onScroll={(event: UIEvent<HTMLDivElement>) => updateScrollEdges(event.currentTarget)}>
       {showBusy && (
         operation ? (
-          <div className="skills-loading skills-operation-progress" role="status" aria-label={`${repositoryOperationLabel(operation)}, ${percentage}%`}>
-            <div><LoaderCircle className="spin tw:size-3.5" /><strong>{repositoryOperationLabel(operation)}…</strong><span>{percentage}%</span></div>
-            <progress max="100" value={percentage} aria-label="Repository operation progress" />
-            {bytes && <small>{bytes}</small>}
+          <div className="tw:fixed tw:top-[28px] tw:right-[28px] tw:z-[8] tw:grid tw:w-[min(300px,calc(100vw-56px))] tw:gap-[6px] tw:rounded-[12px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:px-[11px] tw:py-[8px] tw:text-xs tw:leading-[1.3] tw:text-muted-foreground tw:shadow-[0_6px_18px_rgb(0_0_0/8%)] tw:backdrop-blur-[8px]" role="status" aria-label={`${repositoryOperationLabel(operation)}, ${percentage}%`}>
+            <div className="tw:flex tw:items-center tw:gap-[7px]"><LoaderCircle className="spin tw:size-3.5" /><strong className="tw:flex-1 tw:font-semibold tw:text-[var(--color-text-subtle)]">{repositoryOperationLabel(operation)}…</strong><span>{percentage}%</span></div>
+            <progress className="tw:h-[5px] tw:w-full tw:accent-[var(--color-accent)]" max="100" value={percentage} aria-label="Repository operation progress" />
+            {bytes && <small className="tw:text-right tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-[1.3] tw:text-muted-foreground">{bytes}</small>}
           </div>
-        ) : <div className="skills-loading" role="status"><LoaderCircle className="spin tw:size-3.5" />Working…</div>
+        ) : <div className="tw:fixed tw:top-[28px] tw:right-[28px] tw:z-[8] tw:flex tw:items-center tw:gap-[7px] tw:rounded-[99px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:px-[11px] tw:py-[8px] tw:text-xs tw:leading-[1.3] tw:text-muted-foreground tw:shadow-[0_6px_18px_rgb(0_0_0/8%)] tw:backdrop-blur-[8px]" role="status"><LoaderCircle className="spin tw:size-3.5" />Working…</div>
       )}
-      <div ref={contentRef} className="skills-section-transition skills-query-container" key={section} aria-busy={controller.busy}>
+      <div ref={contentRef} className="skills-section-transition tw:@container/skills-workspace" key={section} aria-busy={controller.busy}>
         {section === "repositories" && <Repositories controller={controller} onConfirm={onConfirm} />}
         {section === "skills" && <SkillLibrary controller={controller} onConfirm={onConfirm} />}
         {section === "profiles" && <Profiles controller={controller} />}
       </div>
-      {error && <div className="error-banner skills-error-banner" role="alert"><span>{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss skills error" onClick={onDismissError}><X className="tw:size-3" /></Button></div>}
-      <div className="skills-scroll-controls" role="group" aria-label="Page navigation">
-        <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to top" title="Scroll to top" disabled={scrollEdges.top} onClick={() => scrollTo("top")}><ArrowUpToLine className="tw:size-4" /></Button>
-        <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to bottom" title="Scroll to bottom" disabled={scrollEdges.bottom} onClick={() => scrollTo("bottom")}><ArrowDownToLine className="tw:size-4" /></Button>
+      {error && <div className="tw:fixed tw:top-[76px] tw:right-auto tw:bottom-auto tw:left-1/2 tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100vw-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]" role="alert"><span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss skills error" onClick={onDismissError}><X className="tw:size-3" /></Button></div>}
+      <div className="tw:fixed tw:right-[28px] tw:bottom-[28px] tw:z-[8] tw:grid tw:gap-[6px] tw:[@media(max-width:640px)]:right-[14px] tw:[@media(max-width:640px)]:bottom-[14px]" role="group" aria-label="Page navigation">
+        <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:text-[var(--color-text-subtle)] tw:shadow-[0_5px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-[12px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to top" title="Scroll to top" disabled={scrollEdges.top} onClick={() => scrollTo("top")}><ArrowUpToLine className="tw:size-4" /></Button>
+        <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:text-[var(--color-text-subtle)] tw:shadow-[0_5px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-[12px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to bottom" title="Scroll to bottom" disabled={scrollEdges.bottom} onClick={() => scrollTo("bottom")}><ArrowDownToLine className="tw:size-4" /></Button>
       </div>
     </div>
   );

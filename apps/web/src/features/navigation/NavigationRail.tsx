@@ -186,7 +186,7 @@ export function NavigationRail({
           aria-hidden={railPage !== "modes"}
           inert={railPage !== "modes" ? true : undefined}
         >
-          <nav className="primary-nav" aria-label="Workspace modes">
+          <nav className="tw:flex tw:w-full tw:flex-col tw:gap-[8px] tw:pt-[12px]" aria-label="Workspace modes">
             <ModeButton
               mode="terminal"
               modeRefs={modeRefs}
@@ -261,7 +261,7 @@ export function NavigationRail({
         </DetailPage>
       </div>
       {workspaceMode === "webapp" && webAppRunning && (
-        <div className="canvas-mode-actions">
+        <div className="tw:flex tw:items-center tw:justify-center tw:gap-[8px] tw:border-t tw:border-border tw:pt-[10px]">
           <Button variant="outline" className="canvas-stop-button tw:h-10 tw:w-full tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
             {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
             <span>{webAppOperation === "stop" ? "Stopping…" : "Stop Web App"}</span>
@@ -283,7 +283,7 @@ export function NavigationRail({
                 />
               }
             >
-              <SlidersHorizontal className="tw:size-[19px]" />
+              <SlidersHorizontal className="tw:size-[19px] tw:text-current" />
               <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
             </PopoverTrigger>
           </div>
@@ -349,9 +349,9 @@ function ModeButton({
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >
-      <Icon className="tw:size-[22px]" />
-      <span>{meta.label}</span>
-      {count !== undefined && <b>{count}</b>}
+      <Icon className="tw:size-[22px] tw:flex-none" />
+      <span className="tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap">{meta.label}</span>
+      {count !== undefined && <b className="tw:ml-auto tw:grid tw:h-[20px] tw:min-w-[20px] tw:flex-none tw:place-items-center tw:rounded-[99px] tw:bg-[var(--color-surface)] tw:px-[6px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:font-normal tw:leading-none tw:text-[var(--color-text)]">{count}</b>}
     </Button>
   );
 }

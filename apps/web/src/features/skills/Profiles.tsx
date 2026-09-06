@@ -66,63 +66,64 @@ export function Profiles({ controller }: { controller: SkillsController }) {
   return (
     <WorkspaceSection title="Profiles" description="Build a reusable skill set, then save all changes in one update.">
       {controller.profileError && (
-        <div className="profile-error" role="alert">
-          <span>{controller.profileError}</span>
+        <div className="tw:mb-[12px] tw:flex tw:items-center tw:gap-[10px] tw:rounded-[11px] tw:border tw:border-[var(--color-danger)] tw:bg-[var(--color-danger-soft)] tw:px-[13px] tw:py-[11px] tw:text-xs tw:leading-[1.5] tw:text-[var(--color-text-subtle)]" role="alert">
+          <span className="tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{controller.profileError}</span>
           <Button variant="ghost" size="icon" className="tw:size-10 tw:rounded-full tw:text-[var(--color-text-subtle)] tw:hover:bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss profile error" onClick={controller.dismissProfileError}><X className="tw:size-3.5" /></Button>
         </div>
       )}
-      <form className="skills-form compact-form" onSubmit={(event) => void submit(event)}>
-        <label className="skills-form-field">
-          <span>Profile slug</span>
+      <form className="tw:mb-[20px] tw:grid tw:w-[min(30rem,100%)] tw:grid-cols-[minmax(220px,1fr)_auto] tw:items-end tw:gap-[12px] tw:skills-max-860:grid-cols-1" onSubmit={(event) => void submit(event)}>
+        <label className="tw:grid tw:min-w-0 tw:gap-[6px]">
+          <span className="tw:flex tw:items-baseline tw:justify-between tw:gap-[8px] tw:text-sm tw:font-[650] tw:leading-[1.25] tw:text-[var(--color-text-subtle)]">Profile slug</span>
           <Input className="tw:h-10 tw:bg-[var(--color-surface-raised)] tw:text-sm tw:font-normal tw:text-foreground tw:dark:bg-[var(--color-surface-raised)] tw:[@media(pointer:coarse)]:h-11" required maxLength={64} placeholder="profile-slug" value={slug} onChange={(event) => setSlug(event.target.value)} />
         </label>
         <SkillsPrimaryButton className="tw:self-end" type="submit" disabled={controller.busy}><Plus />Create profile</SkillsPrimaryButton>
       </form>
-      <div className="profile-layout">
-        <nav className="profile-list">
-          <p>Profiles</p>
+      <div className="tw:grid tw:grid-cols-[220px_minmax(0,1fr)] tw:border-y tw:border-border tw:bg-card tw:skills-max-860:grid-cols-1">
+        <nav className="tw:flex tw:min-h-[420px] tw:flex-col tw:gap-[3px] tw:border-r tw:border-border tw:bg-transparent tw:pt-[10px] tw:pr-[10px] tw:pb-[10px] tw:pl-0 tw:skills-max-860:min-h-0 tw:skills-max-860:border-r-0 tw:skills-max-860:border-b tw:skills-max-860:px-0">
+           <p className="tw:mt-[3px] tw:mr-[9px] tw:mb-[7px] tw:ml-[9px] tw:text-[calc(11px*var(--app-font-scale))] tw:font-bold tw:leading-[1.2] tw:tracking-[0.08em] tw:text-muted-foreground tw:uppercase">Profiles</p>
           {controller.profiles.map((profile) => (
             <Button variant="ghost" key={profile.id} className={`tw:h-10 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:text-sm tw:font-semibold tw:transition-colors tw:duration-150 tw:hover:bg-muted/70! tw:[@media(pointer:coarse)]:h-11 ${controller.selectedProfileId === profile.id ? "active tw:bg-muted" : ""}`} aria-current={controller.selectedProfileId === profile.id ? "page" : undefined} onClick={() => void controller.selectProfile(profile.id)}>
-              <span>{profile.slug}</span>
-              {controller.selectedProfileId === profile.id && <b>{draft.size}</b>}
+              <span className="tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis">{profile.slug}</span>
+              {controller.selectedProfileId === profile.id && <b className="tw:min-w-[22px] tw:rounded-[99px] tw:bg-card tw:px-[5px] tw:py-[2px] tw:text-center tw:text-[calc(11px*var(--app-font-scale))] tw:text-[var(--color-text-subtle)]">{draft.size}</b>}
             </Button>
           ))}
-          {!controller.profiles.length && <Empty text="No profiles yet." />}
+          {!controller.profiles.length && <Empty className="tw:mt-[2px] tw:rounded-[9px] tw:px-[10px] tw:py-[20px]" text="No profiles yet." />}
         </nav>
         {!selectedProfile ? (
-          <div className="profile-no-selection">
-            <strong>No profile selected</strong>
-            <span>{controller.profiles.length ? "Choose a profile to edit its saved skills." : "Create a profile to choose and save a reusable set of skills."}</span>
+          <div className="tw:grid tw:min-h-[420px] tw:content-center tw:justify-items-center tw:gap-[7px] tw:p-[32px] tw:text-center tw:text-muted-foreground tw:skills-max-860:min-h-[260px]">
+            <strong className="tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650] tw:text-foreground">No profile selected</strong>
+            <span className="tw:max-w-[360px] tw:text-xs tw:leading-[1.5]">{controller.profiles.length ? "Choose a profile to edit its saved skills." : "Create a profile to choose and save a reusable set of skills."}</span>
           </div>
         ) : (
-          <div className={`profile-skills ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
+          <div className={`profile-skills tw:relative tw:min-w-0 tw:overflow-visible tw:pt-[18px] tw:pr-0 tw:pb-[18px] tw:pl-[18px] tw:skills-max-860:pl-0 ${showProfileLoading ? "loading" : ""}`} aria-busy={controller.profileLoading} aria-live="polite">
             <div className="profile-detail-transition" key={controller.profileDetail?.profile.id ?? controller.selectedProfileId ?? "empty"} inert={!detailReady ? true : undefined}>
-              <div className="profile-skills-header">
-              <span className="profile-title">
-                <span className="profile-title-row">
-                  <h3>{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
-                  {selectedProfile && <SkillsIconButton className="profile-rename" type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></SkillsIconButton>}
+              <div className="tw:grid tw:grid-cols-[minmax(160px,1fr)_minmax(220px,320px)_auto] tw:items-center tw:gap-[12px] tw:skills-max-860:grid-cols-1 tw:skills-max-860:items-stretch">
+              <span className="tw:min-w-0">
+                <span className="tw:flex tw:min-w-0 tw:items-center tw:gap-[7px]">
+                  <h3 className="tw:m-0 tw:min-w-0 tw:overflow-hidden tw:text-[calc(18px*var(--app-font-scale))] tw:leading-[1.3] tw:text-ellipsis tw:whitespace-nowrap">{controller.profileDetail?.profile.slug ?? selectedProfile?.slug ?? "Select a profile"}</h3>
+                  {selectedProfile && <SkillsIconButton type="button" disabled={controller.busy} aria-label={`Rename ${selectedProfile.slug}`} onClick={() => setRenamingProfileId(selectedProfile.id)}><Pencil className="tw:size-[13px]" /></SkillsIconButton>}
                 </span>
-                <small>{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
+                <small className="tw:mt-[4px] tw:block tw:text-xs tw:leading-[1.35] tw:text-muted-foreground">{draft.size} selected{dirty ? ` · ${symmetricDifferenceSize(draft, saved)} pending changes` : " · All changes saved"}</small>
               </span>
-              <SearchField value={query} placeholder="Find skills or folders" onChange={setQuery} />
-              <div className="profile-header-actions">
+              <SearchField className="tw:w-full" value={query} placeholder="Find skills or folders" onChange={setQuery} />
+              <div className="tw:flex tw:gap-[6px] tw:skills-max-860:justify-end tw:skills-max-480:[&>*]:flex-1">
                 <SkillsSecondaryButton type="button" disabled={!dirty || controller.busy} onClick={() => setDraft(new Set(saved))}><RotateCcw />Reset</SkillsSecondaryButton>
-                <SkillsPrimaryButton className="save-profile" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</SkillsPrimaryButton>
+                <SkillsPrimaryButton className="tw:min-w-[118px]" type="button" disabled={!dirty || !controller.selectedProfileId || controller.busy} onClick={() => void save()}><Save />Save changes</SkillsPrimaryButton>
               </div>
             </div>
-            <div className="profile-tree-toolbar">
+            <div className="tw:mt-[10px] tw:flex tw:justify-end">
               <TreeControls
                 allCollapsed={allCollapsed}
                 disabled={!visibleTreeKeys.length || Boolean(query.trim())}
                 onToggle={() => setCollapsed((current) => setKeysCollapsed(current, visibleTreeKeys, !allCollapsed))}
               />
             </div>
-            <div className="profile-tree">
+            <div className="tw:mt-[8px] tw:border-b tw:border-border">
               {customSkills.length > 0 && (
                 <ProfileSourceGroup
                   title="My skills"
-                  icon={<Folder className="tw:size-[17px]" />}
+                   icon={<Folder className="tw:size-[17px] tw:text-[var(--color-accent)]" />}
+
                   skills={customSkills}
                   namespace="custom"
                   draft={draft}
@@ -139,7 +140,8 @@ export function Profiles({ controller }: { controller: SkillsController }) {
                     key={repository.id}
                     title={repository.name}
                     subtitle={`${skills.length} skills`}
-                    icon={<FolderGit2 className="tw:size-[17px]" />}
+                     icon={<FolderGit2 className="tw:size-[17px] tw:text-[var(--color-accent)]" />}
+
                     skills={skills}
                     namespace={repository.id}
                     draft={draft}
@@ -179,15 +181,15 @@ function ProfileSourceGroup({ title, subtitle, icon, skills, namespace, draft, c
   const isCollapsed = collapsed.has(key);
   const selected = skills.filter((skill) => draft.has(skill.id)).length;
   return (
-    <section className="profile-source-group">
-      <Button variant="ghost" className="profile-source-header tw:grid tw:h-auto tw:min-h-[52px] tw:w-full tw:grid-cols-[14px_18px_minmax(0,1fr)_auto] tw:justify-start tw:rounded-none tw:bg-[var(--color-surface-raised)] tw:px-3 tw:py-[7px] tw:text-left tw:font-normal tw:whitespace-normal tw:transition-colors tw:duration-150 tw:hover:bg-muted/50!" type="button" aria-expanded={!isCollapsed} onClick={() => onToggleGroup(key)}>
-        {isCollapsed ? <ChevronRight className="tw:size-3.5" /> : <ChevronDown className="tw:size-3.5" />}
+    <section className="profile-source-group tw:bg-card">
+      <Button variant="ghost" className="tw:grid tw:h-auto tw:min-h-[52px] tw:w-full tw:grid-cols-[14px_18px_minmax(0,1fr)_auto] tw:items-center tw:justify-start tw:gap-[8px] tw:rounded-none tw:bg-[var(--color-surface-raised)] tw:px-3 tw:py-[7px] tw:text-left tw:font-normal tw:whitespace-normal tw:transition-colors tw:duration-150 tw:hover:bg-muted/50!" type="button" aria-expanded={!isCollapsed} onClick={() => onToggleGroup(key)}>
+        {isCollapsed ? <ChevronRight className="tw:size-[14px] tw:text-muted-foreground" /> : <ChevronDown className="tw:size-[14px] tw:text-muted-foreground" />}
         {icon}
-        <span><strong>{title}</strong><small>{subtitle ?? `${skills.length} skills`}</small></span>
-        <b>{selected}/{skills.length}</b>
+        <span className="tw:min-w-0"><strong className="tw:block tw:overflow-hidden tw:text-sm tw:leading-[1.3] tw:text-ellipsis tw:whitespace-nowrap">{title}</strong><small className="tw:mt-[3px] tw:block tw:overflow-hidden tw:text-[calc(11px*var(--app-font-scale))] tw:leading-[1.3] tw:text-muted-foreground tw:text-ellipsis tw:whitespace-nowrap">{subtitle ?? `${skills.length} skills`}</small></span>
+        <b className="tw:text-[calc(11px*var(--app-font-scale))] tw:font-semibold tw:text-[var(--color-text-subtle)]">{selected}/{skills.length}</b>
       </Button>
       {!isCollapsed && (
-        <div className="profile-source-tree">
+        <div className="profile-source-tree tw:border-t tw:border-border">
           <SkillTree nodes={buildSkillTree(skills)} collapsed={collapsed} namespace={`profile:${namespace}`} onToggle={onToggleGroup} selected={draft} onToggleSkill={onToggleSkill} />
         </div>
       )}
