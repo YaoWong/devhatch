@@ -1,10 +1,10 @@
-@layer theme, base, vendor, legacy, components, utilities;
+@layer theme, base, vendor, product, components, utilities;
 
 @import "./themes.css" layer(theme);
 @import "./shadcn.css";
 @import "./index.css";
 
-@layer legacy {
+@layer product {
 @font-face {
   font-family: "JetBrainsMono Nerd Font Web";
   src: url("/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");

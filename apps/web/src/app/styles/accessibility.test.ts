@@ -5,10 +5,29 @@ const { readFileSync } = (globalThis as typeof globalThis & {
   process: { getBuiltinModule: (name: "node:fs") => { readFileSync: (url: URL, encoding: "utf8") => string } };
 }).process.getBuiltinModule("node:fs");
 const responsiveCss = readFileSync(new URL("./responsive.css", import.meta.url), "utf8");
+const baseCss = readFileSync(new URL("./base.css", import.meta.url), "utf8");
+const indexCss = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 const shadcnCss = readFileSync(new URL("./shadcn.css", import.meta.url), "utf8");
 const terminalCss = readFileSync(new URL("./terminal.css", import.meta.url), "utf8");
 
 describe("terminal accessibility styles", () => {
+  it("keeps product styles between vendor and shadcn layers", () => {
+    expect(baseCss).toContain("@layer theme, base, vendor, product, components, utilities;");
+    expect(baseCss).toContain("@layer product {");
+    expect(indexCss).toBe([
+      '@import "@xterm/xterm/css/xterm.css" layer(vendor);',
+      '@import "./shell.css" layer(product);',
+      '@import "./dialogs.css" layer(product);',
+      '@import "./workspace.css" layer(product);',
+      '@import "./skills.css" layer(product);',
+      '@import "./webapps-settings.css" layer(product);',
+      '@import "./terminal.css" layer(product);',
+      '@import "./responsive.css" layer(product);',
+      "",
+    ].join("\n"));
+    expect(`${baseCss}\n${indexCss}`).not.toMatch(/\blegacy\b/);
+  });
+
   it("enables xterm screen reader mode and themed IME composition", () => {
     expect(terminalSurfaceSource).toContain("screenReaderMode: true");
     expect(terminalCss).toMatch(/\.terminal-xterm-host \.xterm \.composition-view \{[^}]*background: var\(--color-surface\);[^}]*color: var\(--color-text\);[^}]*\}/);
