@@ -14,7 +14,7 @@ import {
   workspaceOwningSession,
 } from "../agentWorkspaceState";
 import { completeAgentSessionLaunch } from "../agentWorkspaceLaunch";
-import { mergeAgentSessions, substituteHistoryTitles } from "../selectors";
+import { mergeAgentSessions, subscribeVisiblePolling, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
 import { useAgentLaunch } from "./useAgentLaunch";
@@ -113,10 +113,8 @@ export function useAgentWorkspace({
     return request;
   }, [applyAuthoritativeSnapshot, reportError]);
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (active) void refreshAuthoritativeSnapshot();
-    }, 5000);
-    return () => window.clearInterval(timer);
+    if (!active) return;
+    return subscribeVisiblePolling(document, window, () => void refreshAuthoritativeSnapshot(), 5000, false);
   }, [active, refreshAuthoritativeSnapshot]);
   const refreshAuthoritativeWorkspaces = useCallback(async <T,>(apply: (authoritative: AgentWorkspace[]) => T): Promise<T> => {
     const snapshot = await workspaceMutationsRef.current.readLatest(AGENT_WORKSPACES_MUTATION_KEY, agentWorkspaces);

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../types/agents";
-import { agentHistoryPollDelay, sameAgentSessions, shouldShowAgentSessionSearch } from "./selectors";
+import { agentHistoryPollDelay, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
 
 const session = (overrides: Partial<AgentSession> = {}): AgentSession => ({
   id: "session-1",
@@ -33,6 +33,69 @@ describe("agent session selectors", () => {
     expect(agentHistoryPollDelay(true, null, true)).toBeNull();
     expect(agentHistoryPollDelay(true, "opencode", false)).toBe(10000);
     expect(agentHistoryPollDelay(true, "opencode", true)).toBe(1000);
+  });
+
+  it("polls only while visible and refreshes when visibility returns", () => {
+    let visibilityState: DocumentVisibilityState = "hidden";
+    const visibilityListeners: Array<() => void> = [];
+    const intervalCallbacks = new Map<number, () => void>();
+    const target = {
+      get visibilityState() { return visibilityState; },
+      addEventListener: (_type: "visibilitychange", listener: () => void) => { visibilityListeners.push(listener); },
+      removeEventListener: (_type: "visibilitychange", listener: () => void) => {
+        const index = visibilityListeners.indexOf(listener);
+        if (index >= 0) visibilityListeners.splice(index, 1);
+      },
+    };
+    const scheduler = {
+      setInterval: vi.fn((callback: () => void) => {
+        intervalCallbacks.set(1, callback);
+        return 1;
+      }),
+      clearInterval: vi.fn((handle: number) => { intervalCallbacks.delete(handle); }),
+    };
+    const refresh = vi.fn();
+
+    const unsubscribe = subscribeVisiblePolling(target, scheduler, refresh, 5000, true);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(scheduler.setInterval).not.toHaveBeenCalled();
+
+    visibilityState = "visible";
+    visibilityListeners[0]?.();
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(scheduler.setInterval).toHaveBeenCalledWith(expect.any(Function), 5000);
+
+    intervalCallbacks.get(1)?.();
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    visibilityState = "hidden";
+    visibilityListeners[0]?.();
+    expect(scheduler.clearInterval).toHaveBeenCalledWith(1);
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    expect(visibilityListeners).toHaveLength(0);
+  });
+
+  it("can schedule a visible poll without an initial refresh", () => {
+    const listeners: Array<() => void> = [];
+    const target = {
+      visibilityState: "visible" as DocumentVisibilityState,
+      addEventListener: (_type: "visibilitychange", listener: () => void) => { listeners.push(listener); },
+      removeEventListener: (_type: "visibilitychange", listener: () => void) => {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+      },
+    };
+    const scheduler = { setInterval: vi.fn(() => 2), clearInterval: vi.fn() };
+    const refresh = vi.fn();
+
+    const unsubscribe = subscribeVisiblePolling(target, scheduler, refresh, 5000, false);
+
+    expect(refresh).not.toHaveBeenCalled();
+    expect(scheduler.setInterval).toHaveBeenCalledWith(refresh, 5000);
+    unsubscribe();
+    expect(listeners).toHaveLength(0);
   });
 
   it("preserves equivalent session snapshots despite output timestamps", () => {

@@ -1,6 +1,44 @@
 import type { AgentSession, HistoryResponse } from "../../types/agents";
 import { pathMatches } from "../../shared/lib/utils";
 
+type VisibilityTarget = {
+  readonly visibilityState: DocumentVisibilityState;
+  addEventListener: (type: "visibilitychange", listener: () => void) => void;
+  removeEventListener: (type: "visibilitychange", listener: () => void) => void;
+};
+
+type IntervalScheduler = {
+  setInterval: (callback: () => void, delay: number) => number;
+  clearInterval: (handle: number) => void;
+};
+
+export function subscribeVisiblePolling(
+  target: VisibilityTarget,
+  scheduler: IntervalScheduler,
+  callback: () => void,
+  delay: number,
+  refreshInitially: boolean,
+) {
+  let timer: number | null = null;
+  const clear = () => {
+    if (timer !== null) scheduler.clearInterval(timer);
+    timer = null;
+  };
+  const schedule = (refresh: boolean) => {
+    clear();
+    if (target.visibilityState !== "visible") return;
+    if (refresh) callback();
+    timer = scheduler.setInterval(callback, delay);
+  };
+  const update = () => schedule(true);
+  schedule(refreshInitially);
+  target.addEventListener("visibilitychange", update);
+  return () => {
+    clear();
+    target.removeEventListener("visibilitychange", update);
+  };
+}
+
 export function agentHistoryPollDelay(active: boolean, historyAgentId: string | null, hasPendingSession: boolean) {
   if (!active || !historyAgentId) return null;
   return hasPendingSession ? 1000 : 10000;

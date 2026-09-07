@@ -4,7 +4,7 @@ import { deleteRemoteSession, renameRemoteSession } from "../../../api/terminals
 import type { DeleteTarget } from "../../../types/app";
 import type { AgentSession, HistoryResponse } from "../../../types/agents";
 import { logicalPath } from "../../../shared/lib/utils";
-import { agentHistoryPollDelay, sameAgentSessions } from "../selectors";
+import { agentHistoryPollDelay, sameAgentSessions, subscribeVisiblePolling } from "../selectors";
 import { errorMessage, type HomePaths } from "./shared";
 
 const emptyHistory: HistoryResponse = { available: false, diagnostic: null, sessions: [] };
@@ -130,9 +130,7 @@ export function useAgentSessions({
 
   useEffect(() => {
     if (historyPollDelay === null) return;
-    void refreshHistory();
-    const timer = window.setInterval(() => void refreshHistory(), historyPollDelay);
-    return () => window.clearInterval(timer);
+    return subscribeVisiblePolling(document, window, () => void refreshHistory(), historyPollDelay, true);
   }, [historyPollDelay, refreshHistory]);
 
   const applySessions = useCallback(
