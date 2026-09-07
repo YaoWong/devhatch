@@ -5,11 +5,18 @@ export const ThemeContext = createContext<{
   themeId: ThemeId;
   agentLaunchPathsMaxHeightPx: number;
   navigationRailWidthPx: number;
+  fontSizePx: number;
+  uiScalePercent: number;
+  supportsDisplaySettings: boolean;
   saving: boolean;
   error: string | null;
+  dismissError: () => void;
+  resetAppearance: () => void;
   selectTheme: (themeId: ThemeId) => void;
   setAgentLaunchPathsMaxHeightPx: (value: number) => void;
   setNavigationRailWidthPx: (value: number) => void;
+  setFontSizePx: (value: number) => void;
+  setUiScalePercent: (value: number) => void;
 } | null>(null);
 
 export function useTheme() {

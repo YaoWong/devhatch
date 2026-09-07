@@ -61,15 +61,17 @@ export function TerminalSurface({
   onOpenLink: (url: string) => void;
   onError: (message: string) => void;
 }) {
-  const { themeId } = useTheme();
+  const { themeId, fontSizePx } = useTheme();
   const [imagePastePhase, setImagePastePhase] = useState<ImagePastePhase>(null);
   const initialThemeRef = useRef(themeId);
+  const initialFontSizeRef = useRef(fontSizePx);
   const themeIdRef = useRef(themeId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const activateRef = useRef<(() => void) | null>(null);
   const activationFrameRef = useRef<number | null>(null);
+  const fontUpdateFrameRef = useRef<number | null>(null);
   const visibleRef = useRef(visible);
   const focusedRef = useRef(focused);
   visibleRef.current = visible;
@@ -120,6 +122,24 @@ export function TerminalSurface({
     requestThumbnailRef.current?.();
   }, [themeId]);
   useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || terminal.options.fontSize === fontSizePx) return;
+    terminal.options.fontSize = fontSizePx;
+    terminal.clearTextureAtlas();
+    if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+    fontUpdateFrameRef.current = requestAnimationFrame(() => {
+      fontUpdateFrameRef.current = null;
+      if (terminalRef.current !== terminal) return;
+      activateRef.current?.();
+      terminal.refresh(0, terminal.rows - 1);
+      requestThumbnailRef.current?.();
+    });
+    return () => {
+      if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+      fontUpdateFrameRef.current = null;
+    };
+  }, [fontSizePx]);
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     let disposed = false;
@@ -138,18 +158,21 @@ export function TerminalSurface({
       verifyAuth,
       notifyUnauthorized,
     );
+    const terminalFontFamily = getComputedStyle(document.documentElement).getPropertyValue("--font-family-mono").trim()
+      || '"JetBrainsMono Nerd Font Web", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans Mono", "Courier New", monospace';
     let terminal: Terminal;
     let fit: FitAddon;
     try {
       terminal = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
-        fontFamily: '"JetBrainsMono Nerd Font Web", monospace',
-        fontSize: 13,
+        fontFamily: terminalFontFamily,
+        fontSize: initialFontSizeRef.current,
         fontWeight: "normal",
         fontWeightBold: "bold",
         lineHeight: 1,
         linkHandler: { activate: (_event, url) => onOpenLink(url) },
+        screenReaderMode: true,
         scrollback: 5000,
         theme: terminalThemes[initialThemeRef.current],
       });
@@ -388,9 +411,17 @@ export function TerminalSurface({
     container.addEventListener("paste", paste, true);
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
-    void document.fonts.ready.then(() => {
-      if (!disposed && visibleRef.current) scheduleResize();
-    });
+    void Promise.all([
+      document.fonts.load(`400 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
+      document.fonts.load(`700 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
+    ]).then(() => {
+      if (disposed) return;
+      terminal.options.fontFamily = "monospace";
+      terminal.options.fontFamily = terminalFontFamily;
+      terminal.clearTextureAtlas();
+      if (visibleRef.current) sendResize();
+      terminal.refresh(0, terminal.rows - 1);
+    }).catch(() => undefined);
     connect();
     if (visibleRef.current) {
       focusFrame = requestAnimationFrame(() => {
@@ -405,6 +436,8 @@ export function TerminalSurface({
       connection.stop();
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+      if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
+      fontUpdateFrameRef.current = null;
       if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
       thumbnailGenerationRef.current += 1;
       observer.disconnect();
@@ -423,13 +456,14 @@ export function TerminalSurface({
   }, [session.id, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
-      className={`terminal-surface ${rendered ? "active" : ""} ${focused ? "focused" : ""} ${className ?? ""}`}
+      className={`terminal-surface ${rendered ? "active" : ""} ${className ?? ""}`}
+      onFocusCapture={onFocus}
       onPointerDown={onFocus}
     >
       <div ref={containerRef} className="terminal-xterm-host" />
       {imagePastePhase && (
-        <div className="terminal-image-paste-status" role="status" aria-live="polite">
-          <LoaderCircle className="spin" />
+        <div className="terminal-image-paste-status tw:pointer-events-none tw:absolute tw:top-[12px] tw:right-[14px] tw:z-[4] tw:flex tw:items-center tw:gap-[7px] tw:rounded-[99px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface-raised)_92%,transparent)] tw:px-[10px] tw:py-[7px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:font-normal tw:leading-none tw:text-muted-foreground tw:shadow-[0_6px_18px_rgb(0_0_0/12%)] tw:backdrop-blur-[8px]" role="status" aria-live="polite">
+          <LoaderCircle className="spin tw:size-[13px]" />
           {imagePastePhase === "preparing" ? "Preparing image…" : "Pasting image…"}
         </div>
       )}

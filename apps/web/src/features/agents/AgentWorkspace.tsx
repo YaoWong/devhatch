@@ -55,7 +55,7 @@ export function AgentWorkspace({
   error: string | null;
   onActivate: (id: string) => void;
   onRename: (session: AgentSession, name: string) => Promise<boolean>;
-  onClose: (session: AgentSession) => void;
+  onClose: (session: AgentSession, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
   onChoosePath: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
   onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
@@ -92,7 +92,7 @@ export function AgentWorkspace({
     error={error}
     onActivate={onActivate}
     onRename={(session: TerminalInfo, name) => onRename(session as AgentSession, name)}
-    onClose={(session: TerminalInfo) => onClose(session as AgentSession)}
+    onClose={(session: TerminalInfo, returnFocus, fallbackFocus) => onClose(session as AgentSession, returnFocus, fallbackFocus)}
     onChoosePath={selectedAgent?.available ? onChoosePath : undefined}
     onPhaseChange={onPhaseChange}
     onLayoutCountChange={onLayoutCountChange}

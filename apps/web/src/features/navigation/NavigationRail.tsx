@@ -1,4 +1,6 @@
 import { ArrowLeft, Bot, Globe2, LoaderCircle, Pin, PinOff, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
@@ -25,8 +27,6 @@ export function NavigationRail({
   titleRefs,
   onNavigate,
   terminalSettingsOpen,
-  terminalSettingsToggleRef,
-  terminalSettingsPanelRef,
   terminalCapacity,
   terminalLayoutCount,
   terminalLayoutPreset,
@@ -35,8 +35,7 @@ export function NavigationRail({
   terminalThumbnailSide,
   terminalLaunchPathsHeight,
   confirmTerminalClose,
-  onToggleTerminalSettings,
-  onCloseTerminalSettings,
+  onTerminalSettingsOpenChange,
   onTerminalCapacityChange,
   onTerminalLayoutPresetChange,
   onTerminalPathDisplayChange,
@@ -86,8 +85,6 @@ export function NavigationRail({
   titleRefs: TitleRefs;
   onNavigate: (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn?: boolean) => void;
   terminalSettingsOpen: boolean;
-  terminalSettingsToggleRef: RefObject<HTMLButtonElement | null>;
-  terminalSettingsPanelRef: RefObject<HTMLDivElement | null>;
   terminalCapacity: TerminalWorkspaceCapacity;
   terminalLayoutCount: TerminalLayoutCount | null;
   terminalLayoutPreset: TerminalLayoutPreset | null;
@@ -96,8 +93,7 @@ export function NavigationRail({
   terminalThumbnailSide: "left" | "right";
   terminalLaunchPathsHeight: number;
   confirmTerminalClose: boolean;
-  onToggleTerminalSettings: () => void;
-  onCloseTerminalSettings: () => void;
+  onTerminalSettingsOpenChange: (open: boolean) => void;
   onTerminalCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onTerminalLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onTerminalPathDisplayChange: (mode: LaunchPathDisplay) => void;
@@ -143,6 +139,29 @@ export function NavigationRail({
   const settingsAvailable =
     (railPage === "terminal" && workspaceMode === "terminal") ||
     (railPage === "agent" && workspaceMode === "agent");
+  const settingsControls = (
+    <TerminalSettingsControls
+      capacity={workspaceMode === "terminal" ? terminalCapacity : agentCapacity}
+      layoutCount={workspaceMode === "terminal" ? terminalLayoutCount : agentLayoutCount}
+      layoutPreset={workspaceMode === "terminal" ? terminalLayoutPreset : agentLayoutPreset}
+      pathDisplay={workspaceMode === "terminal" ? terminalPathDisplay : agentPathDisplay}
+      thumbnailsAutoHide={workspaceMode === "terminal" ? terminalThumbnailsAutoHide : agentThumbnailsAutoHide}
+      thumbnailSide={workspaceMode === "terminal" ? terminalThumbnailSide : agentThumbnailSide}
+      launchPathsHeight={terminalLaunchPathsHeight}
+      confirmClose={confirmTerminalClose}
+      agents={workspaceMode === "agent" ? agents : undefined}
+      defaultAgentId={defaultAgentId}
+      showLaunchPathsHeight={workspaceMode === "agent"}
+      onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
+      onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
+      onPathDisplayChange={workspaceMode === "terminal" ? onTerminalPathDisplayChange : onAgentPathDisplayChange}
+      onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}
+      onThumbnailSideChange={workspaceMode === "terminal" ? onTerminalThumbnailSideChange : onAgentThumbnailSideChange}
+      onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
+      onConfirmCloseChange={onConfirmTerminalCloseChange}
+      onDefaultAgentChange={workspaceMode === "agent" ? onDefaultAgentChange : undefined}
+    />
+  );
   return (
     <aside
       ref={railRef}
@@ -154,25 +173,20 @@ export function NavigationRail({
       onMouseLeave={onCanvasLeave}
       onFocus={onCanvasFocus}
       onBlur={onCanvasBlur}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && terminalSettingsOpen) {
-          event.preventDefault();
-          event.stopPropagation();
-          onCloseTerminalSettings();
-        }
-      }}
     >
       <Brand />
       <div className="rail-pages">
         <section
           ref={modesPageRef}
           className={
-            `rail-page ${railPage === "modes" ? "active" : ""} ` +
+            `rail-page modes-page ${railPage === "modes" ? "active" : ""} ` +
             `${railMotion === "forward" ? "forward-exit" : ""} ` +
             `${railMotion === "return" ? "return-enter" : ""}`
           }
+          aria-hidden={railPage !== "modes"}
+          inert={railPage !== "modes" ? true : undefined}
         >
-          <nav className="primary-nav" aria-label="Workspace modes">
+          <nav className="tw:flex tw:w-full tw:flex-col tw:gap-[8px] tw:pt-[12px]" aria-label="Workspace modes">
             <ModeButton
               mode="terminal"
               modeRefs={modeRefs}
@@ -205,6 +219,7 @@ export function NavigationRail({
           mode="terminal"
           className={pageClass("terminal")}
           railMotion={railMotion}
+          active={railPage === "terminal"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -215,6 +230,7 @@ export function NavigationRail({
           mode="agent"
           className={pageClass("agent")}
           railMotion={railMotion}
+          active={railPage === "agent"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -223,8 +239,9 @@ export function NavigationRail({
         </DetailPage>
         <DetailPage
           mode="skills"
-          className={pageClass("skills")}
+          className={`${pageClass("skills")} skills-rail-page`}
           railMotion={railMotion}
+          active={railPage === "skills"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -235,6 +252,7 @@ export function NavigationRail({
           mode="webapp"
           className={pageClass("webapp")}
           railMotion={railMotion}
+          active={railPage === "webapp"}
           pageRefs={pageRefs}
           titleRefs={titleRefs}
           onNavigate={onNavigate}
@@ -243,65 +261,57 @@ export function NavigationRail({
         </DetailPage>
       </div>
       {workspaceMode === "webapp" && webAppRunning && (
-        <div className="canvas-mode-actions">
-          <button className="secondary-button canvas-stop-button" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
+        <div className="tw:flex tw:items-center tw:justify-center tw:gap-[8px] tw:border-t tw:border-border tw:pt-[10px]">
+          <Button variant="outline" className="tw:h-10 tw:w-full tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
             {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
             <span>{webAppOperation === "stop" ? "Stopping…" : "Stop Web App"}</span>
-          </button>
-        </div>
-      )}
-      {terminalSettingsOpen && railPage === workspaceMode && (workspaceMode === "terminal" || workspaceMode === "agent") && (
-        <div ref={terminalSettingsPanelRef} id={`canvas-${workspaceMode}-settings`} className={`canvas-terminal-settings ${canvasPinned ? "pinned" : ""}`} role="group" aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}>
-          <TerminalSettingsControls
-            capacity={workspaceMode === "terminal" ? terminalCapacity : agentCapacity}
-            layoutCount={workspaceMode === "terminal" ? terminalLayoutCount : agentLayoutCount}
-            layoutPreset={workspaceMode === "terminal" ? terminalLayoutPreset : agentLayoutPreset}
-            pathDisplay={workspaceMode === "terminal" ? terminalPathDisplay : agentPathDisplay}
-            thumbnailsAutoHide={workspaceMode === "terminal" ? terminalThumbnailsAutoHide : agentThumbnailsAutoHide}
-            thumbnailSide={workspaceMode === "terminal" ? terminalThumbnailSide : agentThumbnailSide}
-            launchPathsHeight={terminalLaunchPathsHeight}
-            confirmClose={confirmTerminalClose}
-            agents={workspaceMode === "agent" ? agents : undefined}
-            defaultAgentId={defaultAgentId}
-            showLaunchPathsHeight={workspaceMode === "agent"}
-            onCapacityChange={workspaceMode === "terminal" ? onTerminalCapacityChange : onAgentCapacityChange}
-            onLayoutPresetChange={workspaceMode === "terminal" ? onTerminalLayoutPresetChange : onAgentLayoutPresetChange}
-            onPathDisplayChange={workspaceMode === "terminal" ? onTerminalPathDisplayChange : onAgentPathDisplayChange}
-            onToggleThumbnailAutoHide={workspaceMode === "terminal" ? onToggleTerminalThumbnailAutoHide : onToggleAgentThumbnailAutoHide}
-            onThumbnailSideChange={workspaceMode === "terminal" ? onTerminalThumbnailSideChange : onAgentThumbnailSideChange}
-            onLaunchPathsHeightChange={onTerminalLaunchPathsHeightChange}
-            onConfirmCloseChange={onConfirmTerminalCloseChange}
-            onDefaultAgentChange={workspaceMode === "agent" ? onDefaultAgentChange : undefined}
-          />
+          </Button>
         </div>
       )}
       <footer className={`canvas-rail-footer ${settingsAvailable ? "has-settings" : ""}`}>
-        <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
-          <button
-            ref={terminalSettingsToggleRef}
-            className={`settings-nav-item ${terminalSettingsOpen ? "active" : ""}`}
-            type="button"
-            aria-hidden={!settingsAvailable}
-            aria-expanded={settingsAvailable ? terminalSettingsOpen : false}
-            aria-controls={`canvas-${workspaceMode}-settings`}
-            tabIndex={settingsAvailable ? undefined : -1}
-            onClick={onToggleTerminalSettings}
+        <Popover open={settingsAvailable && terminalSettingsOpen} onOpenChange={onTerminalSettingsOpenChange}>
+          <div className="canvas-settings-slot" inert={!settingsAvailable ? true : undefined}>
+            <PopoverTrigger
+              disabled={!settingsAvailable}
+              render={
+                <Button
+                  variant="ghost"
+                  className="tw:h-10 tw:min-w-0 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:bg-transparent! tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:text-[var(--color-text-subtle)] tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-transparent! tw:hover:text-[var(--color-text-subtle)]! tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-subtle)]! tw:data-popup-open:bg-transparent! tw:data-popup-open:text-[var(--color-text-subtle)]!"
+                  type="button"
+                  aria-hidden={!settingsAvailable}
+                  tabIndex={settingsAvailable ? undefined : -1}
+                />
+              }
+            >
+              <SlidersHorizontal className="tw:size-[19px] tw:text-current" />
+              <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
+            </PopoverTrigger>
+          </div>
+          <PopoverContent
+            id={`canvas-${workspaceMode}-settings`}
+            data-canvas-rail-popover=""
+            side="top"
+            align="start"
+            sideOffset={8}
+            initialFocus={false}
+            className="canvas-terminal-settings tw:max-h-[var(--available-height)] tw:min-w-0 tw:w-[calc(var(--anchor-width)+48px)] tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-3 tw:shadow-[0_12px_32px_rgb(0_0_0/16%)] tw:ring-0 tw:backdrop-blur-xl tw:[@media(pointer:coarse)]:w-[calc(var(--anchor-width)+52px)]"
+            aria-label={`${workspaceMode === "terminal" ? "Terminal" : "Agent"} settings`}
           >
-            <SlidersHorizontal />
-            <span>{workspaceMode === "terminal" ? "Terminal" : "Agent"} settings</span>
-          </button>
-        </div>
-        <button
-          className="canvas-auto-hide"
+            {settingsControls}
+          </PopoverContent>
+        </Popover>
+        <Button
+          variant="outline"
+          size="icon"
+          className="tw:size-10 tw:rounded-[10px] tw:bg-transparent tw:text-muted-foreground tw:transition-transform tw:[@media(pointer:coarse)]:size-11"
           type="button"
           aria-label="Auto-hide navigation"
           aria-pressed={!canvasPinned}
           title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`}
           onClick={onCanvasPinnedChange}
         >
-          {canvasPinned ? <Pin /> : <PinOff />}
-          <span className="sr-only">Auto-hide navigation</span>
-        </button>
+          {canvasPinned ? <Pin className="tw:size-4" /> : <PinOff className="tw:size-4" />}
+        </Button>
       </footer>
     </aside>
   );
@@ -328,17 +338,20 @@ function ModeButton({
   }[mode];
   const Icon = meta.icon;
   return (
-    <button
+    <Button
       ref={(node) => {
         modeRefs.current[mode] = node;
       }}
-      className={`nav-item ${active ? "active" : ""}`}
+      variant="ghost"
+      type="button"
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-[12px] tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650] tw:transition-[background-color,color,transform] ${active ? "tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >
-      <Icon />
-      <span>{meta.label}</span>
-      {count !== undefined && <b>{count}</b>}
-    </button>
+      <Icon className="tw:size-[22px] tw:flex-none" />
+      <span className="tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap">{meta.label}</span>
+      {count !== undefined && <b className="tw:ml-auto tw:grid tw:h-[20px] tw:min-w-[20px] tw:flex-none tw:place-items-center tw:rounded-[99px] tw:bg-[var(--color-surface)] tw:px-[6px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:font-normal tw:leading-none tw:text-[var(--color-text)]">{count}</b>}
+    </Button>
   );
 }
 
@@ -346,6 +359,7 @@ function DetailPage({
   mode,
   className,
   railMotion,
+  active,
   pageRefs,
   titleRefs,
   onNavigate,
@@ -354,6 +368,7 @@ function DetailPage({
   mode: RailDetailMode;
   className: string;
   railMotion: RailMotion;
+  active: boolean;
   pageRefs: PageRefs;
   titleRefs: TitleRefs;
   onNavigate: (page: "modes", motion: "return", showSettingsOnReturn?: boolean) => void;
@@ -372,11 +387,13 @@ function DetailPage({
         pageRefs.current[mode] = node;
       }}
       className={className}
+      aria-hidden={!active}
+      inert={!active ? true : undefined}
     >
       <div className="rail-page-title">
-        <button className="rail-back" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
-          <ArrowLeft />
-        </button>
+        <Button variant="ghost" size="icon" className="rail-back tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-subtle)] tw:transition-none tw:hover:bg-[var(--color-canvas)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
+          <ArrowLeft className="tw:size-[18px]" />
+        </Button>
         <span
           ref={(node) => {
             titleRefs.current[mode] = node;

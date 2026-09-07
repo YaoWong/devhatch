@@ -152,6 +152,7 @@ export function useAgentWorkspace({
   useEffect(() => {
     clearConfigs();
     setSelectedSkillProfileId(null);
+    setSearch("");
     if (selectedAgent?.id) void refreshConfigs().catch((reason) => reportError(errorMessage(reason)));
   }, [selectedAgent?.id, clearConfigs, refreshConfigs, reportError]);
 

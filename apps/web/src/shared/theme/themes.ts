@@ -1,5 +1,7 @@
 import type { ThemeId } from "../../types/settings";
 
+export const DEFAULT_THEME_ID: ThemeId = "default";
+
 export const themes = [
   { id: "default", name: "Default", description: "DevHatch light" },
   { id: "latte", name: "Catppuccin Latte", description: "Warm light" },
@@ -16,11 +18,19 @@ export function isThemeId(value: unknown): value is ThemeId {
 }
 
 export function cachedTheme(): ThemeId {
-  const value = localStorage.getItem(storageKey);
-  return isThemeId(value) ? value : "default";
+  try {
+    const value = localStorage.getItem(storageKey);
+    return isThemeId(value) ? value : DEFAULT_THEME_ID;
+  } catch {
+    return DEFAULT_THEME_ID;
+  }
 }
 
 export function applyTheme(themeId: ThemeId) {
   document.documentElement.dataset.theme = themeId;
-  localStorage.setItem(storageKey, themeId);
+  try {
+    localStorage.setItem(storageKey, themeId);
+  } catch {
+    return;
+  }
 }

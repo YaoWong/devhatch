@@ -40,6 +40,10 @@ npm start
 
 `npm run build` builds both the web application and the release server. `npm start` rebuilds the web application before starting the release server. A relocatable production bundle can use either of these layouts:
 
+DevHatch can install the running build as a user-level systemd service from **Settings → Help & setup**. The installer creates a versioned release under `~/.local/lib/devhatch`, writes `devhatch.service` under the active user systemd configuration directory, preserves the current data directory and supported runtime settings, and hands off the listening port after active requests complete. Existing managed files require explicit overwrite confirmation; unrelated units or installation files are never replaced. User lingering is reported but not enabled automatically, so the service may stop after the final host logout when lingering is disabled.
+
+The setup form accepts only the server-local path to a Byte API key file. On Unix, the file must be regular, non-symlinked, owned by the server user, and inaccessible to group and other users (`0600` or stricter). DevHatch stores the path but never reads or copies the key value. Generic terminals, Agent processes, Web Apps, and repository commands do not inherit `BYTE_API_API_KEY`; the Pi launch configuration is responsible for loading the key from the configured file when needed.
+
 ```text
 devhatch/
 └── bin/

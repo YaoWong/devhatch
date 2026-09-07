@@ -107,6 +107,7 @@ impl WebAppManager {
             .env("OD_WEB_PORT", PORT.to_string())
             .env("OD_DATA_DIR", self.root.join("data"))
             .env("OD_ALLOWED_ORIGINS", public_url())
+            .env_remove("BYTE_API_API_KEY")
             .env_remove("BYTE_API_PROVIDER_ID")
             .env_remove("OPENCODE_CONFIG")
             .env_remove("OPENCODE_CONFIG_CONTENT")

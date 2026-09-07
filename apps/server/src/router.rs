@@ -12,12 +12,18 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
     agent, agent_workspace, auth, filesystem, history, launch_config, launch_path, settings,
-    skillink, state::AppState, terminal, terminal_launch_path, terminal_workspace, web_app,
+    skillink, state::AppState, supervisor, terminal, terminal_launch_path, terminal_workspace,
+    web_app,
 };
 
 pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
     let protected = Router::new()
         .route("/api/health", get(terminal::health))
+        .route("/api/supervisor", get(supervisor::get))
+        .route(
+            "/api/supervisor/install",
+            axum::routing::post(supervisor::install),
+        )
         .route("/api/auth/verify", get(auth::verify))
         .route("/api/auth/logout", axum::routing::post(auth::logout))
         .route("/api/filesystem/directories", get(filesystem::directories))

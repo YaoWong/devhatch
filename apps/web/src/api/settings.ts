@@ -1,13 +1,15 @@
-import type { AppSettings } from "../types/settings";
+import type { AppSettings, AppSettingsResponse } from "../types/settings";
 import { requestJson } from "./client";
 
 export function getSettings() {
-  return requestJson<{ settings: AppSettings }>("/api/settings", undefined, "Unable to load settings")
+  return requestJson<{ settings: AppSettingsResponse }>("/api/settings", undefined, "Unable to load settings")
     .then(({ settings }) => settings);
 }
 
+export type UpdateSettingsPatch = Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx" | "fontSizePx" | "uiScalePercent">>;
+
 export function updateSettings(
-  patch: Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx">>,
+  patch: UpdateSettingsPatch,
 ) {
   return requestJson<{ settings: AppSettings }>(
     "/api/settings",

@@ -1,6 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
+
+type RailFocusRequest = {
+  mode: DetailMode;
+  target: "back" | "mode";
+};
+
+export function getRailFocusRequest(
+  page: RailPage,
+  motion: Exclude<RailMotion, null>,
+  currentPage: RailPage,
+  workspaceMode: WorkspaceMode,
+): RailFocusRequest {
+  return {
+    mode: page === "modes" ? (currentPage === "modes" ? workspaceMode : currentPage) : page,
+    target: motion === "forward" ? "back" : "mode",
+  };
+}
 
 export function useNavigation(bumpFocus: () => void) {
   const [railPage, setRailPage] = useState<RailPage>("modes");
@@ -8,6 +25,7 @@ export function useNavigation(bumpFocus: () => void) {
   const [railMotion, setRailMotion] = useState<RailMotion>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const motionTimer = useRef<number | null>(null);
+  const railFlightRef = useRef<ActiveRailFlight | null>(null);
   const modesPageRef = useRef<HTMLElement | null>(null);
   const pageRefs = useRef<Record<DetailMode, HTMLElement | null>>({
     terminal: null,
@@ -23,6 +41,7 @@ export function useNavigation(bumpFocus: () => void) {
     webapp: null,
     settings: null,
   });
+  const focusRequestRef = useRef<RailFocusRequest | null>(null);
   const titleRefs = useRef<Record<DetailMode, HTMLSpanElement | null>>({
     terminal: null,
     agent: null,
@@ -41,41 +60,98 @@ export function useNavigation(bumpFocus: () => void) {
     [],
   );
 
+  useLayoutEffect(() => {
+    const request = focusRequestRef.current;
+    if (!request) return;
+    const target = request.target === "back"
+      ? railPage === request.mode
+        ? pageRefs.current[request.mode]?.querySelector<HTMLButtonElement>(".rail-back")
+        : null
+      : railPage === "modes"
+        ? modeRefs.current[request.mode]
+        : null;
+    if (!target) return;
+    focusRequestRef.current = null;
+    if (target.closest('[inert], [aria-hidden="true"]')) return;
+    target.focus({ preventScroll: true });
+  }, [railPage]);
+
   const animateRail = useCallback(
     (page: RailPage, motion: Exclude<RailMotion, null>, showSettingsOnReturn = false) => {
-      const detailMode: DetailMode = page === "modes" ? (railPage === "modes" ? workspaceMode : railPage) : page;
+      const focusRequest = getRailFocusRequest(page, motion, railPage, workspaceMode);
+      const detailMode = focusRequest.mode;
+      if (motionTimer.current) window.clearTimeout(motionTimer.current);
+      railFlightRef.current?.cancel();
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        focusRequestRef.current = focusRequest;
+        setRailMotion(null);
+        setRailPage(page);
+        if (motion === "forward" && page !== "modes") {
+          setWorkspaceMode(page);
+          if (page === "terminal" || page === "agent") bumpFocus();
+        } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
+          setWorkspaceMode("settings");
+        }
+        return;
+      }
       const source = modeRefs.current[detailMode];
       const detail = titleRefs.current[detailMode];
       const modesPage = modesPageRef.current;
       const targetPage = pageRefs.current[detailMode];
       if (!source || !detail || !modesPage || !targetPage) return;
-      if (motionTimer.current) window.clearTimeout(motionTimer.current);
+      focusRequestRef.current = focusRequest;
       const measuring = motion === "forward" ? targetPage : modesPage;
       measuring.classList.add("is-measuring");
       const sourceRect = source.getBoundingClientRect();
       const detailRect = detail.getBoundingClientRect();
       measuring.classList.remove("is-measuring");
+      const sourceLabel = source.querySelector<HTMLElement>("span");
+      const detailLabel = detail.querySelector<HTMLElement>("strong");
+      if (!sourceLabel || !detailLabel) return;
       const sourceStyle = getComputedStyle(source);
-      const sourceState = {
-        left: sourceRect.left,
-        top: sourceRect.top,
-        width: sourceRect.width,
-        height: sourceRect.height,
-        paddingLeft: Number.parseFloat(sourceStyle.paddingLeft),
-        paddingRight: Number.parseFloat(sourceStyle.paddingRight),
-        borderRadius: Number.parseFloat(sourceStyle.borderRadius),
-      };
-      const detailState = {
-        left: detailRect.left,
-        top: detailRect.top,
-        width: detailRect.width,
-        height: detailRect.height,
-        paddingLeft: 0,
-        paddingRight: 0,
-        borderRadius: 0,
-      };
+      const sourceLabelStyle = getComputedStyle(sourceLabel);
+      const detailStyle = getComputedStyle(detail);
+      const detailLabelStyle = getComputedStyle(detailLabel);
+      const sourceState = flightState(sourceRect, sourceStyle, sourceLabelStyle);
+      const detailState = flightState(detailRect, detailStyle, detailLabelStyle);
       const from = motion === "return" ? detailState : sourceState;
       const to = motion === "return" ? sourceState : detailState;
+      const themeStyle = getComputedStyle(document.documentElement);
+      const inactiveColor = themeStyle.getPropertyValue("--color-text-subtle").trim();
+      const sourceColor = sourceStyle.color;
+      const sourceBackground = sourceStyle.backgroundColor;
+      const detailColor = detailStyle.color;
+      const detailBackground = detailStyle.backgroundColor;
+      const fromColor = motion === "forward" ? sourceColor : detailColor;
+      const fromBackground = motion === "forward" ? sourceBackground : detailBackground;
+      const toColor = motion === "forward" ? detailColor : showSettingsOnReturn ? inactiveColor : sourceColor;
+      const toBackground = motion === "forward" || showSettingsOnReturn ? "transparent" : sourceBackground;
+      const flight = document.createElement("span");
+      flight.className = "shared-title-flight";
+      flight.setAttribute("aria-hidden", "true");
+      const icon = source.querySelector("svg")?.cloneNode(true);
+      if (icon) flight.appendChild(icon);
+      const label = document.createElement("span");
+      label.textContent = modeMeta[detailMode].label;
+      flight.appendChild(label);
+      Object.assign(flight.style, frame(from), {
+        color: fromColor,
+        backgroundColor: fromBackground,
+      });
+      source.dataset.railFlightSource = "";
+      detail.dataset.railFlightSource = "";
+      document.body.appendChild(flight);
+      let animation: Animation | null = null;
+      const cleanup = () => {
+        animation?.cancel();
+        animation = null;
+        flight.remove();
+        if (railFlightRef.current?.element !== flight) return;
+        delete source.dataset.railFlightSource;
+        delete detail.dataset.railFlightSource;
+        railFlightRef.current = null;
+      };
+      railFlightRef.current = { element: flight, cancel: cleanup };
       setRailMotion(motion);
       setRailPage(page);
       if (motion === "forward" && page !== "modes") {
@@ -84,41 +160,21 @@ export function useNavigation(bumpFocus: () => void) {
       } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
         setWorkspaceMode("settings");
       }
-      requestAnimationFrame(() => {
-        const themeStyle = getComputedStyle(document.documentElement);
-        const solidColor = themeStyle.getPropertyValue("--color-text").trim();
-        const onSolidColor = themeStyle.getPropertyValue("--color-on-solid").trim();
-        const flight = document.createElement("span");
-        flight.className = "shared-title-flight";
-        const icon = source.querySelector("svg")?.cloneNode(true);
-        if (icon) flight.appendChild(icon);
-        const label = document.createElement("span");
-        label.textContent = modeMeta[detailMode].label;
-        flight.appendChild(label);
-        Object.assign(flight.style, {
-          left: `${from.left}px`,
-          top: `${from.top}px`,
-          width: `${from.width}px`,
-          height: `${from.height}px`,
-          paddingLeft: `${from.paddingLeft}px`,
-          paddingRight: `${from.paddingRight}px`,
-          borderRadius: `${from.borderRadius}px`,
-          color: motion === "forward" ? onSolidColor : solidColor,
-        });
-        source.classList.add("shared-title-hidden");
-        detail.classList.add("shared-title-hidden");
-        document.body.appendChild(flight);
-        const finished =
-          motion === "forward"
-            ? animateForward(flight, sourceState, from, to, solidColor, onSolidColor)
-            : animateReturn(flight, from, to, solidColor, onSolidColor);
-        finished.finally(() => {
-          flight.remove();
-          source.classList.remove("shared-title-hidden");
-          detail.classList.remove("shared-title-hidden");
-        });
-      });
-      motionTimer.current = window.setTimeout(() => setRailMotion(null), motion === "forward" ? 640 : 540);
+      try {
+        animation = flight.animate(
+          [
+            { ...frame(from), color: fromColor, backgroundColor: fromBackground },
+            { ...frame(to), color: toColor, backgroundColor: toBackground },
+          ],
+          { duration: 420, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "forwards" },
+        );
+      } catch {
+        cleanup();
+        setRailMotion(null);
+        return;
+      }
+      animation.finished.then(cleanup, cleanup);
+      motionTimer.current = window.setTimeout(() => setRailMotion(null), 440);
     },
     [bumpFocus, modeMeta, railPage, workspaceMode],
   );
@@ -126,17 +182,26 @@ export function useNavigation(bumpFocus: () => void) {
   useEffect(
     () => () => {
       if (motionTimer.current) window.clearTimeout(motionTimer.current);
+      railFlightRef.current?.cancel();
     },
     [],
   );
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen((value) => !value);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+
+  const closeSidebar = useCallback(() => {
+    if (motionTimer.current) {
+      window.clearTimeout(motionTimer.current);
+      motionTimer.current = null;
+    }
+    railFlightRef.current?.cancel();
+    setRailMotion(null);
+    setSidebarOpen(false);
   }, []);
 
-  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
-
   const selectMode = useCallback((mode: DetailMode) => {
+    if (motionTimer.current) window.clearTimeout(motionTimer.current);
+    railFlightRef.current?.cancel();
     setWorkspaceMode(mode);
     setRailPage(mode);
     setRailMotion(null);
@@ -145,6 +210,8 @@ export function useNavigation(bumpFocus: () => void) {
   }, [bumpFocus]);
 
   const showGlobalSettings = useCallback(() => {
+    if (motionTimer.current) window.clearTimeout(motionTimer.current);
+    railFlightRef.current?.cancel();
     setWorkspaceMode("settings");
     setRailPage("modes");
     setRailMotion(null);
@@ -164,10 +231,15 @@ export function useNavigation(bumpFocus: () => void) {
     animateRail,
     selectMode,
     showGlobalSettings,
-    toggleSidebar,
+    openSidebar,
     closeSidebar,
   };
 }
+
+type ActiveRailFlight = {
+  element: HTMLSpanElement;
+  cancel: () => void;
+};
 
 type FlightState = {
   left: number;
@@ -177,7 +249,32 @@ type FlightState = {
   paddingLeft: number;
   paddingRight: number;
   borderRadius: number;
+  gap: number;
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number;
 };
+
+function numericStyle(value: string, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function flightState(rect: DOMRect, containerStyle: CSSStyleDeclaration, labelStyle: CSSStyleDeclaration): FlightState {
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    paddingLeft: numericStyle(containerStyle.paddingLeft),
+    paddingRight: numericStyle(containerStyle.paddingRight),
+    borderRadius: numericStyle(containerStyle.borderRadius),
+    gap: numericStyle(containerStyle.columnGap),
+    fontSize: numericStyle(labelStyle.fontSize),
+    fontWeight: numericStyle(labelStyle.fontWeight, 400),
+    lineHeight: numericStyle(labelStyle.lineHeight, numericStyle(labelStyle.fontSize) * 1.2),
+  };
+}
 
 function frame(state: FlightState) {
   return {
@@ -188,71 +285,9 @@ function frame(state: FlightState) {
     paddingLeft: `${state.paddingLeft}px`,
     paddingRight: `${state.paddingRight}px`,
     borderRadius: `${state.borderRadius}px`,
+    gap: `${state.gap}px`,
+    fontSize: `${state.fontSize}px`,
+    fontWeight: `${state.fontWeight}`,
+    lineHeight: `${state.lineHeight}px`,
   };
-}
-
-function animateForward(
-  flight: HTMLSpanElement,
-  source: FlightState,
-  from: FlightState,
-  to: FlightState,
-  solidColor: string,
-  onSolidColor: string,
-) {
-  const backdrop = document.createElement("span");
-  backdrop.className = "shared-title-backdrop";
-  Object.assign(backdrop.style, {
-    left: `${source.left}px`,
-    top: `${source.top}px`,
-    width: `${source.width}px`,
-    height: `${source.height}px`,
-    borderRadius: `${source.borderRadius}px`,
-  });
-  document.body.appendChild(backdrop);
-  const phase = {
-    ...from,
-    left: from.left + (to.left - from.left) * 0.08,
-    top: from.top + (to.top - from.top) * 0.08,
-  };
-  const titlePhase = flight.animate(
-    [
-      { left: `${from.left}px`, top: `${from.top}px`, color: onSolidColor },
-      { left: `${phase.left}px`, top: `${phase.top}px`, color: solidColor },
-    ],
-    { duration: 240, easing: "cubic-bezier(.32, 0, .67, 0)", fill: "forwards" },
-  );
-  const backdropPhase = backdrop.animate(
-    [
-      { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1 },
-      {
-        transform: `translate3d(${(to.left - from.left) * 0.08}px, ` + `${(to.top - from.top) * 0.08}px, 0) scale(.9)`,
-        opacity: 0,
-      },
-    ],
-    { duration: 240, easing: "cubic-bezier(.32, 0, .67, 0)", fill: "forwards" },
-  );
-  return Promise.all([titlePhase.finished, backdropPhase.finished]).then(() => {
-    backdrop.remove();
-    return flight.animate([frame(phase), frame(to)], {
-      duration: 380,
-      easing: "cubic-bezier(.22, 1, .36, 1)",
-      fill: "forwards",
-    }).finished;
-  });
-}
-
-function animateReturn(
-  flight: HTMLSpanElement,
-  from: FlightState,
-  to: FlightState,
-  solidColor: string,
-  onSolidColor: string,
-) {
-  return flight.animate(
-    [
-      { ...frame(from), background: "transparent" },
-      { ...frame(to), background: solidColor, color: onSolidColor },
-    ],
-    { duration: 520, easing: "cubic-bezier(.22, 1, .36, 1)", fill: "forwards" },
-  ).finished;
 }

@@ -1,4 +1,4 @@
-import { useRef, type FocusEventHandler, type KeyboardEvent, type PointerEvent, type Ref } from "react";
+import { useEffect, useRef, type FocusEventHandler, type KeyboardEvent, type PointerEvent, type Ref } from "react";
 
 type Props = {
   value: number;
@@ -22,6 +22,27 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
     startWidth: number;
     currentWidth: number;
   } | null>(null);
+  const callbacksRef = useRef({ onPreview, onResizingChange });
+  callbacksRef.current = { onPreview, onResizingChange };
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 920px)");
+    const cancel = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+      callbacksRef.current.onResizingChange(false);
+      callbacksRef.current.onPreview(drag.startWidth);
+    };
+    query.addEventListener("change", cancel);
+    window.addEventListener("pageshow", cancel);
+    window.addEventListener("orientationchange", cancel);
+    return () => {
+      query.removeEventListener("change", cancel);
+      window.removeEventListener("pageshow", cancel);
+      window.removeEventListener("orientationchange", cancel);
+      dragRef.current = null;
+    };
+  }, []);
 
   const finish = (event: PointerEvent<HTMLDivElement>, commit: boolean) => {
     const drag = dragRef.current;
@@ -67,7 +88,7 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       onBlur={onBlur}
       onKeyDown={handleKeyDown}
       onPointerDown={(event) => {
-        if (hidden || event.button !== 0 || !window.matchMedia("(min-width: 921px)").matches) return;
+        if (hidden || event.button !== 0 || window.matchMedia("(max-width: 920px)").matches) return;
         dragRef.current = {
           pointerId: event.pointerId,
           startX: event.clientX,

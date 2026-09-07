@@ -14,6 +14,7 @@ mod session;
 mod settings;
 mod skillink;
 mod state;
+mod supervisor;
 mod terminal;
 mod terminal_launch_path;
 mod terminal_workspace;
@@ -22,7 +23,21 @@ mod web_app;
 const ADMIN_PASSWORD_FILE_ENV: &str = "DEVHATCH_ADMIN_PASSWORD_FILE";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_password = read_admin_password()?;
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    match arguments.as_slice() {
+        [] => run_server(read_admin_password()?),
+        [mode] if mode == std::ffi::OsStr::new("--systemd-server") => run_server(None),
+        [mode, path] if mode == std::ffi::OsStr::new("--systemd-handoff-wait") => {
+            supervisor::run_handoff_helper(std::path::Path::new(path))
+        }
+        [mode, path] if mode == std::ffi::OsStr::new("--systemd-launch") => {
+            supervisor::run_systemd_launcher(std::path::Path::new(path))
+        }
+        _ => Err("invalid command-line arguments".into()),
+    }
+}
+
+fn run_server(admin_password: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         std::env::remove_var(ADMIN_PASSWORD_FILE_ENV);
     }

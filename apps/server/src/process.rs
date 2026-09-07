@@ -2,6 +2,7 @@ use std::{io, process::Output, time::Duration};
 
 pub(crate) const ADMIN_PASSWORD_ENV: &str = "DEVHATCH_ADMIN_PASSWORD";
 pub(crate) const ADMIN_PASSWORD_FILE_ENV: &str = "DEVHATCH_ADMIN_PASSWORD_FILE";
+pub(crate) const BYTE_API_KEY_ENV: &str = "BYTE_API_API_KEY";
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -59,7 +60,7 @@ impl ChildIdentity {
 }
 
 #[cfg(unix)]
-fn process_starttime(pid: u32) -> Option<u64> {
+pub(crate) fn process_starttime(pid: u32) -> Option<u64> {
     std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()?
         .rsplit_once(") ")?
@@ -85,6 +86,7 @@ fn process_group(pid: u32) -> Option<u32> {
 pub(crate) fn configure_std_command(command: &mut std::process::Command) {
     command.env_remove(ADMIN_PASSWORD_ENV);
     command.env_remove(ADMIN_PASSWORD_FILE_ENV);
+    command.env_remove(BYTE_API_KEY_ENV);
     #[cfg(unix)]
     command.process_group(0);
 }
@@ -92,6 +94,7 @@ pub(crate) fn configure_std_command(command: &mut std::process::Command) {
 pub(crate) fn configure_tokio_command(command: &mut tokio::process::Command) {
     command.env_remove(ADMIN_PASSWORD_ENV);
     command.env_remove(ADMIN_PASSWORD_FILE_ENV);
+    command.env_remove(BYTE_API_KEY_ENV);
     #[cfg(unix)]
     command.process_group(0);
     command.kill_on_drop(true);
@@ -298,8 +301,8 @@ pub(crate) fn io_error(error: String) -> io::Error {
 #[cfg(all(test, unix))]
 mod tests {
     use super::{
-        ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_FILE_ENV, ChildIdentity, command_output,
-        configure_std_command, signal_owned,
+        ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_FILE_ENV, BYTE_API_KEY_ENV, ChildIdentity,
+        command_output, configure_std_command, signal_owned,
     };
     use std::{process::Command, time::Duration};
 
@@ -334,32 +337,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_output_removes_admin_password_environment() {
+    async fn command_output_removes_secret_environment_but_keeps_key_file() {
         let mut command = tokio::process::Command::new("/bin/sh");
         command
             .arg("-c")
-            .arg("printf '%s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\"")
+            .arg("printf '%s %s %s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\" \"${BYTE_API_API_KEY-unset}\" \"${BYTE_API_API_KEY_FILE-unset}\"")
             .env(ADMIN_PASSWORD_ENV, "secret")
-            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/path");
+            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/password")
+            .env(BYTE_API_KEY_ENV, "api-secret")
+            .env("BYTE_API_API_KEY_FILE", "/secret/key");
         let output = command_output(&mut command, Duration::from_secs(2), 1024)
             .await
             .unwrap();
         assert!(output.status.success());
-        assert_eq!(output.stdout, b"unset unset");
+        assert_eq!(output.stdout, b"unset unset unset /secret/key");
     }
 
     #[test]
-    fn configured_std_command_removes_admin_password_environment() {
+    fn configured_std_command_removes_secret_environment_but_keeps_key_file() {
         let mut command = Command::new("/bin/sh");
         command
             .arg("-c")
-            .arg("printf '%s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\"")
+            .arg("printf '%s %s %s %s' \"${DEVHATCH_ADMIN_PASSWORD-unset}\" \"${DEVHATCH_ADMIN_PASSWORD_FILE-unset}\" \"${BYTE_API_API_KEY-unset}\" \"${BYTE_API_API_KEY_FILE-unset}\"")
             .env(ADMIN_PASSWORD_ENV, "secret")
-            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/path");
+            .env(ADMIN_PASSWORD_FILE_ENV, "/secret/password")
+            .env(BYTE_API_KEY_ENV, "api-secret")
+            .env("BYTE_API_API_KEY_FILE", "/secret/key");
         configure_std_command(&mut command);
         let output = command.output().unwrap();
         assert!(output.status.success());
-        assert_eq!(output.stdout, b"unset unset");
+        assert_eq!(output.stdout, b"unset unset unset /secret/key");
     }
 
     #[test]

@@ -1,15 +1,66 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { getSettings, updateSettings } from "../../api/settings";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { getSettings, updateSettings, type UpdateSettingsPatch } from "../../api/settings";
+import { appearanceDefaults, DebouncedNumberSetting, hasDisplaySettings, persistLatestValue } from "./settingsPersistence";
 import { ThemeContext } from "../../shared/theme/ThemeContext";
-import { applyTheme, cachedTheme, isThemeId } from "../../shared/theme/themes";
+import {
+  applyDisplaySettings,
+  cacheDisplaySettings,
+  cachedDisplaySettings,
+  clampFontSize,
+  clampUiScale,
+  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
+  MAX_FONT_SIZE_PX,
+  MAX_UI_SCALE_PERCENT,
+  MIN_FONT_SIZE_PX,
+  MIN_UI_SCALE_PERCENT,
+} from "../../shared/theme/displaySettings";
+import { applyTheme, cachedTheme, DEFAULT_THEME_ID, isThemeId } from "../../shared/theme/themes";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { ThemeId } from "../../types/settings";
 
+type NumericSettingsKey = Exclude<keyof UpdateSettingsPatch, "theme">;
+
+function usePersistedNumberSetting(
+  key: NumericSettingsKey,
+  initialValue: number,
+  min: number,
+  max: number,
+  reportError: (reason: unknown) => void,
+  enabled = true,
+  step = 1,
+) {
+  const [value, setValueState] = useState(initialValue);
+  const settingRef = useRef<DebouncedNumberSetting | null>(null);
+  if (!settingRef.current) {
+    settingRef.current = new DebouncedNumberSetting({
+      key,
+      initialValue,
+      min,
+      max,
+      step,
+      persist: updateSettings,
+      onValue: setValueState,
+      onError: reportError,
+    });
+  }
+  const setting = settingRef.current;
+  useEffect(() => {
+    setting.activate();
+    return () => setting.dispose();
+  }, [setting]);
+  const setValue = useCallback((nextValue: number) => {
+    if (enabled) setting.setValue(nextValue);
+  }, [enabled, setting]);
+  const loadValue = useCallback((nextValue: unknown) => setting.loadValue(nextValue), [setting]);
+  return { value, setValue, loadValue };
+}
+
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const initialTheme = useRef(cachedTheme()).current;
+  const initialDisplaySettings = useRef(cachedDisplaySettings()).current;
   const [themeId, setThemeId] = useState<ThemeId | null>(null);
-  const [agentLaunchPathsMaxHeightPx, setAgentLaunchPathsMaxHeightPxState] = useState(286);
-  const [navigationRailWidthPx, setNavigationRailWidthPxState] = useState(288);
+  const [supportsDisplaySettings, setSupportsDisplaySettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showInitialLoading = useDelayedLoading(themeId === null);
@@ -17,142 +68,47 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const confirmedRef = useRef<ThemeId>(initialTheme);
   const desiredRef = useRef<ThemeId>(initialTheme);
   const savingRef = useRef(false);
-  const confirmedHeightRef = useRef(286);
-  const desiredHeightRef = useRef(286);
-  const heightSavingRef = useRef(false);
-  const heightGenerationRef = useRef(0);
-  const heightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const confirmedWidthRef = useRef(288);
-  const desiredWidthRef = useRef(288);
-  const widthSavingRef = useRef(false);
-  const widthGenerationRef = useRef(0);
-  const widthTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reportError = useCallback((reason: unknown) => {
+    if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
+  }, []);
+  const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("agentLaunchPathsMaxHeightPx", DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, 160, 480, reportError);
+  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, 240, 480, reportError);
+  const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError, supportsDisplaySettings);
+  const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError, supportsDisplaySettings, 5);
+
+  useLayoutEffect(() => {
+    applyDisplaySettings(fontSizeValue, uiScaleValue);
+    cacheDisplaySettings(fontSizeValue, uiScaleValue);
+  }, [fontSizeValue, uiScaleValue]);
 
   const flush = useCallback(async () => {
     if (savingRef.current) return;
     savingRef.current = true;
     if (mountedRef.current) setSaving(true);
-    while (desiredRef.current !== confirmedRef.current) {
-      const requested = desiredRef.current;
-      try {
+    await persistLatestValue({
+      getConfirmed: () => confirmedRef.current,
+      getDesired: () => desiredRef.current,
+      persist: async (requested) => {
         const settings = await updateSettings({ theme: requested });
-        confirmedRef.current = isThemeId(settings.theme) ? settings.theme : requested;
-        if (mountedRef.current && desiredRef.current === requested) {
-          applyTheme(confirmedRef.current);
-          setThemeId(confirmedRef.current);
+        return isThemeId(settings.theme) ? settings.theme : requested;
+      },
+      setConfirmed: (theme) => {
+        confirmedRef.current = theme;
+      },
+      setDesired: (theme) => {
+        desiredRef.current = theme;
+      },
+      onValue: (theme) => {
+        if (mountedRef.current) {
+          applyTheme(theme);
+          setThemeId(theme);
         }
-      } catch (reason) {
-        if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
-        if (desiredRef.current === requested) {
-          desiredRef.current = confirmedRef.current;
-          if (mountedRef.current) {
-            applyTheme(confirmedRef.current);
-            setThemeId(confirmedRef.current);
-          }
-        }
-      }
-    }
+      },
+      onError: reportError,
+    });
     savingRef.current = false;
     if (mountedRef.current) setSaving(false);
-  }, []);
-
-  const flushAgentLaunchPathsMaxHeight = useCallback(async () => {
-    heightTimerRef.current = null;
-    if (heightSavingRef.current) return;
-    heightSavingRef.current = true;
-    const requested = desiredHeightRef.current;
-    const generation = heightGenerationRef.current;
-    try {
-      const settings = await updateSettings({ agentLaunchPathsMaxHeightPx: requested });
-      confirmedHeightRef.current = settings.agentLaunchPathsMaxHeightPx;
-      if (
-        mountedRef.current &&
-        heightGenerationRef.current === generation &&
-        desiredHeightRef.current === requested
-      ) {
-        setAgentLaunchPathsMaxHeightPxState(confirmedHeightRef.current);
-      }
-    } catch (reason) {
-      if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
-      if (desiredHeightRef.current === requested) {
-        desiredHeightRef.current = confirmedHeightRef.current;
-        if (mountedRef.current && heightGenerationRef.current === generation) {
-          setAgentLaunchPathsMaxHeightPxState(confirmedHeightRef.current);
-        }
-      }
-    } finally {
-      heightSavingRef.current = false;
-      if (
-        mountedRef.current &&
-        desiredHeightRef.current !== confirmedHeightRef.current &&
-        !heightTimerRef.current
-      ) {
-        heightTimerRef.current = setTimeout(() => void flushAgentLaunchPathsMaxHeight(), 200);
-      }
-    }
-  }, []);
-
-  const setAgentLaunchPathsMaxHeightPx = useCallback(
-    (value: number) => {
-      const next = Math.min(480, Math.max(160, Math.round(value)));
-      heightGenerationRef.current += 1;
-      desiredHeightRef.current = next;
-      setAgentLaunchPathsMaxHeightPxState(next);
-      setError(null);
-      if (heightTimerRef.current) clearTimeout(heightTimerRef.current);
-      heightTimerRef.current = setTimeout(() => void flushAgentLaunchPathsMaxHeight(), 200);
-    },
-    [flushAgentLaunchPathsMaxHeight],
-  );
-
-  const flushNavigationRailWidth = useCallback(async () => {
-    widthTimerRef.current = null;
-    if (widthSavingRef.current) return;
-    widthSavingRef.current = true;
-    const requested = desiredWidthRef.current;
-    const generation = widthGenerationRef.current;
-    try {
-      const settings = await updateSettings({ navigationRailWidthPx: requested });
-      confirmedWidthRef.current = settings.navigationRailWidthPx;
-      if (
-        mountedRef.current &&
-        widthGenerationRef.current === generation &&
-        desiredWidthRef.current === requested
-      ) {
-        setNavigationRailWidthPxState(confirmedWidthRef.current);
-      }
-    } catch (reason) {
-      if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
-      if (desiredWidthRef.current === requested) {
-        desiredWidthRef.current = confirmedWidthRef.current;
-        if (mountedRef.current && widthGenerationRef.current === generation) {
-          setNavigationRailWidthPxState(confirmedWidthRef.current);
-        }
-      }
-    } finally {
-      widthSavingRef.current = false;
-      if (
-        mountedRef.current &&
-        desiredWidthRef.current !== confirmedWidthRef.current &&
-        !widthTimerRef.current
-      ) {
-        widthTimerRef.current = setTimeout(() => void flushNavigationRailWidth(), 200);
-      }
-    }
-  }, []);
-
-  const setNavigationRailWidthPx = useCallback(
-    (value: number) => {
-      const next = Math.min(480, Math.max(240, Math.round(value)));
-      widthGenerationRef.current += 1;
-      desiredWidthRef.current = next;
-      setNavigationRailWidthPxState(next);
-      setError(null);
-      if (widthTimerRef.current) clearTimeout(widthTimerRef.current);
-      widthTimerRef.current = setTimeout(() => void flushNavigationRailWidth(), 200);
-    },
-    [flushNavigationRailWidth],
-  );
+  }, [reportError]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -161,27 +117,15 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     getSettings()
       .then((settings) => {
         if (!active) return;
-        const next = isThemeId(settings.theme) ? settings.theme : "default";
+        const next = isThemeId(settings.theme) ? settings.theme : DEFAULT_THEME_ID;
         confirmedRef.current = next;
         desiredRef.current = next;
-        const height =
-          Number.isInteger(settings.agentLaunchPathsMaxHeightPx) &&
-          settings.agentLaunchPathsMaxHeightPx >= 160 &&
-          settings.agentLaunchPathsMaxHeightPx <= 480
-            ? settings.agentLaunchPathsMaxHeightPx
-            : 286;
-        confirmedHeightRef.current = height;
-        desiredHeightRef.current = height;
-        setAgentLaunchPathsMaxHeightPxState(height);
-        const width =
-          Number.isInteger(settings.navigationRailWidthPx) &&
-          settings.navigationRailWidthPx >= 240 &&
-          settings.navigationRailWidthPx <= 480
-            ? settings.navigationRailWidthPx
-            : 288;
-        confirmedWidthRef.current = width;
-        desiredWidthRef.current = width;
-        setNavigationRailWidthPxState(width);
+        loadHeightValue(settings.agentLaunchPathsMaxHeightPx);
+        loadWidthValue(settings.navigationRailWidthPx);
+        const displaySettingsSupported = hasDisplaySettings(settings);
+        setSupportsDisplaySettings(displaySettingsSupported);
+        loadFontSizeValue(displaySettingsSupported ? settings.fontSizePx : initialDisplaySettings.fontSizePx);
+        loadUiScaleValue(displaySettingsSupported ? settings.uiScalePercent : initialDisplaySettings.uiScalePercent);
         applyTheme(next);
         setThemeId(next);
       })
@@ -189,47 +133,81 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         confirmedRef.current = initialTheme;
         desiredRef.current = initialTheme;
-        confirmedHeightRef.current = 286;
-        desiredHeightRef.current = 286;
-        setAgentLaunchPathsMaxHeightPxState(286);
-        confirmedWidthRef.current = 288;
-        desiredWidthRef.current = 288;
-        setNavigationRailWidthPxState(288);
+        setSupportsDisplaySettings(false);
+        loadHeightValue(DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX);
+        loadWidthValue(DEFAULT_NAVIGATION_RAIL_WIDTH_PX);
+        loadFontSizeValue(initialDisplaySettings.fontSizePx);
+        loadUiScaleValue(initialDisplaySettings.uiScalePercent);
         applyTheme(initialTheme);
         setThemeId(initialTheme);
-        setError(reason instanceof Error ? reason.message : String(reason));
+        reportError(reason);
       });
     return () => {
       active = false;
       mountedRef.current = false;
-      if (heightTimerRef.current) clearTimeout(heightTimerRef.current);
-      if (widthTimerRef.current) clearTimeout(widthTimerRef.current);
       applyTheme(cachedTheme());
+      const cached = cachedDisplaySettings();
+      applyDisplaySettings(cached.fontSizePx, cached.uiScalePercent);
     };
-  }, [initialTheme]);
+  }, [initialDisplaySettings.fontSizePx, initialDisplaySettings.uiScalePercent, initialTheme, loadFontSizeValue, loadHeightValue, loadUiScaleValue, loadWidthValue, reportError]);
 
+  const dismissError = useCallback(() => setError(null), []);
   const selectTheme = useCallback((next: ThemeId) => {
+    const changed = desiredRef.current !== next;
     desiredRef.current = next;
     setThemeId(next);
     applyTheme(next);
     setError(null);
-    void flush();
+    if (changed || next !== confirmedRef.current) void flush();
   }, [flush]);
+  const setAgentLaunchPathsMaxHeightPx = useCallback((value: number) => {
+    setError(null);
+    setHeightValue(value);
+  }, [setHeightValue]);
+  const setNavigationRailWidthPx = useCallback((value: number) => {
+    setError(null);
+    setWidthValue(value);
+  }, [setWidthValue]);
+  const setFontSizePx = useCallback((value: number) => {
+    setError(null);
+    setFontSizeValue(clampFontSize(value));
+  }, [setFontSizeValue]);
+  const setUiScalePercent = useCallback((value: number) => {
+    setError(null);
+    setUiScaleValue(clampUiScale(value));
+  }, [setUiScaleValue]);
+  const resetAppearance = useCallback(() => {
+    const defaults = appearanceDefaults(supportsDisplaySettings);
+    selectTheme(defaults.theme);
+    setAgentLaunchPathsMaxHeightPx(defaults.agentLaunchPathsMaxHeightPx);
+    setNavigationRailWidthPx(defaults.navigationRailWidthPx);
+    if (defaults.fontSizePx !== undefined && defaults.uiScalePercent !== undefined) {
+      setFontSizePx(defaults.fontSizePx);
+      setUiScalePercent(defaults.uiScalePercent);
+    }
+  }, [selectTheme, setAgentLaunchPathsMaxHeightPx, setFontSizePx, setNavigationRailWidthPx, setUiScalePercent, supportsDisplaySettings]);
 
   if (themeId === null) {
-    return showInitialLoading ? <main className="auth-page" aria-busy="true"><section className="auth-card"><h1>DevHatch</h1><p role="status">Loading settings…</p></section></main> : null;
+    return showInitialLoading ? <main className="tw:flex tw:h-dvh tw:w-full tw:items-center tw:justify-center tw:overflow-y-auto tw:overscroll-contain tw:bg-[radial-gradient(circle_at_50%_0%,var(--color-surface)_0,var(--color-canvas)_55%)] tw:pt-[max(16px,env(safe-area-inset-top))] tw:pr-[max(16px,env(safe-area-inset-right))] tw:pb-[max(16px,env(safe-area-inset-bottom))] tw:pl-[max(16px,env(safe-area-inset-left))]" aria-busy="true"><section className="tw:my-auto tw:grid tw:w-[min(420px,100%)] tw:flex-none tw:gap-[18px] tw:rounded-[24px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-[32px] tw:shadow-[0_24px_70px_rgb(0_0_0/10%)]"><h1 className="tw:m-0 tw:text-[calc(24px*var(--app-font-scale))] tw:tracking-[-0.04em]">DevHatch</h1><p className="tw:m-0 tw:text-sm tw:leading-[1.5] tw:text-muted-foreground" role="status">Loading settings…</p></section></main> : null;
   }
   return (
     <ThemeContext
       value={{
         themeId,
-        agentLaunchPathsMaxHeightPx,
-        navigationRailWidthPx,
+        agentLaunchPathsMaxHeightPx: heightValue,
+        navigationRailWidthPx: widthValue,
+        fontSizePx: fontSizeValue,
+        uiScalePercent: uiScaleValue,
+        supportsDisplaySettings,
         saving,
         error,
+        dismissError,
+        resetAppearance,
         selectTheme,
         setAgentLaunchPathsMaxHeightPx,
         setNavigationRailWidthPx,
+        setFontSizePx,
+        setUiScalePercent,
       }}
     >
       {children}

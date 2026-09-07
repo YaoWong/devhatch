@@ -1,0 +1,126 @@
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw);
+@import "tw-animate-css/prefix";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:where(
+  :root[data-theme="frappe"],
+  :root[data-theme="macchiato"],
+  :root[data-theme="mocha"],
+  :root[data-theme="frappe"] *,
+  :root[data-theme="macchiato"] *,
+  :root[data-theme="mocha"] *
+));
+@custom-variant skills-max-860 (@container skills-workspace (max-width: 860px));
+@custom-variant skills-max-480 (@container skills-workspace (max-width: 480px));
+
+@layer theme {
+:root {
+  --background: var(--color-canvas);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface-raised);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-on-solid);
+  --secondary: var(--color-surface-muted);
+  --secondary-foreground: var(--color-text-subtle);
+  --muted: var(--color-surface-muted);
+  --muted-foreground: var(--color-text-muted);
+  --accent: var(--color-accent-soft);
+  --accent-foreground: var(--color-accent);
+  --destructive: var(--color-danger);
+  --border: var(--color-border);
+  --input: var(--color-border-strong);
+  --ring: var(--color-accent);
+  --radius: calc(0.625rem * var(--app-ui-scale));
+}
+}
+
+@theme inline {
+  --spacing: calc(0.25rem * var(--app-ui-scale));
+  --text-xs: calc(0.75rem * var(--app-font-scale));
+  --text-sm: calc(0.875rem * var(--app-font-scale));
+  --text-base: calc(1rem * var(--app-font-scale));
+  --text-lg: calc(1.125rem * var(--app-font-scale));
+  --text-xl: calc(1.25rem * var(--app-font-scale));
+  --text-2xl: calc(1.5rem * var(--app-font-scale));
+  --text-3xl: calc(1.875rem * var(--app-font-scale));
+  --text-4xl: calc(2.25rem * var(--app-font-scale));
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  button:not([data-slot]) {
+    color: inherit;
+    font: inherit;
+  }
+}
+
+@layer components {
+  [data-slot="button"],
+  [data-slot="input"] {
+    color: inherit;
+    font: inherit;
+  }
+
+  [data-slot="button"] {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  [data-slot="button"],
+  [data-slot="dropdown-menu-trigger"] {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  [data-slot="input"],
+  [data-slot="select-trigger"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="slider"],
+  [data-settings-section-link] {
+    min-height: 40px;
+  }
+
+  @media (pointer: coarse) {
+    [data-slot="button"],
+    [data-slot="dropdown-menu-trigger"] {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    [data-slot="input"],
+    [data-slot="select-trigger"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="slider"],
+    [data-settings-section-link] {
+      min-height: 44px;
+    }
+  }
+}
