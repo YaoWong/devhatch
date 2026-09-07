@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import agentConfigSource from "../../features/agents/AgentConfigDialog.tsx?raw";
 import terminalWorkspaceSource from "../../features/terminals/TerminalWorkspace.tsx?raw";
 import workspacePickerSource from "../../features/terminals/WorkspacePicker.tsx?raw";
+import authGateSource from "../../features/auth/AuthGate.tsx?raw";
+import settingsProviderSource from "../providers/SettingsProvider.tsx?raw";
+import mainSource from "../../main.tsx?raw";
 import brandingSource from "../../shared/branding/Branding.tsx?raw";
 import terminalSurfaceSource from "../../shared/terminal/TerminalSurface.tsx?raw";
+import floatingAlertSource from "../../shared/ui/FloatingAlert.tsx?raw";
 
 const { readFileSync } = (globalThis as typeof globalThis & {
   process: { getBuiltinModule: (name: "node:fs") => { readFileSync: (url: URL, encoding: "utf8") => string } };
@@ -15,6 +19,7 @@ const indexCss = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 const shadcnCss = readFileSync(new URL("./shadcn.css", import.meta.url), "utf8");
 const shellCss = readFileSync(new URL("./shell.css", import.meta.url), "utf8");
 const terminalCss = readFileSync(new URL("./terminal.css", import.meta.url), "utf8");
+const themesCss = readFileSync(new URL("./themes.css", import.meta.url), "utf8");
 
 describe("terminal accessibility styles", () => {
   it("keeps authored components before direct shadcn components", () => {
@@ -32,6 +37,16 @@ describe("terminal accessibility styles", () => {
       "",
     ].join("\n"));
     expect(`${baseCss}\n${indexCss}`).not.toMatch(/\blegacy\b/);
+  });
+
+  it("keeps static auth, error, and rail leaf presentation colocated", () => {
+    expect(baseCss).not.toMatch(/\.(?:fatal-error|auth-page|auth-card|auth-mark)\b/);
+    expect(shellCss).not.toMatch(/\.(?:sr-only|settings-nav-item|menu-section|menu-label|quiet-message|history-status|select-copy|agent-option|agent-brand|session-filter-path|presence-dot)\b/);
+    expect(mainSource).toContain("tw:my-[15vh]");
+    expect(authGateSource).toContain("tw:h-dvh");
+    expect(settingsProviderSource).toContain("tw:h-dvh");
+    expect(themesCss).not.toContain("--color-success:");
+    expect(themesCss).not.toContain("--shadow-color:");
   });
 
   it("keeps migrated config dialog presentation colocated", () => {
@@ -64,10 +79,12 @@ describe("terminal accessibility styles", () => {
     expect(brandingSource).toContain("tw:size-[40px]");
     expect(brandingSource).toContain("tw:size-[32px]");
     expect(terminalCss).not.toMatch(/\.stage\s*\{|\.terminal-stage-empty|\.empty-state|\.error-banner|\.terminal-thumbnail img|\.terminal-image-paste-status\s*\{/);
+    expect(terminalCss).not.toMatch(/\.terminal-thumbnail \{[^}]*\b(?:width|padding|border|background|color|box-shadow):/);
+    expect(responsiveCss).not.toMatch(/\.terminal-workspace\b|\.terminal-thumbnail-caption\b|\.terminal-card-grid\.count-|\.terminal-window\.thumbnail-source\b/);
     expect(terminalWorkspaceSource).toContain("terminal-stage tw:relative tw:min-h-0 tw:overflow-hidden");
     expect(terminalWorkspaceSource).toContain("tw:place-content-center");
-    expect(terminalWorkspaceSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
-    expect(terminalWorkspaceSource).toContain("tw:[overflow-wrap:anywhere]");
+    expect(floatingAlertSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
+    expect(floatingAlertSource).toContain("tw:[overflow-wrap:anywhere]");
     expect(terminalWorkspaceSource).toContain("tw:[&:not([src])]:invisible");
     expect(terminalSurfaceSource).toContain("terminal-image-paste-status tw:pointer-events-none");
     expect(terminalSurfaceSource).toContain("spin tw:size-[13px]");

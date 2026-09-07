@@ -1,10 +1,13 @@
-import { CircleAlert, CircleCheck, Download, LoaderCircle, Play, RefreshCw, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Download, LoaderCircle, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import openDesignIcon from "./open-design.svg";
 import type { ConfirmAction } from "../../types/app";
 import type { WebApp, WebAppOperation } from "../../types/web-apps";
+import { FloatingAlert } from "../../shared/ui/FloatingAlert";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
+import { historyStatusClass, RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function WebAppsRailPage({
@@ -28,14 +31,14 @@ export function WebAppsRailPage({
 }) {
   const showLoading = useDelayedLoading(!settled);
   if (!app) {
-    if (showLoading) return <div className="quiet-message tw:text-xs" role="status">Loading Web Apps…</div>;
+    if (showLoading) return <RailQuietMessage className="tw:text-xs" role="status">Loading Web Apps…</RailQuietMessage>;
     if (!settled) return null;
     return (
-      <div className="quiet-message history-status unavailable tw:text-xs" role={loadError ? "alert" : undefined}>
+      <RailQuietMessage className={`${historyStatusClass} tw:text-xs`} role={loadError ? "alert" : undefined}>
         <strong>{loadError ? "Web Apps unavailable" : "No Web Apps available"}</strong>
         {loadError && <span>{loadError}</span>}
         {loadError && <Button variant="outline" className="tw:mt-1 tw:h-10 tw:w-fit tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" onClick={() => void onRetry()}>Retry</Button>}
-      </div>
+      </RailQuietMessage>
     );
   }
   const ready = app.prerequisites.git && app.prerequisites.node24 && app.prerequisites.corepack;
@@ -55,9 +58,9 @@ export function WebAppsRailPage({
     });
   };
   return (
-    <div className="menu-section">
-      <p className="menu-label">Available Apps</p>
-      <Button variant="outline" className="webapp-rail-card tw:h-auto tw:min-h-16 tw:w-full tw:justify-start tw:gap-2.5 tw:rounded-xl tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:border-input tw:hover:bg-popover!" type="button" onClick={action} disabled={operation !== null || app.running || (!app.installed && !ready)}>
+    <div className={railMenuSectionClass}>
+      <p className={railMenuLabelClass}>Available Apps</p>
+      <Button variant="outline" className="tw:h-auto tw:min-h-16 tw:w-full tw:justify-start tw:gap-2.5 tw:rounded-xl tw:border-border tw:bg-card tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:whitespace-normal tw:hover:border-input tw:hover:bg-popover!" type="button" onClick={action} disabled={operation !== null || app.running || (!app.installed && !ready)}>
         <img className="tw:size-9 tw:flex-none tw:rounded-[10px]" src={openDesignIcon} alt="" />
         <span className="tw:min-w-0 tw:flex-1">
           <strong className="tw:block tw:min-w-0 tw:overflow-hidden tw:text-sm tw:font-semibold tw:text-ellipsis tw:whitespace-nowrap tw:text-foreground">{app.name}</strong>
@@ -118,10 +121,10 @@ export function WebAppsWorkspace({
   const announcement = app.error || error ? "" : `OpenDesign status: ${app.running ? "Running" : phase}.`;
   return (
     <div className={cn("webapps-workspace tw:relative tw:min-h-0", runningUrl ? "is-running tw:h-full tw:overflow-hidden tw:bg-card" : "tw:overflow-auto tw:@container/webapps-workspace tw:bg-[var(--color-canvas)]")}>
-      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      <LiveRegion>{announcement}</LiveRegion>
       {runningUrl ? (
         <>
-          <section className="webapp-frame-shell tw:h-full tw:w-full tw:overflow-hidden" aria-label="OpenDesign application">
+          <section className="tw:h-full tw:w-full tw:overflow-hidden" aria-label="OpenDesign application">
             <iframe className="tw:block tw:h-full tw:w-full tw:border-0" title="OpenDesign" src={runningUrl} allow="clipboard-read; clipboard-write" />
           </section>
           {runningError && <WebAppError error={runningError} onDismiss={error ? onDismissError : undefined} />}
@@ -129,19 +132,19 @@ export function WebAppsWorkspace({
       ) : (
         <>
           <div className="tw:min-h-full tw:p-10 tw:@max-[640px]/webapps-workspace:px-3.5 tw:@max-[640px]/webapps-workspace:py-5">
-        <Card className="webapp-hero tw:mx-auto tw:flex tw:w-full tw:max-w-[880px] tw:flex-row tw:items-center tw:gap-7 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:p-[34px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[720px]/webapps-workspace:items-start tw:@max-[720px]/webapps-workspace:gap-5 tw:@max-[720px]/webapps-workspace:p-5 tw:@max-[520px]/webapps-workspace:flex-col">
-          <div className="webapp-icon tw:size-28 tw:flex-none tw:@max-[720px]/webapps-workspace:size-20 tw:@max-[520px]/webapps-workspace:size-[72px]">
+        <Card className="tw:mx-auto tw:flex tw:w-full tw:max-w-[880px] tw:flex-row tw:items-center tw:gap-7 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:p-[34px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[720px]/webapps-workspace:items-start tw:@max-[720px]/webapps-workspace:gap-5 tw:@max-[720px]/webapps-workspace:p-5 tw:@max-[520px]/webapps-workspace:flex-col">
+          <div className="tw:size-28 tw:flex-none tw:@max-[720px]/webapps-workspace:size-20 tw:@max-[520px]/webapps-workspace:size-[72px]">
             <img className="tw:size-full tw:rounded-[30px] tw:shadow-[0_12px_28px_rgb(0_0_0/16%)] tw:@max-[720px]/webapps-workspace:rounded-[22px]" src={openDesignIcon} alt="" />
           </div>
-          <div className="webapp-copy tw:min-w-0 tw:flex-1">
-            <span className={cn("webapp-status tw:inline-flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-none tw:text-muted-foreground tw:uppercase", app.running && "tw:text-[var(--color-success-fg)]", app.error && "tw:text-destructive")}>
+          <div className="tw:min-w-0 tw:flex-1">
+            <span className={cn("tw:inline-flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-none tw:text-muted-foreground tw:uppercase", app.running && "tw:text-[var(--color-success-fg)]", app.error && "tw:text-destructive")}>
               {app.installing && <LoaderCircle className="spin tw:size-3" />}
               {app.running ? "Running" : phase}
             </span>
             <h2 className="tw:mt-2 tw:mb-0 tw:text-[calc(28px*var(--app-font-scale))] tw:leading-tight tw:tracking-[-0.035em] tw:text-foreground tw:@max-[520px]/webapps-workspace:text-[calc(22px*var(--app-font-scale))]">OpenDesign</h2>
             <p className="tw:mt-2 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{app.description}</p>
-            {app.updateAvailable && <span className="webapp-update-badge tw:mt-2.5 tw:inline-block tw:rounded-full tw:bg-[var(--color-accent-soft)] tw:px-2 tw:py-1 tw:text-[calc(11px*var(--app-font-scale))] tw:font-semibold tw:text-[var(--color-warning-fg)]">Update available · v{app.latestVersion ?? "unknown"}</span>}
-            <div className="webapp-actions tw:mt-5 tw:flex tw:flex-wrap tw:gap-2">
+            {app.updateAvailable && <span className="tw:mt-2.5 tw:inline-block tw:rounded-full tw:bg-[var(--color-accent-soft)] tw:px-2 tw:py-1 tw:text-[calc(11px*var(--app-font-scale))] tw:font-semibold tw:text-[var(--color-warning-fg)]">Update available · v{app.latestVersion ?? "unknown"}</span>}
+            <div className="tw:mt-5 tw:flex tw:flex-wrap tw:gap-2">
               {!app.installed && (
                 <WebAppAction disabled={!ready || operation !== null} onClick={install} fullWidth>
                   {operation === "install" ? <LoaderCircle className="spin" /> : <Download />}
@@ -177,17 +180,17 @@ export function WebAppsWorkspace({
             <progress className="tw:h-2 tw:w-full tw:overflow-hidden tw:rounded-full tw:border-0 tw:accent-[var(--color-text)]" max="100" value={app.progress} aria-label={`${phase} progress`} />
           </Card>
         )}
-        <Card className="webapp-details tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-0 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:px-[30px] tw:py-[26px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[640px]/webapps-workspace:px-5 tw:@max-[640px]/webapps-workspace:py-[22px]">
+        <Card className="tw:mx-auto tw:mt-[18px] tw:w-full tw:max-w-[880px] tw:gap-0 tw:rounded-[20px] tw:border tw:border-border tw:bg-card tw:px-[30px] tw:py-[26px] tw:ring-0 tw:shadow-[0_8px_24px_rgb(0_0_0/5%)] tw:@max-[640px]/webapps-workspace:px-5 tw:@max-[640px]/webapps-workspace:py-[22px]">
           <h3 className="tw:mt-0 tw:mb-[18px] tw:text-lg tw:font-semibold tw:text-foreground">Local installation</h3>
-          <dl className="webapp-detail-grid tw:m-0 tw:grid tw:grid-cols-2 tw:gap-px tw:overflow-hidden tw:rounded-xl tw:border tw:border-border tw:bg-border tw:@max-[640px]/webapps-workspace:grid-cols-1">
+          <dl className="tw:m-0 tw:grid tw:grid-cols-2 tw:gap-px tw:overflow-hidden tw:rounded-xl tw:border tw:border-border tw:bg-border tw:@max-[640px]/webapps-workspace:grid-cols-1">
             <Detail label="Version" value={app.version ? `v${app.version}` : "0.18.2"} />
             <Detail label="Install path" value={app.installPath} mono />
             <Detail label="Git" value={app.prerequisites.git ? "Ready" : "Required"} ok={app.prerequisites.git} />
             <Detail label="Node.js 24" value={app.prerequisites.node24 ? "Ready" : "Required"} ok={app.prerequisites.node24} />
             <Detail label="Corepack" value={app.prerequisites.corepack ? "Ready" : "Required"} ok={app.prerequisites.corepack} />
           </dl>
-          {!ready && <p className="webapp-warning tw:mt-3.5 tw:mb-0 tw:flex tw:items-start tw:gap-2 tw:text-xs tw:leading-relaxed tw:text-[var(--color-warning-fg)]"><CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />Install the missing prerequisites before continuing.</p>}
-          {app.error && <p className="webapp-warning tw:mt-3.5 tw:mb-0 tw:flex tw:items-start tw:gap-2 tw:text-xs tw:leading-relaxed tw:text-[var(--color-warning-fg)]" role="alert"><CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />{app.error}</p>}
+          {!ready && <p className="tw:mt-3.5 tw:mb-0 tw:flex tw:items-start tw:gap-2 tw:text-xs tw:leading-relaxed tw:text-[var(--color-warning-fg)]"><CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />Install the missing prerequisites before continuing.</p>}
+          {app.error && <p className="tw:mt-3.5 tw:mb-0 tw:flex tw:items-start tw:gap-2 tw:text-xs tw:leading-relaxed tw:text-[var(--color-warning-fg)]" role="alert"><CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />{app.error}</p>}
         </Card>
           </div>
           {error && <WebAppError error={error} onDismiss={onDismissError} />}
@@ -218,16 +221,15 @@ function WebAppAction({ variant = "default", fullWidth = false, className, ...pr
 
 function WebAppError({ error, onDismiss }: { error: string; onDismiss?: () => void }) {
   return (
-    <div className="tw:absolute tw:left-1/2 tw:bottom-[18px] tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100%-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]" role="alert">
-      <span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span>
-      {onDismiss && <Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss" onClick={onDismiss}><X className="tw:size-3" /></Button>}
-    </div>
+    <FloatingAlert className="tw:absolute tw:left-1/2 tw:bottom-[18px] tw:-translate-x-1/2" onDismiss={onDismiss}>
+      {error}
+    </FloatingAlert>
   );
 }
 
 function Detail({ label, value, mono, ok }: { label: string; value: string; mono?: boolean; ok?: boolean }) {
   return (
-    <div className="webapp-detail tw:min-w-0 tw:bg-card tw:px-3.5 tw:py-3">
+    <div className="tw:min-w-0 tw:bg-card tw:px-3.5 tw:py-3">
       <dt className="tw:text-xs tw:text-muted-foreground">{label}</dt>
       <dd className={cn("tw:mt-1.5 tw:mb-0 tw:flex tw:items-start tw:gap-1.5 tw:text-[calc(13px*var(--app-font-scale))] tw:font-semibold tw:text-foreground", mono && "tw:break-all tw:font-mono tw:text-[calc(11px*var(--app-font-scale))] tw:leading-relaxed", ok === true && "tw:text-[var(--color-success-fg)]", ok === false && "tw:text-[var(--color-warning-fg)]")} title={mono ? value : undefined}>
         {ok !== undefined && (ok ? <CircleCheck className="tw:mt-0.5 tw:size-3.5 tw:flex-none" /> : <CircleAlert className="tw:mt-0.5 tw:size-3.5 tw:flex-none" />)}{value}

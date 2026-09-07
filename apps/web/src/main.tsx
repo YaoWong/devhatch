@@ -26,9 +26,9 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   render() {
     if (this.state.error) {
       return (
-        <main className="fatal-error">
+        <main className="tw:mx-auto tw:my-[15vh] tw:grid tw:w-[min(520px,calc(100%-32px))] tw:gap-[12px] tw:rounded-[18px] tw:border tw:border-border tw:bg-card tw:p-[24px] tw:shadow-[0_12px_32px_rgb(0_0_0/8%)]">
           <strong>DevHatch failed to render</strong>
-          <span>{this.state.error.message}</span>
+          <span className="tw:font-mono tw:text-[calc(12px*var(--app-font-scale))] tw:leading-[1.5] tw:text-muted-foreground">{this.state.error.message}</span>
           <Button className="tw:h-10 tw:w-fit tw:rounded-full tw:bg-foreground tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11" type="button" onClick={() => window.location.reload()}>Reload</Button>
         </main>
       )

@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { captureDialogReturnFocus, isCanvasRailOwned, resolveDialogFinalFocus } from "./dialogFocus";
 import { renameSubmission } from "./renameState";
 
 export function RenameDialog({
@@ -34,8 +35,8 @@ export function RenameDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
-  const canvasRailOwned = Boolean(returnFocusRef.current?.closest(".rail"));
+  const returnFocusRef = useRef<HTMLElement | null>(captureDialogReturnFocus());
+  const canvasRailOwned = isCanvasRailOwned(returnFocusRef.current);
   const errorId = useId();
   const descriptionId = useId();
   const counterId = useId();
@@ -46,19 +47,7 @@ export function RenameDialog({
       window.setTimeout(() => window.dispatchEvent(new Event("devhatch-canvas-rail-dialog-closed")));
     }
   };
-  const resolveFinalFocus = () => {
-    const previous = returnFocusRef.current;
-    const previousInOpenSheet = previous?.closest('[data-slot="sheet-content"][data-open]');
-    if (
-      previous?.isConnected && (previousInOpenSheet || !previous.closest("[inert], .canvas-rail-auto:not(.canvas-rail-open)")) &&
-      getComputedStyle(previous).display !== "none" && getComputedStyle(previous).visibility !== "hidden"
-    ) return previous;
-    const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
-    if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") return mobileTrigger;
-    const edgeTrigger = document.querySelector<HTMLElement>(".canvas-edge-trigger");
-    if (edgeTrigger && getComputedStyle(edgeTrigger).display !== "none") return edgeTrigger;
-    return document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body;
-  };
+  const resolveFinalFocus = () => resolveDialogFinalFocus(returnFocusRef.current);
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;

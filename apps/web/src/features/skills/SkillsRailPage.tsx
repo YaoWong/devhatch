@@ -1,5 +1,6 @@
 import { BookOpen, Boxes, FolderGit2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
 
 export type SkillsSection = "repositories" | "skills" | "profiles";
 
@@ -10,12 +11,12 @@ export function SkillsRailPage({ section, onSelect }: { section: SkillsSection; 
     { id: "profiles" as const, label: "Profiles", icon: UserRound },
   ];
   return (
-    <nav className="skills-section-nav menu-section" aria-label="Skills workspace">
-      <p className="menu-label">Workspace</p>
+    <nav className={`skills-section-nav ${railMenuSectionClass}`} aria-label="Skills workspace">
+      <p className={`${railMenuLabelClass} skills-menu-label`}>Workspace</p>
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Button variant="ghost" type="button" key={item.id} className={`settings-nav-item tw:h-10 tw:min-w-0 tw:w-full tw:justify-start tw:rounded-xl tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:transition-colors tw:duration-150 tw:[@media(pointer:coarse)]:h-11 ${section === item.id ? "active tw:bg-background" : ""}`} aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
+          <Button variant="ghost" type="button" key={item.id} className="tw:h-10 tw:min-w-0 tw:w-full tw:justify-start tw:rounded-xl tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:text-[var(--color-text-subtle)] tw:transition-colors tw:duration-150 tw:aria-[current=page]:bg-background tw:aria-[current=page]:text-foreground tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:[@media(pointer:coarse)]:h-11" aria-current={section === item.id ? "page" : undefined} onClick={() => onSelect(item.id)}>
             <Icon className="tw:size-[19px] tw:text-current" />
             <span className="tw:min-w-0 tw:truncate">{item.label}</span>
           </Button>

@@ -13,6 +13,7 @@ import {
 import { listDirectories } from "../../api/terminals";
 import type { DirectoryListing } from "../../types/terminals";
 import { displayPath } from "../../shared/lib/utils";
+import { captureDialogReturnFocus, resolveDialogFinalFocus } from "../../shared/ui/dialogFocus";
 import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
@@ -31,22 +32,8 @@ export function WorkspacePicker({
   const [loading, setLoading] = useState(true);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const showLoading = useDelayedLoading(loading);
-  const returnFocusRef = useRef<HTMLElement | null>(
-    document.activeElement instanceof HTMLElement ? document.activeElement : null,
-  );
-  const resolveFinalFocus = () => {
-    const previous = returnFocusRef.current;
-    const previousInOpenSheet = previous?.closest('[data-slot="sheet-content"][data-open]');
-    if (
-      previous?.isConnected && (previousInOpenSheet || !previous.closest("[inert], .canvas-rail-auto:not(.canvas-rail-open)")) &&
-      getComputedStyle(previous).display !== "none" && getComputedStyle(previous).visibility !== "hidden"
-    ) return previous;
-    const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
-    if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") return mobileTrigger;
-    const edgeTrigger = document.querySelector<HTMLElement>(".canvas-edge-trigger");
-    if (edgeTrigger && getComputedStyle(edgeTrigger).display !== "none") return edgeTrigger;
-    return document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body;
-  };
+  const returnFocusRef = useRef<HTMLElement | null>(captureDialogReturnFocus());
+  const resolveFinalFocus = () => resolveDialogFinalFocus(returnFocusRef.current);
   const requestGeneration = useRef(0);
   const mounted = useRef(true);
   const openDirectory = useCallback(async (directory?: string) => {

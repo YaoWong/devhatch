@@ -15,7 +15,6 @@
   --color-accent: #0071e3;
   --color-accent-hover: #0077ed;
   --color-accent-soft: #eaf4ff;
-  --color-success: #238636;
   --color-success-fg: #238636;
   --color-success-soft: #ecf7ee;
   --color-warning: #a66b00;
@@ -25,7 +24,6 @@
   --color-danger-hover: #e30018;
   --color-danger-soft: #fff2f3;
   --color-on-solid: #ffffff;
-  --shadow-color: 0 0 0;
   --overlay-color: 29 29 31;
 }
 
@@ -45,7 +43,6 @@
   --color-accent: #1e66f5;
   --color-accent-hover: #1a5cdd;
   --color-accent-soft: #dce7fc;
-  --color-success: #40a02b;
   --color-success-fg: #2f7f20;
   --color-success-soft: #dcebd8;
   --color-warning: #df8e1d;
@@ -55,7 +52,6 @@
   --color-danger-hover: #b90d32;
   --color-danger-soft: #f9dce3;
   --color-on-solid: #eff1f5;
-  --shadow-color: 76 79 105;
   --overlay-color: 76 79 105;
 }
 
@@ -75,7 +71,6 @@
   --color-accent: #8caaee;
   --color-accent-hover: #99b4f0;
   --color-accent-soft: #414b68;
-  --color-success: #a6d189;
   --color-success-fg: #a6d189;
   --color-success-soft: #3f5148;
   --color-warning: #e5c890;
@@ -85,7 +80,6 @@
   --color-danger-hover: #ef9496;
   --color-danger-soft: #533f4b;
   --color-on-solid: #303446;
-  --shadow-color: 0 0 0;
   --overlay-color: 15 17 23;
 }
 
@@ -105,7 +99,6 @@
   --color-accent: #8aadf4;
   --color-accent-hover: #96b5f5;
   --color-accent-soft: #394662;
-  --color-success: #a6da95;
   --color-success-fg: #a6da95;
   --color-success-soft: #384e46;
   --color-warning: #eed49f;
@@ -115,7 +108,6 @@
   --color-danger-hover: #f394a2;
   --color-danger-soft: #523b4a;
   --color-on-solid: #24273a;
-  --shadow-color: 0 0 0;
   --overlay-color: 10 11 18;
 }
 
@@ -135,7 +127,6 @@
   --color-accent: #89b4fa;
   --color-accent-hover: #96bcfb;
   --color-accent-soft: #303c59;
-  --color-success: #a6e3a1;
   --color-success-fg: #a6e3a1;
   --color-success-soft: #354b43;
   --color-warning: #f9e2af;
@@ -145,6 +136,5 @@
   --color-danger-hover: #f69ab4;
   --color-danger-soft: #503541;
   --color-on-solid: #1e1e2e;
-  --shadow-color: 0 0 0;
   --overlay-color: 7 7 12;
 }

@@ -6,6 +6,7 @@ describe("LiveRegion", () => {
   it("renders a polite atomic status region", () => {
     const markup = renderToStaticMarkup(<LiveRegion>Loading…</LiveRegion>);
 
+    expect(markup).toContain('class="tw:sr-only"');
     expect(markup).toContain('role="status"');
     expect(markup).toContain('aria-live="polite"');
     expect(markup).toContain('aria-atomic="true"');

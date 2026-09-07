@@ -641,14 +641,17 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         }}
       />
       {!mobileNavigation && !canvasPinned && (
-        <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:top-1/2 tw:left-0 tw:z-39 tw:size-10 tw:-translate-y-1/2 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:-translate-y-1/2! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
-          if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
-          else openCanvasRail();
-        }} onBlur={(event) => {
-          const next = event.relatedTarget;
-          if (canvasRailRef.current?.contains(next) || canvasHandleRef.current?.contains(next)) return;
-          scheduleCanvasClose();
-        }} onClick={openCanvasRail} />
+        <>
+          <div className="canvas-edge-hot-zone" aria-hidden="true" onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} />
+          <Button variant="ghost" ref={canvasEdgeTriggerRef} className="canvas-edge-trigger tw:fixed tw:top-1/2 tw:left-0 tw:z-39 tw:size-10 tw:-translate-y-1/2 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:hover:bg-transparent! tw:aria-expanded:bg-transparent! tw:active:not-aria-[haspopup]:-translate-y-1/2! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Open navigation" aria-expanded={canvasOpen} aria-controls={CANVAS_RAIL_ID} onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose} onFocus={() => {
+            if (suppressCanvasEdgeFocusRef.current) suppressCanvasEdgeFocusRef.current = false;
+            else openCanvasRail();
+          }} onBlur={(event) => {
+            const next = event.relatedTarget;
+            if (canvasRailRef.current?.contains(next) || canvasHandleRef.current?.contains(next)) return;
+            scheduleCanvasClose();
+          }} onClick={openCanvasRail} />
+        </>
       )}
       <MobileNavigationSheet
         mobile={mobileNavigation}

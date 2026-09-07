@@ -65,9 +65,12 @@ describe("dialog mobile navigation policy", () => {
     expect(onChange).toHaveBeenCalledTimes(4);
   });
 
-  it("keeps the desktop edge target at least 40px and the coarse target at least 44px", () => {
+  it("keeps a full-height edge hot zone and an accessible fallback target", () => {
     const appSource = Object.entries(sources).find(([path]) => path.endsWith("/App.tsx"))?.[1];
+    expect(appSource).toContain('className="canvas-edge-hot-zone" aria-hidden="true" onMouseEnter={openCanvasRail} onMouseLeave={scheduleCanvasClose}');
     expect(appSource).toMatch(/canvas-edge-trigger[^"\n]*\btw:size-10\b/);
     expect(appSource).toMatch(/canvas-edge-trigger[^"\n]*\btw:\[@media\(pointer:coarse\)\]:size-11\b/);
+    expect(appSource).toContain('aria-controls={CANVAS_RAIL_ID}');
+    expect(appSource).toContain('onClick={openCanvasRail}');
   });
 });

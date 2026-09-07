@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { ConfirmAction, DeleteTarget } from "../../types/app";
+import { resolveCanvasNavigationFocusFallback } from "./dialogFocus";
 
 function useDialogFocus(busy: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) {
   const contentId = useId();
@@ -39,17 +40,7 @@ function useDialogFocus(busy: boolean, returnFocus?: HTMLElement | null, fallbac
           fallbackFocus.focus();
           return;
         }
-        const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
-        if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") {
-          mobileTrigger.focus();
-          return;
-        }
-        const edgeTrigger = document.querySelector<HTMLElement>(".canvas-edge-trigger");
-        if (edgeTrigger && getComputedStyle(edgeTrigger).display !== "none") {
-          edgeTrigger.focus();
-          return;
-        }
-        (document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body).focus();
+        resolveCanvasNavigationFocusFallback().focus();
       });
     };
   }, [contentId, fallbackFocus]);

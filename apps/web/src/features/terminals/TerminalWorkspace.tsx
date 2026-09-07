@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
 import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
+import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
@@ -528,13 +529,12 @@ export function TerminalWorkspace({
   const sessionDisplayName = (session: TerminalInfo) => sessionIdentity ? `${sessionIdentity(session)} · ${session.name}` : session.name;
   const layoutDescriptors = !isMobile && layoutCount && layoutPreset ? terminalLayoutDescriptors(layoutCount, layoutPreset) : [];
   const emptyStateClass = "tw:grid tw:h-full tw:place-content-center tw:justify-items-center tw:gap-[14px] tw:text-center tw:font-sans tw:text-[calc(13px*var(--app-font-scale))] tw:font-normal tw:leading-[1.5] tw:text-[var(--color-text-faint)] tw:[&_strong]:text-[calc(16px*var(--app-font-scale))] tw:[&_strong]:font-[650] tw:[&_strong]:leading-[1.3] tw:[&_strong]:text-[var(--color-text-subtle)] tw:[&>svg]:size-[30px] tw:[&>svg]:text-[var(--color-border-strong)]";
-  const errorBannerClass = "tw:absolute tw:left-1/2 tw:bottom-[18px] tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100%-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]";
   const emptyActionClass = "tw:h-10 tw:rounded-full tw:bg-foreground tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11";
   const paneActionClass = "tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-faint)] tw:hover:bg-muted! tw:hover:text-foreground! tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5";
 
   return (
     <div
-      className={`terminal-workspace tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${visible ? "" : "workspace-hidden tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`}
+      className={`terminal-workspace tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${visible ? "" : "tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`}
       aria-hidden={!visible}
       inert={!visible ? true : undefined}
     >
@@ -709,19 +709,9 @@ export function TerminalWorkspace({
         </div>
         {renamingSession && <RenameDialog initialValue={renamingSession.name} label={`${sessionLabel} session`} onSubmit={(name) => onRename(renamingSession, name)} onClose={() => setRenamingSession(null)} />}
         {error && visible && (
-          <div className={errorBannerClass} role="alert">
-            <span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11"
-              aria-label="Dismiss"
-              onClick={onDismissError}
-            >
-              <X className="tw:size-3.5" />
-            </Button>
-          </div>
+          <FloatingAlert className="tw:absolute tw:left-1/2 tw:bottom-[18px] tw:-translate-x-1/2" onDismiss={onDismissError}>
+            {error}
+          </FloatingAlert>
         )}
       </div>
     </div>

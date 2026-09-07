@@ -262,7 +262,7 @@ export function NavigationRail({
       </div>
       {workspaceMode === "webapp" && webAppRunning && (
         <div className="tw:flex tw:items-center tw:justify-center tw:gap-[8px] tw:border-t tw:border-border tw:pt-[10px]">
-          <Button variant="outline" className="canvas-stop-button tw:h-10 tw:w-full tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
+          <Button variant="outline" className="tw:h-10 tw:w-full tw:rounded-full tw:px-3 tw:text-xs tw:[@media(pointer:coarse)]:h-11" type="button" aria-label={webAppOperation === "stop" ? "Stopping web app" : "Stop web app"} disabled={webAppOperation !== null} onClick={onStopWebApp}>
             {webAppOperation === "stop" ? <LoaderCircle className="spin" /> : <Square />}
             <span>{webAppOperation === "stop" ? "Stopping…" : "Stop Web App"}</span>
           </Button>
@@ -276,7 +276,7 @@ export function NavigationRail({
               render={
                 <Button
                   variant="ghost"
-                  className="settings-nav-item tw:h-10 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-[var(--color-surface-hover)]! tw:hover:text-foreground! tw:data-popup-open:bg-[var(--color-canvas)]!"
+                  className="tw:h-10 tw:min-w-0 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:bg-transparent! tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:text-[var(--color-text-subtle)] tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-transparent! tw:hover:text-[var(--color-text-subtle)]! tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-subtle)]! tw:data-popup-open:bg-transparent! tw:data-popup-open:text-[var(--color-text-subtle)]!"
                   type="button"
                   aria-hidden={!settingsAvailable}
                   tabIndex={settingsAvailable ? undefined : -1}
@@ -303,7 +303,7 @@ export function NavigationRail({
         <Button
           variant="outline"
           size="icon"
-          className="canvas-auto-hide tw:size-10 tw:rounded-[10px] tw:bg-transparent tw:text-muted-foreground tw:transition-transform tw:[@media(pointer:coarse)]:size-11"
+          className="tw:size-10 tw:rounded-[10px] tw:bg-transparent tw:text-muted-foreground tw:transition-transform tw:[@media(pointer:coarse)]:size-11"
           type="button"
           aria-label="Auto-hide navigation"
           aria-pressed={!canvasPinned}
@@ -311,7 +311,6 @@ export function NavigationRail({
           onClick={onCanvasPinnedChange}
         >
           {canvasPinned ? <Pin className="tw:size-4" /> : <PinOff className="tw:size-4" />}
-          <span className="sr-only">Auto-hide navigation</span>
         </Button>
       </footer>
     </aside>
@@ -345,7 +344,7 @@ function ModeButton({
       }}
       variant="ghost"
       type="button"
-      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-[12px] tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650] tw:transition-[background-color,color,transform] ${active ? "active tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
+      className={`nav-item tw:h-auto tw:min-h-14 tw:w-full tw:justify-start tw:gap-[12px] tw:rounded-xl tw:border-0 tw:px-3 tw:py-2 tw:text-[calc(16px*var(--app-font-scale))] tw:font-[650] tw:transition-[background-color,color,transform] ${active ? "tw:bg-foreground tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:hover:text-[var(--color-on-solid)]!" : "tw:text-[var(--color-text-subtle)] tw:hover:bg-[var(--color-canvas)]!"}`}
       aria-current={active ? "page" : undefined}
       onClick={() => onNavigate(mode, "forward")}
     >

@@ -28,6 +28,10 @@ describe("Skills UI contracts", () => {
     expect(railSource).toContain('label: "Repos"');
     expect(railSource).toContain("tw:h-10");
     expect(railSource).toContain("tw:[@media(pointer:coarse)]:h-11");
+    expect(railSource).toContain('aria-current={section === item.id ? "page" : undefined}');
+    expect(railSource).toContain("tw:aria-[current=page]:bg-background");
+    expect(railSource).not.toContain("settings-nav-item");
+    expect(railSource).not.toContain('"active ');
     expect(railSource).toContain("tw:truncate");
   });
 
@@ -35,6 +39,8 @@ describe("Skills UI contracts", () => {
     expect(navigationRailSource).toContain('className={`${pageClass("skills")} skills-rail-page`}');
     expect(navigationSource).toContain("onSelect={(section) => {\n             onSelectSkillsSection(section);\n             navigation.closeSidebar();\n           }}");
     expect(railSource).toContain("tw:[@media(max-width:920px)]:hidden");
+    expect(railSource).toContain("skills-menu-label`}");
+    expect(railSource).not.toContain("tw:skills-menu-label");
     expect(workspaceSource).toContain("tw:[@media(max-width:920px)]:pt-[58px]!");
   });
 

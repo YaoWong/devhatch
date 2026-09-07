@@ -7,6 +7,7 @@ import { ApiError } from "../../api/client";
 import { getSupervisorStatus, installSupervisor } from "../../api/supervisor";
 import type { ConfirmAction } from "../../types/app";
 import type { SupervisorStatus } from "../../types/supervisor";
+import { LiveRegion } from "../../shared/ui/LiveRegion";
 import {
   supervisorAction,
   supervisorErrorGuidance,
@@ -282,7 +283,7 @@ export function SupervisorSetup({ onConfirm }: { onConfirm: (action: ConfirmActi
 
   return (
     <>
-      <span className="tw:sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
+      <LiveRegion>{announcement}</LiveRegion>
       <Card className="tw:@container/settings-card tw:gap-0 tw:rounded-xl tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0" aria-busy={operation === "loading" || pending || undefined}>
         {operation === "loading" && !status ? (
           <div className="tw:flex tw:min-h-[92px] tw:flex-wrap tw:items-center tw:gap-2.5 tw:px-3.5 tw:py-4 tw:text-xs tw:text-muted-foreground">

@@ -456,7 +456,7 @@ export function TerminalSurface({
   }, [session.id, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
-      className={`terminal-surface ${rendered ? "active" : ""} ${focused ? "focused" : ""} ${className ?? ""}`}
+      className={`terminal-surface ${rendered ? "active" : ""} ${className ?? ""}`}
       onFocusCapture={onFocus}
       onPointerDown={onFocus}
     >

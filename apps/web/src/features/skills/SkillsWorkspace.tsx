@@ -1,7 +1,8 @@
-import { ArrowDownToLine, ArrowUpToLine, LoaderCircle, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { Button } from "@/components/ui/button";
 import type { ConfirmAction } from "../../types/app";
+import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { SkillsSection } from "./SkillsRailPage";
 import type { SkillsController } from "./controller";
@@ -68,7 +69,7 @@ export function SkillsWorkspace({ section, controller, error, onDismissError, on
         {section === "skills" && <SkillLibrary controller={controller} onConfirm={onConfirm} />}
         {section === "profiles" && <Profiles controller={controller} />}
       </div>
-      {error && <div className="tw:fixed tw:top-[76px] tw:right-auto tw:bottom-auto tw:left-1/2 tw:z-10 tw:flex tw:w-max tw:max-w-[min(560px,calc(100vw-32px))] tw:-translate-x-1/2 tw:items-center tw:gap-[10px] tw:rounded-[12px] tw:bg-[var(--color-text)] tw:px-[14px] tw:py-[10px] tw:text-[calc(13px*var(--app-font-scale))] tw:text-[var(--color-on-solid)] tw:shadow-[0_12px_32px_rgb(0_0_0/18%)]" role="alert"><span className="tw:min-w-0 tw:[overflow-wrap:anywhere]">{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-full tw:text-[var(--color-on-solid)] tw:hover:bg-[color-mix(in_srgb,var(--color-on-solid)_12%,transparent)]! tw:hover:text-[var(--color-on-solid)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss skills error" onClick={onDismissError}><X className="tw:size-3" /></Button></div>}
+      {error && <FloatingAlert className="tw:fixed tw:top-[76px] tw:left-1/2 tw:max-w-[min(560px,calc(100vw-32px))] tw:-translate-x-1/2" dismissLabel="Dismiss skills error" onDismiss={onDismissError}>{error}</FloatingAlert>}
       <div className="tw:fixed tw:right-[28px] tw:bottom-[28px] tw:z-[8] tw:grid tw:gap-[6px] tw:[@media(max-width:640px)]:right-[14px] tw:[@media(max-width:640px)]:bottom-[14px]" role="group" aria-label="Page navigation">
         <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:text-[var(--color-text-subtle)] tw:shadow-[0_5px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-[12px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to top" title="Scroll to top" disabled={scrollEdges.top} onClick={() => scrollTo("top")}><ArrowUpToLine className="tw:size-4" /></Button>
         <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[11px] tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:text-[var(--color-text-subtle)] tw:shadow-[0_5px_16px_rgb(0_0_0/10%)] tw:backdrop-blur-[12px] tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Scroll to bottom" title="Scroll to bottom" disabled={scrollEdges.bottom} onClick={() => scrollTo("bottom")}><ArrowDownToLine className="tw:size-4" /></Button>

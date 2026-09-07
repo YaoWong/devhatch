@@ -3,9 +3,10 @@ import railSource from "./NavigationRail.tsx?raw";
 import appSource from "../../app/App.tsx?raw";
 import settingsSource from "../settings/SettingsView.tsx?raw";
 import webAppsSource from "../web-apps/WebApps.tsx?raw";
-import terminalWorkspaceSource from "../terminals/TerminalWorkspace.tsx?raw";
 import terminalSettingsSource from "../terminals/TerminalSettingsControls.tsx?raw";
+import agentSessionListSource from "../agents/AgentSessionList.tsx?raw";
 import resizeHandleSource from "../../shared/ui/RailResizeHandle.tsx?raw";
+import floatingAlertSource from "../../shared/ui/FloatingAlert.tsx?raw";
 import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
 import navigationSource from "./useNavigation.ts?raw";
 import { getRailFocusRequest } from "./useNavigation";
@@ -78,6 +79,12 @@ describe("navigation rail accessibility", () => {
     expect(railSource).toContain('<Popover open={settingsAvailable && terminalSettingsOpen}');
     expect(railSource).not.toContain('className="canvas-terminal-settings pinned"');
     expect(railSource).toContain("tw:backdrop-blur-xl");
+    expect(railSource).toContain("tw:bg-transparent!");
+    expect(railSource).toContain("tw:hover:bg-transparent!");
+    expect(railSource).not.toContain("tw:hover:bg-[var(--color-surface-hover)]!");
+    expect(railSource).toContain("tw:aria-expanded:bg-transparent!");
+    expect(railSource).toContain("tw:data-popup-open:bg-transparent!");
+    expect(railSource).not.toContain("tw:data-popup-open:bg-[var(--color-canvas)]!");
     expect(shellStyles).not.toContain(".canvas-terminal-settings.pinned");
     expect(pixelRangeSource).toContain("<Slider");
     expect(pixelRangeSource).toContain("tw:grid-cols-[minmax(40px,1fr)_56px]");
@@ -100,21 +107,24 @@ describe("navigation rail accessibility", () => {
     expect(resizeHandleSource).toContain('window.addEventListener("orientationchange", cancel)');
     expect(shellStyles).toMatch(/\.canvas-rail-pinned[^{}]*> \.rail ~ \.shell/);
     expect(shellStyles).toMatch(/\.app > \.rail\s*\{/);
+    expect(shellStyles).toContain(".canvas-edge-hot-zone { display: none; }");
+    expect(shellStyles).toMatch(/@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\.canvas-edge-hot-zone \{[^}]*inset: 0 auto 0 0;[^}]*z-index: 39;[^}]*width: 4px;[^}]*\}[\s\S]*?\.canvas-rail-open > \.canvas-edge-hot-zone \{ width: 12px; \}[\s\S]*?\.canvas-edge-trigger \{ pointer-events: none; \}/);
     expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*container-name:\s*navigation-rail/);
     expect(responsiveStyles).not.toMatch(/\[data-slot="sheet-content"\] > \.rail/);
-    expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .menu-label { display: none; }');
+    expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .skills-menu-label { display: none; }');
   });
 
   it("contains enlarged text at narrow widths", () => {
-    expect(shellStyles).toMatch(/\.path-section-head \.menu-label \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
-    expect(shellStyles).toMatch(/\.sessions-title-row \{[^}]*flex-wrap: wrap;/);
+    expect(railSource).toContain("tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap");
+    expect(agentSessionListSource).toContain("tw:flex tw:min-h-[20px] tw:flex-wrap");
+    expect(agentSessionListSource).toContain("tw:[&_strong]:text-xs");
+    expect(agentSessionListSource).toContain("tw:[&_strong]:font-medium");
     expect(settingsSource).toContain("tw:@max-[540px]/settings-workspace:flex-col");
     expect(webAppsSource).toMatch(/<strong className="[^"]*tw:overflow-hidden[^"]*tw:text-ellipsis[^"]*tw:whitespace-nowrap[^"]*">\{app\.name\}<\/strong>/);
     expect(terminalStyles).not.toMatch(/\.error-banner\b/);
-    expect(terminalWorkspaceSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
-    expect(terminalWorkspaceSource).toContain("tw:[overflow-wrap:anywhere]");
-    expect(webAppsSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
-    expect(webAppsSource).toContain("tw:[overflow-wrap:anywhere]");
+    expect(floatingAlertSource).toContain("tw:max-w-[min(560px,calc(100%-32px))]");
+    expect(floatingAlertSource).toContain("tw:[overflow-wrap:anywhere]");
+    expect(webAppsSource).toContain('<FloatingAlert className="tw:absolute tw:left-1/2 tw:bottom-[18px]');
   });
 
   it("keeps the agent page scrollable and resize targets large", () => {

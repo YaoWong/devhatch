@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { AgentLaunchConfig, AgentLaunchConfigInput } from "../../types/agents";
 import type { ConfirmAction } from "../../types/app";
+import { captureDialogReturnFocus, resolveDialogFinalFocus } from "../../shared/ui/dialogFocus";
 
 type ScriptParts = Pick<AgentLaunchConfigInput, "preLaunchScript" | "providerScript" | "tuiScript">;
 type Draft = Pick<AgentLaunchConfigInput, "agentId" | "name" | "isDefault"> & ScriptParts & {
@@ -82,22 +83,8 @@ export function AgentConfigDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(
-    document.activeElement instanceof HTMLElement ? document.activeElement : null,
-  );
-  const resolveFinalFocus = () => {
-    const previous = returnFocusRef.current;
-    const previousInOpenSheet = previous?.closest('[data-slot="sheet-content"][data-open]');
-    if (
-      previous?.isConnected && (previousInOpenSheet || !previous.closest("[inert], .canvas-rail-auto:not(.canvas-rail-open)")) &&
-      getComputedStyle(previous).display !== "none" && getComputedStyle(previous).visibility !== "hidden"
-    ) return previous;
-    const mobileTrigger = document.querySelector<HTMLElement>(".canvas-mobile-trigger");
-    if (mobileTrigger && getComputedStyle(mobileTrigger).display !== "none") return mobileTrigger;
-    const edgeTrigger = document.querySelector<HTMLElement>(".canvas-edge-trigger");
-    if (edgeTrigger && getComputedStyle(edgeTrigger).display !== "none") return edgeTrigger;
-    return document.querySelector<HTMLElement>(".rail:not([inert])") ?? document.body;
-  };
+  const returnFocusRef = useRef<HTMLElement | null>(captureDialogReturnFocus());
+  const resolveFinalFocus = () => resolveDialogFinalFocus(returnFocusRef.current);
   const select = (config: AgentLaunchConfig) => {
     if (saving) return;
     setScriptError(null);
@@ -206,7 +193,7 @@ export function AgentConfigDialog({
                   key={config.id}
                   type="button"
                   variant="ghost"
-                  className={`tw:h-auto tw:min-h-12 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:transition-none tw:[@media(pointer:coarse)]:min-h-14 ${draft.id === config.id ? "active tw:bg-muted" : ""}`}
+                  className={`tw:h-auto tw:min-h-12 tw:w-full tw:justify-start tw:rounded-lg tw:px-2.5 tw:py-2 tw:text-left tw:font-normal tw:transition-none tw:[@media(pointer:coarse)]:min-h-14 ${draft.id === config.id ? "tw:bg-muted" : ""}`}
                   aria-current={draft.id === config.id ? "true" : undefined}
                   disabled={locked}
                   onClick={() => select(config)}

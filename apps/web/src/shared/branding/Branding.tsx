@@ -6,7 +6,7 @@ const colorAgentIcons: Record<string, string> = {
   traecli: traeIcon,
 };
 
-export function AgentIcon({ id, className = "agent-logo" }: { id?: string; className?: string }) {
+export function AgentIcon({ id, className }: { id?: string; className: string }) {
   if (id === "opencode") {
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden="true">

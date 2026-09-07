@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
+import { selectCopyClass } from "../../shared/ui/railStyles";
 import {
   DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
   DEFAULT_FONT_SIZE_PX,
@@ -145,8 +146,8 @@ export function SettingsView({
                     options={themes}
                     disabled={saving}
                     getOptionLabel={(theme) => theme.name}
-                    renderTrigger={(theme) => <span className="select-copy"><strong>{theme?.name}</strong><small>{theme?.description}</small></span>}
-                    renderOption={(theme) => <span className="select-copy"><strong>{theme.name}</strong><small>{theme.description}</small></span>}
+                    renderTrigger={(theme) => <span className={selectCopyClass}><strong>{theme?.name}</strong><small>{theme?.description}</small></span>}
+                    renderOption={(theme) => <span className={selectCopyClass}><strong>{theme.name}</strong><small>{theme.description}</small></span>}
                     onChange={selectTheme}
                   />
                 </div>

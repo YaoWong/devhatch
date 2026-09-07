@@ -188,7 +188,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [selectTheme, setAgentLaunchPathsMaxHeightPx, setFontSizePx, setNavigationRailWidthPx, setUiScalePercent, supportsDisplaySettings]);
 
   if (themeId === null) {
-    return showInitialLoading ? <main className="auth-page" aria-busy="true"><section className="auth-card"><h1>DevHatch</h1><p role="status">Loading settings…</p></section></main> : null;
+    return showInitialLoading ? <main className="tw:flex tw:h-dvh tw:w-full tw:items-center tw:justify-center tw:overflow-y-auto tw:overscroll-contain tw:bg-[radial-gradient(circle_at_50%_0%,var(--color-surface)_0,var(--color-canvas)_55%)] tw:pt-[max(16px,env(safe-area-inset-top))] tw:pr-[max(16px,env(safe-area-inset-right))] tw:pb-[max(16px,env(safe-area-inset-bottom))] tw:pl-[max(16px,env(safe-area-inset-left))]" aria-busy="true"><section className="tw:my-auto tw:grid tw:w-[min(420px,100%)] tw:flex-none tw:gap-[18px] tw:rounded-[24px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-[32px] tw:shadow-[0_24px_70px_rgb(0_0_0/10%)]"><h1 className="tw:m-0 tw:text-[calc(24px*var(--app-font-scale))] tw:tracking-[-0.04em]">DevHatch</h1><p className="tw:m-0 tw:text-sm tw:leading-[1.5] tw:text-muted-foreground" role="status">Loading settings…</p></section></main> : null;
   }
   return (
     <ThemeContext

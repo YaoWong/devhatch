@@ -7,6 +7,7 @@ import type { ConfirmAction } from "../../types/app";
 import type { AgentLaunchPath, AgentSession, HistorySession } from "../../types/agents";
 import { displayPath } from "../../shared/lib/utils";
 import { LiveRegion } from "../../shared/ui/LiveRegion";
+import { historyStatusClass, RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
 import { shouldShowAgentSessionSearch } from "./selectors";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
@@ -15,7 +16,7 @@ type SessionRow = { live?: AgentSession; history?: HistorySession };
 
 const buttonFocus = "tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2";
 const retryButtonClass = `${buttonFocus} tw:h-10 tw:w-fit tw:rounded-lg tw:border-input tw:bg-card tw:px-3 tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-semibold tw:text-muted-foreground tw:transition-none tw:hover:bg-card! tw:hover:text-muted-foreground! tw:focus-visible:border-input! tw:disabled:pointer-events-auto tw:disabled:cursor-default tw:disabled:opacity-[0.42] tw:dark:bg-card! tw:dark:hover:bg-card! tw:[@media(pointer:coarse)]:h-11`;
-const sessionMainClass = `${buttonFocus} tw:flex tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:items-center tw:justify-start tw:gap-[7px] tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:text-base tw:leading-[normal] tw:font-normal tw:whitespace-normal tw:text-inherit tw:text-left tw:transition-[padding-right] tw:duration-[220ms] tw:ease-[cubic-bezier(.2,1,.35,1)] tw:hover:bg-transparent! tw:hover:text-inherit! tw:focus-visible:border-transparent! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span:last-child]:min-w-0 tw:[&>span:last-child]:flex-1 tw:[&_em]:mt-0.5 tw:[&_em]:block tw:[&_em]:font-mono tw:[&_em]:text-[calc(10px*var(--app-font-scale))] tw:[&_em]:leading-[1.2] tw:[&_em]:font-normal tw:[&_em]:not-italic tw:[&_em]:text-[var(--color-text-muted)] tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-sm tw:[&_strong]:leading-[1.2] tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap`;
+const sessionMainClass = `${buttonFocus} tw:flex tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:items-center tw:justify-start tw:gap-[7px] tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:text-base tw:leading-[normal] tw:font-normal tw:whitespace-normal tw:text-inherit tw:text-left tw:transition-[padding-right] tw:duration-[220ms] tw:ease-[cubic-bezier(.2,1,.35,1)] tw:hover:bg-transparent! tw:hover:text-inherit! tw:focus-visible:border-transparent! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span:last-child]:min-w-0 tw:[&>span:last-child]:flex-1 tw:[&_em]:mt-0.5 tw:[&_em]:block tw:[&_em]:font-mono tw:[&_em]:text-[calc(10px*var(--app-font-scale))] tw:[&_em]:leading-[1.2] tw:[&_em]:font-normal tw:[&_em]:not-italic tw:[&_em]:text-[var(--color-text-muted)] tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-[1.2] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-xs tw:[&_strong]:leading-[1.2] tw:[&_strong]:font-medium tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap`;
 const liveSessionActionSpace = "tw:group-hover/session-row:pr-12 tw:group-focus-within/session-row:pr-12 tw:[@media(hover:none)]:pr-12 tw:[@media(pointer:coarse)]:pr-[52px]";
 const historySessionActionSpace = "tw:group-hover/session-row:pr-[104px] tw:group-focus-within/session-row:pr-[104px] tw:[@media(hover:none)]:pr-[104px] tw:[@media(pointer:coarse)]:pr-[108px]";
 const resumeButtonClass = `${buttonFocus} tw:h-10 tw:rounded-lg tw:border-input tw:bg-card tw:px-2.5 tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-semibold tw:text-inherit tw:transition-none tw:hover:bg-card! tw:hover:text-inherit! tw:focus-visible:border-input! tw:disabled:pointer-events-auto tw:disabled:opacity-100 tw:dark:bg-card! tw:dark:hover:bg-card! tw:[@media(pointer:coarse)]:h-11`;
@@ -106,11 +107,11 @@ export function AgentSessionList({
     [],
   );
   return (
-    <div className="menu-section sessions-section">
+    <div className={`${railMenuSectionClass} sessions-section`}>
       <LiveRegion>{announcement}</LiveRegion>
-      <div className="sessions-heading">
-        <div className="sessions-title-row">
-          <p className="menu-label">Sessions</p>
+      <div className="tw:mb-[8px] tw:grid tw:flex-none tw:gap-[6px]">
+        <div className="tw:flex tw:min-h-[20px] tw:flex-wrap tw:items-center tw:justify-between tw:gap-[8px]">
+          <p className={`${railMenuLabelClass} tw:mb-0 tw:leading-[20px]`}>Sessions</p>
           {selectedPath && (
             <label className="tw:inline-flex tw:min-h-10 tw:cursor-pointer tw:items-center tw:gap-1.5 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:text-[var(--color-text-muted)] tw:[@media(pointer:coarse)]:min-h-11">
               <span>Subdirectories</span>
@@ -123,7 +124,7 @@ export function AgentSessionList({
           )}
         </div>
         {selectedPath && (
-          <div className="session-filter-path" title={selectedPath.path}>
+          <div className="tw:overflow-hidden tw:rounded-[6px] tw:bg-background tw:px-[8px] tw:py-[6px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.25] tw:text-muted-foreground tw:text-ellipsis tw:whitespace-nowrap" title={selectedPath.path}>
             {displayPath(selectedPath.path, homePaths?.home, homePaths?.resolvedHome)}
           </div>
         )}
@@ -152,7 +153,7 @@ export function AgentSessionList({
         {rows.length ? (
           <>
             {(historyUnavailable || historyMessage) && (
-              <div className={`quiet-message history-status ${historyUnavailable ? "unavailable" : ""}`} role="alert">
+              <RailQuietMessage className={historyStatusClass} role="alert">
                 {historyUnavailable && <strong>History unavailable</strong>}
                 {historyMessage && <span>{historyMessage}</span>}
                 {historyUnavailable && (
@@ -160,7 +161,7 @@ export function AgentSessionList({
                     {retrying ? "Retrying…" : "Retry"}
                   </Button>
                 )}
-              </div>
+              </RailQuietMessage>
             )}
             {rows.map(({ live, history }) => {
               const presence = live ? "active-here" : (history?.presence ?? "active-here");
@@ -239,17 +240,17 @@ export function AgentSessionList({
             })}
           </>
         ) : showHistoryLoading ? (
-          <div className="quiet-message">Loading sessions…</div>
+          <RailQuietMessage>Loading sessions…</RailQuietMessage>
         ) : historyUnavailable ? (
-          <div className="quiet-message history-status unavailable" role="alert">
+          <RailQuietMessage className={historyStatusClass} role="alert">
             <strong>History unavailable</strong>
             {historyMessage && <span>{historyMessage}</span>}
             <Button type="button" variant="outline" size="xs" className={retryButtonClass} disabled={retrying || historyLoading} onClick={() => void retryHistory()}>
               {retrying ? "Retrying…" : "Retry"}
             </Button>
-          </div>
+          </RailQuietMessage>
         ) : historyAvailable || !supportsHistory ? (
-          <div className="quiet-message">No sessions found.</div>
+          <RailQuietMessage>No sessions found.</RailQuietMessage>
         ) : null}
       </div>
     </div>
@@ -273,7 +274,7 @@ function SessionSummary({
 }) {
   return (
     <>
-      <span className={`presence-dot ${presence}`} aria-hidden="true" />
+      <span className={`tw:size-[7px] tw:flex-none tw:rounded-full ${presence === "active-here" ? "tw:bg-[var(--color-success-fg)]" : presence === "possibly-active-elsewhere" ? "tw:bg-[var(--color-warning-fg)]" : "tw:bg-[var(--color-text-faint)]"}`} aria-hidden="true" />
       <span>
         <strong>{name}</strong>
         <small>{displayPath(path, homePaths?.home, homePaths?.resolvedHome)} · {detail}</small>

@@ -53,7 +53,7 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
           const allCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => effectiveCollapsed.has(key));
           const plan = controller.syncPlan?.repositoryId === repository.id ? controller.syncPlan : null;
           return (
-            <Card role="article" className={`repository-card tw:block tw:gap-0 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0 ${isExpanded ? "expanded tw:border-input" : ""}`} key={repository.id}>
+            <Card role="article" className={`tw:block tw:gap-0 tw:rounded-[13px] tw:border tw:border-border tw:bg-card tw:py-0 tw:ring-0 ${isExpanded ? "tw:border-input" : ""}`} key={repository.id}>
                <div className="tw:flex tw:min-h-[72px] tw:min-w-0 tw:items-center tw:gap-[12px] tw:pt-[10px] tw:pr-[12px] tw:pb-[10px] tw:pl-[8px] tw:skills-max-860:flex-wrap tw:skills-max-860:items-start">
                   <Button variant="ghost" className="tw:grid tw:h-auto tw:min-h-12 tw:min-w-0 tw:flex-1 tw:grid-cols-[18px_20px_minmax(0,1fr)] tw:items-center tw:justify-start tw:rounded-lg tw:px-0 tw:py-0 tw:text-left tw:font-normal tw:whitespace-normal tw:transition-colors tw:duration-150 tw:hover:bg-muted/50! tw:skills-max-860:w-full tw:skills-max-860:basis-full" type="button" aria-expanded={isExpanded} onClick={() => setExpanded((current) => toggleSet(current, repository.id))}>
                     <span className="tw:grid tw:place-items-center">{isExpanded ? <ChevronDown className="tw:size-[13px] tw:text-muted-foreground" /> : <ChevronRight className="tw:size-[13px] tw:text-muted-foreground" />}</span>
@@ -67,7 +67,7 @@ export function Repositories({ controller, onConfirm }: { controller: SkillsCont
                     <SkillsIconButton type="button" disabled={controller.busy || renaming === repository.id} aria-label={`Rename ${repository.name}`} onClick={() => setRenaming(repository.id)}><Pencil /></SkillsIconButton>
                     <SkillsSecondaryButton disabled={controller.busy || renaming === repository.id} onClick={() => void controller.previewSync(repository.id)}>Check updates</SkillsSecondaryButton>
                     <SkillsSecondaryButton disabled={controller.busy || renaming === repository.id} onClick={() => void controller.syncRepository(repository.id)}><RefreshCw />Sync</SkillsSecondaryButton>
-                    <SkillsIconButton disabled={controller.busy || renaming === repository.id} className="danger tw:text-destructive tw:hover:bg-[var(--color-danger-soft)]! tw:hover:text-destructive!" aria-label={`Delete ${repository.name}`} onClick={() => onConfirm({ title: `Delete ${repository.name}?`, description: "This repository and all skills discovered from it will be removed.", confirmLabel: "Delete repository", danger: true, action: () => controller.deleteRepository(repository.id) })}><Trash2 /></SkillsIconButton>
+                    <SkillsIconButton disabled={controller.busy || renaming === repository.id} className="tw:text-destructive tw:hover:bg-[var(--color-danger-soft)]! tw:hover:text-destructive!" aria-label={`Delete ${repository.name}`} onClick={() => onConfirm({ title: `Delete ${repository.name}?`, description: "This repository and all skills discovered from it will be removed.", confirmLabel: "Delete repository", danger: true, action: () => controller.deleteRepository(repository.id) })}><Trash2 /></SkillsIconButton>
                  </div>
               </div>
               {plan && (

@@ -77,7 +77,7 @@ export function WorkspaceList({
           action: () => onDeletePath(path),
         })}
         emptyMessage="Choose a directory to launch your first terminal."
-        className="terminal-paths-section tw:max-h-[min(52vh,480px)]"
+        className="tw:max-h-[min(52vh,480px)]"
       />
     </>
   );

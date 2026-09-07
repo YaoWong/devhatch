@@ -48,25 +48,4 @@ body { margin: 0; overflow: hidden; font-size: calc(16px * var(--app-font-scale)
 button:not([data-slot]):focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent) 30%, transparent); outline-offset: 2px; }
 .spin { animation: shared-spin 700ms linear infinite; }
 @keyframes shared-spin { to { transform: rotate(360deg); } }
-
-.fatal-error {
-  width: min(520px, calc(100% - 32px));
-  margin: 15vh auto;
-  display: grid;
-  gap: 12px;
-  padding: 24px;
-  border: 1px solid var(--color-border);
-  border-radius: 18px;
-  background: var(--color-surface);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 8%);
-}
-.fatal-error span { color: var(--color-text-muted); font: calc(12px * var(--app-font-scale))/1.5 var(--font-family-mono); }
-
-.auth-page { width: 100%; height: 100dvh; display: flex; align-items: center; justify-content: center; overflow-y: auto; overscroll-behavior: contain; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: radial-gradient(circle at 50% 0%, var(--color-surface) 0, var(--color-canvas) 55%); }
-.auth-card { width: min(420px, 100%); display: grid; gap: 18px; flex: none; margin-block: auto; padding: 32px; border: 1px solid var(--color-border); border-radius: 24px; background: color-mix(in srgb, var(--color-surface) 92%, transparent); box-shadow: 0 24px 70px rgb(0 0 0 / 10%); }
-.auth-card > div { display: flex; align-items: center; gap: 12px; }
-.auth-card h1 { margin: 0; font-size: calc(24px * var(--app-font-scale)); letter-spacing: -.04em; }
-.auth-card p { margin: 0; color: var(--color-text-muted); font-size: calc(14px * var(--app-font-scale)); line-height: 1.5; }
-.auth-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--color-text); color: var(--color-on-solid); font: 700 calc(13px * var(--app-font-scale))/1 var(--font-family-mono); }
-.auth-card label { display: grid; gap: 7px; color: var(--color-text-subtle); font-size: calc(14px * var(--app-font-scale)); font-weight: 600; }
 }
