@@ -18,6 +18,7 @@ use super::model::{
 use crate::{clock::now, filesystem::path_string, state::SessionRegistry};
 
 const OUTPUT_LIMIT: usize = 512 * 1024;
+const OUTPUT_HIGH_WATER: usize = 640 * 1024;
 const INPUT_QUEUE_CAPACITY: usize = 64;
 
 type PtyChild = Box<dyn Child + Send>;
@@ -387,7 +388,7 @@ fn enqueue_input(input: &SyncSender<Vec<u8>>, data: Vec<u8>) -> bool {
 }
 
 fn trim_output(output: &mut String) {
-    if output.len() <= OUTPUT_LIMIT {
+    if output.len() <= OUTPUT_HIGH_WATER {
         return;
     }
     let mut start = output.len() - OUTPUT_LIMIT;
@@ -401,7 +402,9 @@ fn trim_output(output: &mut String) {
 mod tests {
     use std::sync::mpsc::TryRecvError;
 
-    use super::{ChildCleanup, OUTPUT_LIMIT, cleanup_child, enqueue_input, trim_output};
+    use super::{
+        ChildCleanup, OUTPUT_HIGH_WATER, OUTPUT_LIMIT, cleanup_child, enqueue_input, trim_output,
+    };
 
     #[derive(Default)]
     struct CleanupState {
@@ -447,8 +450,12 @@ mod tests {
     }
 
     #[test]
-    fn trims_output_on_character_boundaries() {
-        let mut output = format!("é{}", "x".repeat(OUTPUT_LIMIT));
+    fn trims_output_at_a_high_water_mark_on_character_boundaries() {
+        let mut small_overflow = "x".repeat(OUTPUT_LIMIT + 1);
+        trim_output(&mut small_overflow);
+        assert_eq!(small_overflow.len(), OUTPUT_LIMIT + 1);
+
+        let mut output = format!("é{}", "x".repeat(OUTPUT_HIGH_WATER));
         trim_output(&mut output);
         assert_eq!(output.len(), OUTPUT_LIMIT);
         assert!(output.is_char_boundary(0));

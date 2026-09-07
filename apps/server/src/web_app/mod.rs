@@ -25,6 +25,7 @@ const PORT: u16 = 17456;
 
 pub(crate) struct WebAppManager {
     root: PathBuf,
+    prerequisites: environment::Prerequisites,
     progress: RwLock<Progress>,
     update: RwLock<UpdateState>,
     child: Mutex<Option<std::process::Child>>,

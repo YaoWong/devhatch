@@ -42,8 +42,13 @@ pub(super) struct PidRecord {
 
 impl WebAppManager {
     pub fn new(data_dir: &Path) -> Self {
+        Self::with_prerequisites(data_dir, prerequisites())
+    }
+
+    fn with_prerequisites(data_dir: &Path, prerequisites: Prerequisites) -> Self {
         Self {
             root: data_dir.join("webapps/open-design"),
+            prerequisites,
             progress: std::sync::RwLock::new(Progress {
                 phase: "not-installed",
                 percent: 0,
@@ -104,7 +109,7 @@ impl WebAppManager {
             url: running.then(public_url),
             install_path: self.root.display().to_string(),
             error: progress.error,
-            prerequisites: prerequisites(),
+            prerequisites: self.prerequisites,
         }
     }
 
@@ -266,8 +271,23 @@ impl WebAppManager {
 #[cfg(test)]
 mod tests {
     use super::WebAppManager;
-    use crate::web_app::{OPERATION_CONFLICT, Operation};
+    use crate::web_app::{OPERATION_CONFLICT, Operation, environment::Prerequisites};
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn view_uses_cached_prerequisites() {
+        let data =
+            std::env::temp_dir().join(format!("devhatch-prerequisites-{}", uuid::Uuid::new_v4()));
+        let expected = Prerequisites {
+            git: true,
+            node24: true,
+            corepack: false,
+        };
+        let manager = WebAppManager::with_prerequisites(&data, expected);
+
+        assert_eq!(manager.view().await.prerequisites, expected);
+        assert_eq!(manager.view().await.prerequisites, expected);
+    }
 
     fn manager() -> Arc<WebAppManager> {
         Arc::new(WebAppManager::new(

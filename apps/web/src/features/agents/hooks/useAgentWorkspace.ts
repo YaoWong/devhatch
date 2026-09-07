@@ -115,7 +115,7 @@ export function useAgentWorkspace({
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (active) void refreshAuthoritativeSnapshot();
-    }, 1000);
+    }, 5000);
     return () => window.clearInterval(timer);
   }, [active, refreshAuthoritativeSnapshot]);
   const refreshAuthoritativeWorkspaces = useCallback(async <T,>(apply: (authoritative: AgentWorkspace[]) => T): Promise<T> => {
