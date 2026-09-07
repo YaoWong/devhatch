@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::{
     Json,
@@ -340,7 +343,20 @@ async fn insert_members(
     Ok(())
 }
 
+fn reconciliation_needed(owned: &HashSet<String>, live: &HashSet<String>) -> bool {
+    owned.iter().any(|id| !live.contains(id))
+}
+
 async fn reconcile(pool: &SqlitePool, live: &HashSet<String>) -> Result<(), sqlx::Error> {
+    let owned =
+        sqlx::query_scalar::<_, String>("SELECT terminal_id FROM terminal_workspace_members")
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .collect::<HashSet<_>>();
+    if !reconciliation_needed(&owned, live) {
+        return Ok(());
+    }
     let mut transaction = pool.begin().await?;
     let members = sqlx::query_as::<_, (String, String)>(
         "SELECT terminal_id, workspace_id FROM terminal_workspace_members",
@@ -366,21 +382,13 @@ async fn reconcile(pool: &SqlitePool, live: &HashSet<String>) -> Result<(), sqlx
             .bind(&workspace_id)
             .fetch_optional(&mut *transaction)
             .await?;
-        if let Some(fallback) = fallback {
-            sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = CASE WHEN active_terminal_id IN (SELECT terminal_id FROM terminal_workspace_members WHERE workspace_id = ?) THEN active_terminal_id ELSE ? END, updated_at = MAX(?, updated_at + 1) WHERE id = ?")
-                .bind(&workspace_id)
-                .bind(fallback)
-                .bind(now() as i64)
-                .bind(&workspace_id)
-                .execute(&mut *transaction)
-                .await?;
-        } else {
-            sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = NULL, updated_at = MAX(?, updated_at + 1) WHERE id = ?")
-                .bind(now() as i64)
-                .bind(workspace_id)
-                .execute(&mut *transaction)
-                .await?;
-        }
+        sqlx::query("UPDATE terminal_workspaces SET active_terminal_id = ?, updated_at = MAX(?, updated_at + 1) WHERE id = ? AND (active_terminal_id IS NULL OR active_terminal_id NOT IN (SELECT terminal_id FROM terminal_workspace_members WHERE workspace_id = ?))")
+            .bind(&fallback)
+            .bind(now() as i64)
+            .bind(&workspace_id)
+            .bind(&workspace_id)
+            .execute(&mut *transaction)
+            .await?;
     }
     transaction.commit().await
 }
@@ -389,11 +397,23 @@ async fn list_items(pool: &SqlitePool) -> Result<Vec<TerminalWorkspace>, sqlx::E
     let rows = sqlx::query_as::<_, WorkspaceRow>("SELECT id, name, active_terminal_id, created_at, updated_at FROM terminal_workspaces ORDER BY created_at, id")
         .fetch_all(pool)
         .await?;
-    let mut workspaces = Vec::with_capacity(rows.len());
-    for row in rows {
-        workspaces.push(assemble(pool, row).await?);
+    let members = sqlx::query_as::<_, (String, String)>("SELECT workspace_id, terminal_id FROM terminal_workspace_members ORDER BY workspace_id, position, terminal_id")
+        .fetch_all(pool)
+        .await?;
+    let mut members_by_workspace = HashMap::<_, Vec<_>>::new();
+    for (workspace_id, terminal_id) in members {
+        members_by_workspace
+            .entry(workspace_id)
+            .or_default()
+            .push(TerminalWorkspaceMember { terminal_id });
     }
-    Ok(workspaces)
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let members = members_by_workspace.remove(&row.id).unwrap_or_default();
+            assemble_row(row, members)
+        })
+        .collect())
 }
 
 async fn find_in_transaction(
@@ -434,14 +454,18 @@ async fn assemble(pool: &SqlitePool, row: WorkspaceRow) -> Result<TerminalWorksp
         .bind(&row.id)
         .fetch_all(pool)
         .await?;
-    Ok(TerminalWorkspace {
+    Ok(assemble_row(row, members))
+}
+
+fn assemble_row(row: WorkspaceRow, members: Vec<TerminalWorkspaceMember>) -> TerminalWorkspace {
+    TerminalWorkspace {
         id: row.id,
         name: row.name,
         active_terminal_id: row.active_terminal_id,
         members,
         created_at: row.created_at,
         updated_at: row.updated_at,
-    })
+    }
 }
 
 async fn member_belongs(
@@ -512,7 +536,10 @@ mod tests {
 
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{attach_terminal, create_workspace, disband, find, reconcile, remove_terminal};
+    use super::{
+        attach_terminal, create_workspace, disband, find, list_items, reconcile,
+        reconciliation_needed, remove_terminal,
+    };
 
     async fn pool() -> sqlx::SqlitePool {
         let pool = SqlitePoolOptions::new()
@@ -564,6 +591,54 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn list_items_preserves_member_order_and_empty_workspaces() {
+        let pool = pool().await;
+        let populated = create_workspace(&pool, Some("populated".into()), &members(&["b", "a"]))
+            .await
+            .unwrap();
+        let empty = create_workspace(&pool, Some("empty".into()), &[])
+            .await
+            .unwrap();
+
+        let workspaces = list_items(&pool).await.unwrap();
+
+        let populated = workspaces
+            .iter()
+            .find(|workspace| workspace.id == populated.id)
+            .unwrap();
+        assert_eq!(
+            populated
+                .members
+                .iter()
+                .map(|member| member.terminal_id.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "a"]
+        );
+        assert!(
+            workspaces
+                .iter()
+                .find(|workspace| workspace.id == empty.id)
+                .unwrap()
+                .members
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reconciliation_only_runs_for_stale_members() {
+        let owned = HashSet::from(["live".to_string()]);
+        assert!(!reconciliation_needed(
+            &owned,
+            &HashSet::from(["live".to_string()])
+        ));
+        assert!(reconciliation_needed(&owned, &HashSet::new()));
+        assert!(!reconciliation_needed(
+            &HashSet::new(),
+            &HashSet::from(["unowned".to_string()])
+        ));
     }
 
     #[tokio::test]
@@ -635,14 +710,27 @@ mod tests {
         let second = create_workspace(&pool, None, &members(&["gone"]))
             .await
             .unwrap();
-        reconcile(&pool, &HashSet::from(["live".to_string()]))
+        let stable_active = create_workspace(&pool, None, &members(&["live-active", "stale-tail"]))
             .await
             .unwrap();
+        reconcile(
+            &pool,
+            &HashSet::from(["live".to_string(), "live-active".to_string()]),
+        )
+        .await
+        .unwrap();
         let first = find(&pool, &first.id).await.unwrap().unwrap();
         assert_eq!(first.members.len(), 1);
         assert_eq!(first.active_terminal_id.as_deref(), Some("live"));
         let second = find(&pool, &second.id).await.unwrap().unwrap();
         assert!(second.members.is_empty());
         assert_eq!(second.active_terminal_id, None);
+        let reconciled = find(&pool, &stable_active.id).await.unwrap().unwrap();
+        assert_eq!(reconciled.members.len(), 1);
+        assert_eq!(
+            reconciled.active_terminal_id.as_deref(),
+            Some("live-active")
+        );
+        assert_eq!(reconciled.updated_at, stable_active.updated_at);
     }
 }
