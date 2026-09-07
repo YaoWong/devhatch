@@ -9,6 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { SocketConnection } from "./socketConnection";
 import { loadTerminalFonts } from "./terminalFonts";
+import { TerminalWriteQueue } from "./terminalWriteQueue";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
 import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
@@ -186,6 +187,16 @@ export function TerminalSurface({
       return;
     }
     terminalRef.current = terminal;
+    const terminalWriter = new TerminalWriteQueue(
+      (data, onComplete) => terminal.write(data, onComplete),
+      (generation) => {
+        if (!connection.isCurrent(generation)) return;
+        protocolReady = false;
+        const socket = socketRef.current;
+        if (socket?.readyState !== WebSocket.OPEN) return;
+        socket.close(4001, "terminal output resync required");
+      },
+    );
     const captureThumbnail = () => new Promise<Blob | null>((resolve) => {
       const screen = container.querySelector<HTMLElement>(".xterm-screen");
       if (!screen) {
@@ -291,6 +302,7 @@ export function TerminalSurface({
       snapshotDimensions = null;
       expectedClose = false;
       lastResize = "";
+      terminalWriter.begin(generation);
       onPhaseChange(session.id, phase);
       const socket = new WebSocket(`${socketProtocol()}//${window.location.host}${socketBase}/${session.id}/socket`);
       socketRef.current = socket;
@@ -325,12 +337,16 @@ export function TerminalSurface({
             );
           }
           if (message.type === "snapshot" && connection.snapshot(generation)) {
-            terminal.reset();
             const dimensions = snapshotDimensions;
             snapshotDimensions = null;
             if (dimensions) terminal.resize(dimensions.cols, dimensions.rows);
-            const finishSnapshot = () => {
-              if (disposed || socketRef.current !== socket) return;
+            terminalWriter.snapshot(generation, message.data ?? "", () => {
+              if (
+                disposed
+                || socketRef.current !== socket
+                || socket.readyState !== WebSocket.OPEN
+                || !connection.isCurrent(generation)
+              ) return;
               protocolReady = true;
               onPhaseChange(session.id, "connected");
               sendResize();
@@ -343,14 +359,16 @@ export function TerminalSurface({
                 if (focusFrame !== null) cancelAnimationFrame(focusFrame);
                 focusFrame = requestAnimationFrame(() => {
                   focusFrame = null;
-                  if (!disposed && socketRef.current === socket) terminal.focus();
+                  if (!disposed && socketRef.current === socket && connection.isCurrent(generation)) terminal.focus();
                 });
               }
-            };
-            if (message.data) terminal.write(message.data, finishSnapshot);
-            else finishSnapshot();
+            });
           }
-          if (message.type === "output" && message.data) terminal.write(message.data, scheduleThumbnail);
+          if (message.type === "output" && message.data) {
+            terminalWriter.write(generation, message.data, () => {
+              if (connection.isCurrent(generation)) scheduleThumbnail();
+            });
+          }
           if (message.type === "exit" || message.type === "processExited") {
             onPhaseChange(session.id, "exited");
             expectedClose = true;
@@ -444,6 +462,7 @@ export function TerminalSurface({
       const socket = socketRef.current;
       socketRef.current = null;
       socket?.close(1000, "surface closed");
+      terminalWriter.dispose();
       terminal.dispose();
       terminalRef.current = null;
       activateRef.current = null;
