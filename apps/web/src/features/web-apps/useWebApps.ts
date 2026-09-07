@@ -8,6 +8,7 @@ import {
   webApps,
 } from "../../api/web-apps";
 import type { WebApp, WebAppOperation } from "../../types/web-apps";
+import { preserveWebAppsReference } from "./webAppsState";
 
 export function operationBusy(local: WebAppOperation | null, app: WebApp | null) {
   return local ?? app?.operation ?? null;
@@ -42,7 +43,7 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
     try {
       const data = await webApps();
       if (mounted.current && refreshGeneration.current === generation) {
-        setApps(data.webApps);
+        setApps((current) => preserveWebAppsReference(current, data.webApps));
         setLoadError(null);
       }
     } catch (reason) {
@@ -103,7 +104,10 @@ export function useWebApps(active: boolean, reportError: (message: string) => vo
 
   const applyMutation = useCallback((generation: number, webApp: WebApp) => {
     if (mounted.current && mutationGeneration.current === generation) {
-      setApps((current) => current.map((app) => (app.id === webApp.id ? webApp : app)));
+      setApps((current) => preserveWebAppsReference(
+        current,
+        current.map((app) => (app.id === webApp.id ? webApp : app)),
+      ));
     }
   }, []);
 

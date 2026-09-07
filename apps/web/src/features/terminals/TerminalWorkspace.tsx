@@ -1,5 +1,5 @@
 import { ChevronRight, Ellipsis, Minus, Pencil, X } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import {
   type TerminalWorkspaceDockState,
 } from "./terminalWorkspaceDock";
 import {
+  createTerminalLayoutDrag,
   defaultTerminalLayoutPreset,
   defaultTerminalLayoutRatios,
   terminalLayoutKey,
@@ -157,7 +158,9 @@ export function TerminalWorkspace({
   const transitionPrepareRefs = useRef(new Map<string, () => Promise<Blob | null>>());
   const thumbnailDockRef = useRef<HTMLDivElement | null>(null);
   const thumbnailCollapseTimerRef = useRef<number | null>(null);
+  const cancelLayoutDragRef = useRef<(() => void) | null>(null);
   const [thumbnailDockExpanded, setThumbnailDockExpanded] = useState(!thumbnailsAutoHide);
+  const [layoutRatioPreview, setLayoutRatioPreview] = useState<{ workspaceId: string; key: string; ratios: number[] } | null>(null);
   const [, forceGridSizeUpdate] = useState(0);
   const [openActionSessionId, setOpenActionSessionId] = useState<string | null>(null);
   const [renamingSession, setRenamingSession] = useState<TerminalInfo | null>(null);
@@ -207,7 +210,9 @@ export function TerminalWorkspace({
   const layoutCount = currentState.stagedIds.length >= 2 && currentState.stagedIds.length <= 4 ? currentState.stagedIds.length as TerminalLayoutCount : null;
   const workspaceLayout = workspaceId ? workspaceLayouts[workspaceId] : undefined;
   const layoutPreset = layoutCount ? workspaceLayout?.presets[layoutCount] ?? defaultTerminalLayoutPreset(layoutCount) : null;
-  const layoutRatios = layoutCount && layoutPreset ? workspaceLayout?.ratios[terminalLayoutKey(layoutCount, layoutPreset)] ?? defaultTerminalLayoutRatios(layoutCount, layoutPreset) : [];
+  const layoutKey = layoutCount && layoutPreset ? terminalLayoutKey(layoutCount, layoutPreset) : null;
+  const storedLayoutRatios = layoutCount && layoutPreset && layoutKey ? workspaceLayout?.ratios[layoutKey] ?? defaultTerminalLayoutRatios(layoutCount, layoutPreset) : [];
+  const layoutRatios = workspaceId && layoutKey && layoutRatioPreview?.workspaceId === workspaceId && layoutRatioPreview.key === layoutKey ? layoutRatioPreview.ratios : storedLayoutRatios;
   const layoutClassName = layoutCount && layoutPreset ? `layout-${layoutCount}-${layoutPreset}` : "";
   const layoutStyle = terminalGridStyle(layoutCount, layoutPreset, layoutRatios);
   const thumbnailSessions = visibleSessions.filter((session) => !staged.has(session.id));
@@ -250,29 +255,49 @@ export function TerminalWorkspace({
     };
   }, []);
 
+  useLayoutEffect(() => () => {
+    cancelLayoutDragRef.current?.();
+    cancelLayoutDragRef.current = null;
+  }, [isMobile, layoutKey, visible, workspaceId]);
+
   const updateWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
     onWorkspaceLayoutChange(workspaceId, update);
   }, [onWorkspaceLayoutChange]);
+  const commitLayoutRatios = (targetWorkspaceId: string, key: string, ratios: number[]) => {
+    updateWorkspaceLayout(targetWorkspaceId, (current) => ({ ...current, ratios: { ...current.ratios, [key]: ratios } }));
+  };
   const updateLayoutRatio = (descriptor: SplitDescriptor, value: number) => {
-    if (!workspaceId || !layoutCount || !layoutPreset) return;
+    if (!workspaceId || !layoutKey) return;
     const { lower, upper } = terminalLayoutBounds(descriptor, layoutRatios, gridRef.current);
     const next = [...layoutRatios];
     next[descriptor.ratioIndex] = Math.min(upper, Math.max(lower, value));
-    const key = terminalLayoutKey(layoutCount, layoutPreset);
-    updateWorkspaceLayout(workspaceId, (current) => ({ ...current, ratios: { ...current.ratios, [key]: next } }));
+    commitLayoutRatios(workspaceId, layoutKey, next);
   };
   const resizeLayoutByPointer = (event: ReactPointerEvent<HTMLDivElement>, descriptor: SplitDescriptor) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || !workspaceId || !layoutKey || cancelLayoutDragRef.current) return;
     const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
-    handle.classList.add("dragging");
-    const move = (pointerEvent: PointerEvent) => {
+    const pointerId = event.pointerId;
+    const pointerValue = (pointerEvent: PointerEvent | ReactPointerEvent<HTMLDivElement>) => {
       const rect = gridRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!rect) return layoutRatios[descriptor.ratioIndex] ?? 0.5;
       const size = descriptor.axis === "x" ? rect.width : rect.height;
       const point = descriptor.axis === "x" ? pointerEvent.clientX - rect.left : pointerEvent.clientY - rect.top;
       const usable = Math.max(1, size - (descriptor.paneCount - 1) * 12);
-      updateLayoutRatio(descriptor, (point - (descriptor.cutIndex + 0.5) * 12) / usable);
+      return (point - (descriptor.cutIndex + 0.5) * 12) / usable;
+    };
+    const drag = createTerminalLayoutDrag({
+      initialRatios: layoutRatios,
+      ratioIndex: descriptor.ratioIndex,
+      clamp: (value, ratios) => {
+        const { lower, upper } = terminalLayoutBounds(descriptor, [...ratios], gridRef.current);
+        return Math.min(upper, Math.max(lower, value));
+      },
+      onPreview: (ratios) => setLayoutRatioPreview(ratios ? { workspaceId, key: layoutKey, ratios } : null),
+      onCommit: (ratios) => commitLayoutRatios(workspaceId, layoutKey, ratios),
+    });
+    let cancelDrag: () => void;
+    const move = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId === pointerId) drag.preview(pointerValue(pointerEvent));
     };
     const cleanup = () => {
       handle.classList.remove("dragging");
@@ -280,16 +305,29 @@ export function TerminalWorkspace({
       handle.removeEventListener("pointerup", finish);
       handle.removeEventListener("pointercancel", cancel);
       handle.removeEventListener("lostpointercapture", cancel);
+      if (cancelLayoutDragRef.current === cancelDrag) cancelLayoutDragRef.current = null;
+    };
+    const release = () => {
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
     };
     const finish = (pointerEvent: PointerEvent) => {
-      move(pointerEvent);
+      if (pointerEvent.pointerId !== pointerId) return;
       cleanup();
-      if (handle.hasPointerCapture(pointerEvent.pointerId)) handle.releasePointerCapture(pointerEvent.pointerId);
+      drag.finish(pointerValue(pointerEvent));
+      release();
     };
     const cancel = (pointerEvent: PointerEvent) => {
-      cleanup();
-      if (handle.hasPointerCapture(pointerEvent.pointerId)) handle.releasePointerCapture(pointerEvent.pointerId);
+      if (pointerEvent.pointerId !== pointerId) return;
+      cancelDrag();
     };
+    cancelDrag = () => {
+      cleanup();
+      drag.cancel();
+      release();
+    };
+    cancelLayoutDragRef.current = cancelDrag;
+    handle.setPointerCapture(pointerId);
+    handle.classList.add("dragging");
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", finish);
     handle.addEventListener("pointercancel", cancel);

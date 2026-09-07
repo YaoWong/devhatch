@@ -59,6 +59,74 @@ export function clampTerminalLayoutCut(cuts: readonly number[], index: number, v
   return Math.min(upper, Math.max(lower, value));
 }
 
+export type TerminalLayoutDragController = {
+  preview: (value: number) => void;
+  finish: (value: number) => void;
+  cancel: () => void;
+};
+
+export function createTerminalLayoutDrag({
+  initialRatios,
+  ratioIndex,
+  clamp,
+  onPreview,
+  onCommit,
+  scheduleFrame = (callback) => requestAnimationFrame(callback),
+  cancelFrame = (frame) => cancelAnimationFrame(frame),
+}: {
+  initialRatios: readonly number[];
+  ratioIndex: number;
+  clamp: (value: number, ratios: readonly number[]) => number;
+  onPreview: (ratios: number[] | null) => void;
+  onCommit: (ratios: number[]) => void;
+  scheduleFrame?: (callback: () => void) => number;
+  cancelFrame?: (frame: number) => void;
+}): TerminalLayoutDragController {
+  let ratios = [...initialRatios];
+  let pendingValue: number | null = null;
+  let frame: number | null = null;
+  let active = true;
+  const apply = (value: number) => {
+    const next = [...ratios];
+    next[ratioIndex] = clamp(value, ratios);
+    ratios = next;
+  };
+  const clearFrame = () => {
+    if (frame !== null) cancelFrame(frame);
+    frame = null;
+    pendingValue = null;
+  };
+  const flush = () => {
+    frame = null;
+    if (!active || pendingValue === null) return;
+    const value = pendingValue;
+    pendingValue = null;
+    apply(value);
+    onPreview([...ratios]);
+  };
+  return {
+    preview(value) {
+      if (!active) return;
+      pendingValue = value;
+      if (frame === null) frame = scheduleFrame(flush);
+    },
+    finish(value) {
+      if (!active) return;
+      clearFrame();
+      apply(value);
+      active = false;
+      onPreview(null);
+      onCommit([...ratios]);
+    },
+    cancel() {
+      if (!active) return;
+      active = false;
+      clearFrame();
+      onPreview(null);
+    },
+  };
+}
+
 export function readTerminalWorkspaceLayouts(storageKey = TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY): Record<string, TerminalWorkspaceLayoutPreferences> {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as unknown;

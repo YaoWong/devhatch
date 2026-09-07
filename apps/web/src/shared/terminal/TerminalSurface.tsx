@@ -8,6 +8,7 @@ import { notifyUnauthorized } from "../../api/client";
 import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { SocketConnection } from "./socketConnection";
+import { loadTerminalFonts } from "./terminalFonts";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
 import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
@@ -161,7 +162,7 @@ export function TerminalSurface({
       terminal = new Terminal({
         cursorBlink: true,
         cursorStyle: "bar",
-        fontFamily: terminalFontFamily,
+        fontFamily: "monospace",
         fontSize: initialFontSizeRef.current,
         fontWeight: "normal",
         fontWeightBold: "bold",
@@ -410,12 +411,8 @@ export function TerminalSurface({
     container.addEventListener("paste", paste, true);
     const observer = new ResizeObserver(scheduleResize);
     observer.observe(container);
-    void Promise.all([
-      document.fonts.load(`400 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
-      document.fonts.load(`700 ${initialFontSizeRef.current}px "JetBrainsMono Nerd Font Web"`),
-    ]).then(() => {
+    void loadTerminalFonts(document.fonts).then(() => {
       if (disposed) return;
-      terminal.options.fontFamily = "monospace";
       terminal.options.fontFamily = terminalFontFamily;
       terminal.clearTextureAtlas();
       if (visibleRef.current) sendResize();

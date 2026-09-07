@@ -434,7 +434,7 @@ pub async fn paste_image(
         Ok(client) => client,
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "HTTP_CLIENT_ERROR"),
     };
-    match paste_runtime_image(&client, &session, content_type, &body).await {
+    match paste_runtime_image(&client, &session, content_type, body).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(PasteImageError::Unsupported) => {
             error(StatusCode::CONFLICT, "AGENT_IMAGE_PASTE_UNSUPPORTED")

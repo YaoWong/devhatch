@@ -6,6 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use axum::body::Bytes;
 use portable_pty::CommandBuilder;
 use uuid::Uuid;
 
@@ -63,13 +64,15 @@ pub(crate) async fn paste_image(
     client: &reqwest::Client,
     session: &Session,
     content_type: &str,
-    bytes: &[u8],
+    bytes: Bytes,
 ) -> Result<(), PasteImageError> {
     let content_type = content_type.to_string();
-    let image = bytes.to_vec();
-    tokio::task::spawn_blocking(move || validate_png(&content_type, &image))
-        .await
-        .map_err(|_| PasteImageError::Unavailable)??;
+    let bytes = tokio::task::spawn_blocking(move || {
+        validate_png(&content_type, &bytes)?;
+        Ok::<_, PasteImageError>(bytes)
+    })
+    .await
+    .map_err(|_| PasteImageError::Unavailable)??;
     let kind = session
         .agent_id()
         .and_then(|id| AgentKind::try_from(id).ok())
@@ -87,26 +90,30 @@ pub(crate) async fn paste_image(
     }
 }
 
-async fn paste_terminal_image(session: &Session, bytes: &[u8]) -> Result<(), PasteImageError> {
-    let _runtime_input = session.runtime_input.lock().await;
+async fn paste_terminal_image(session: &Session, bytes: Bytes) -> Result<(), PasteImageError> {
+    let runtime_input = session.runtime_input.clone().lock_owned().await;
     if !session.is_live() {
         return Err(PasteImageError::Unavailable);
     }
     let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
-    let attachment_dir = run_dir.join(ATTACHMENT_DIRECTORY);
-    ensure_private_attachment_directory(&attachment_dir)?;
-    let attachment_dir = attachment_dir
-        .canonicalize()
-        .map_err(|_| PasteImageError::Unavailable)?;
-    let (count, total_bytes) = terminal_attachment_usage(&attachment_dir)?;
-    if count >= MAX_TERMINAL_IMAGE_ATTACHMENTS
-        || total_bytes.saturating_add(bytes.len() as u64) > MAX_TERMINAL_IMAGE_BYTES
-    {
-        return Err(PasteImageError::Busy);
-    }
-    let target = attachment_dir.join(format!("{}.png", Uuid::new_v4().simple()));
-    write_private_file(&target, bytes).map_err(|_| PasteImageError::Unavailable)?;
-    let mut staged = StagedImage::new(target);
+    let (mut staged, _runtime_input) = tokio::task::spawn_blocking(move || {
+        let attachment_dir = run_dir.join(ATTACHMENT_DIRECTORY);
+        ensure_private_attachment_directory(&attachment_dir)?;
+        let attachment_dir = attachment_dir
+            .canonicalize()
+            .map_err(|_| PasteImageError::Unavailable)?;
+        let (count, total_bytes) = terminal_attachment_usage(&attachment_dir)?;
+        if count >= MAX_TERMINAL_IMAGE_ATTACHMENTS
+            || total_bytes.saturating_add(bytes.len() as u64) > MAX_TERMINAL_IMAGE_BYTES
+        {
+            return Err(PasteImageError::Busy);
+        }
+        let target = attachment_dir.join(format!("{}.png", Uuid::new_v4().simple()));
+        write_private_file(&target, &bytes).map_err(|_| PasteImageError::Unavailable)?;
+        Ok((StagedImage::new(target), runtime_input))
+    })
+    .await
+    .map_err(|_| PasteImageError::Unavailable)??;
     let paste = terminal_image_paste(staged.path())?;
     if !session.write_input(&paste) {
         return Err(PasteImageError::Unavailable);
@@ -163,7 +170,7 @@ fn terminal_attachment_usage(directory: &Path) -> Result<(usize, u64), PasteImag
 async fn paste_pi_image(
     client: &reqwest::Client,
     session: &Session,
-    bytes: &[u8],
+    bytes: Bytes,
 ) -> Result<(), PasteImageError> {
     let _runtime_input = session.runtime_input.lock().await;
     if !session.is_live() {
@@ -197,7 +204,7 @@ async fn paste_pi_image(
             .basic_auth("pi", Some(&endpoint.password))
             .header(reqwest::header::CONTENT_TYPE, "image/png")
             .header("x-devhatch-request-id", &request_id)
-            .body(bytes.to_vec())
+            .body(bytes.clone())
             .send()
             .await
         {
@@ -217,37 +224,42 @@ async fn paste_pi_image(
 async fn paste_opencode_image(
     client: &reqwest::Client,
     session: &Session,
-    bytes: &[u8],
+    bytes: Bytes,
 ) -> Result<(), PasteImageError> {
-    let _runtime_input = session.runtime_input.lock().await;
+    let runtime_input = session.runtime_input.clone().lock_owned().await;
     let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
     let endpoint = session
         .runtime_endpoint()
         .ok_or(PasteImageError::Unavailable)?;
     let clipboard_dir = run_dir.join(CLIPBOARD_DIRECTORY);
-    if std::fs::read_dir(&clipboard_dir)
-        .map_err(|_| PasteImageError::Unavailable)?
-        .filter_map(Result::ok)
-        .any(|entry| {
-            entry
-                .path()
-                .extension()
-                .is_some_and(|extension| extension == "png")
-        })
-    {
-        return Err(PasteImageError::Busy);
-    }
-    let sequence = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| PasteImageError::Unavailable)?
-        .as_nanos();
-    let name = format!("{sequence:032x}-{}", Uuid::new_v4().simple());
-    let temporary = clipboard_dir.join(format!(".{name}.tmp"));
-    let target = clipboard_dir.join(format!("{name}.png"));
-    write_private_file(&temporary, bytes).map_err(|_| PasteImageError::Unavailable)?;
-    let mut staged = StagedImage::new(temporary);
-    std::fs::rename(staged.path(), &target).map_err(|_| PasteImageError::Unavailable)?;
-    staged.path = target;
+    let (mut staged, _runtime_input) = tokio::task::spawn_blocking(move || {
+        if std::fs::read_dir(&clipboard_dir)
+            .map_err(|_| PasteImageError::Unavailable)?
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "png")
+            })
+        {
+            return Err(PasteImageError::Busy);
+        }
+        let sequence = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| PasteImageError::Unavailable)?
+            .as_nanos();
+        let name = format!("{sequence:032x}-{}", Uuid::new_v4().simple());
+        let temporary = clipboard_dir.join(format!(".{name}.tmp"));
+        let target = clipboard_dir.join(format!("{name}.png"));
+        write_private_file(&temporary, &bytes).map_err(|_| PasteImageError::Unavailable)?;
+        let mut staged = StagedImage::new(temporary);
+        std::fs::rename(staged.path(), &target).map_err(|_| PasteImageError::Unavailable)?;
+        staged.path = target;
+        Ok((staged, runtime_input))
+    })
+    .await
+    .map_err(|_| PasteImageError::Unavailable)??;
     let url = format!("http://127.0.0.1:{}/tui/publish", endpoint.port);
     let body = serde_json::json!({
         "type": "tui.command.execute",

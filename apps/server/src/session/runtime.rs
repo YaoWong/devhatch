@@ -128,7 +128,7 @@ impl Session {
             agent_name: spawn.agent_name,
             runtime_dir: cleanup_path.clone(),
             runtime_endpoint: spawn.runtime_endpoint,
-            runtime_input: tokio::sync::Mutex::new(()),
+            runtime_input: Arc::new(tokio::sync::Mutex::new(())),
         });
         if !sessions.insert(session.clone()) {
             return Err("server is shutting down".into());
@@ -318,6 +318,7 @@ impl Session {
     }
 
     fn publish_output(&self, data: String) {
+        let data: Arc<str> = data.into();
         let mut state = self.state.lock().expect("session lock poisoned");
         state.updated_at = now();
         state.output.push_str(&data);

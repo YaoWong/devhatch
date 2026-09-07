@@ -56,7 +56,7 @@ pub(crate) struct Session {
     pub(super) agent_name: Option<&'static str>,
     pub(super) runtime_dir: Option<PathBuf>,
     pub(super) runtime_endpoint: Option<RuntimeEndpoint>,
-    pub(crate) runtime_input: AsyncMutex<()>,
+    pub(crate) runtime_input: Arc<AsyncMutex<()>>,
 }
 
 pub(crate) type SessionExitCleanup = Box<dyn FnOnce(Arc<Session>, Option<u32>) + Send>;
@@ -151,7 +151,7 @@ pub(crate) struct SessionSnapshot {
 
 #[derive(Clone)]
 pub(crate) enum SessionEvent {
-    Output(String),
+    Output(Arc<str>),
     UpstreamSessionChanged { id: String, cwd: String },
     Exit(Option<u32>),
     Removed(Option<u32>),
@@ -379,9 +379,9 @@ fn merge_runtime_identity(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
-    use super::{SessionCompletion, merge_runtime_identity};
+    use super::{SessionCompletion, SessionEvent, merge_runtime_identity};
 
     #[tokio::test]
     async fn completion_waits_until_marked_and_remains_ready() {
@@ -400,6 +400,25 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(1), completion.wait())
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn output_broadcast_shares_data() {
+        let (events, _) = tokio::sync::broadcast::channel(1);
+        let mut first = events.subscribe();
+        let mut second = events.subscribe();
+        assert!(
+            events
+                .send(SessionEvent::Output(String::from("output").into()))
+                .is_ok()
+        );
+        let SessionEvent::Output(first_data) = first.try_recv().unwrap() else {
+            panic!("expected output event");
+        };
+        let SessionEvent::Output(second_data) = second.try_recv().unwrap() else {
+            panic!("expected output event");
+        };
+        assert!(Arc::ptr_eq(&first_data, &second_data));
     }
 
     #[test]

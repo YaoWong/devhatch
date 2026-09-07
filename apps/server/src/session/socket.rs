@@ -137,7 +137,7 @@ async fn handle_socket(
             event = events.recv() => {
                 match event {
                     Ok(SessionEvent::Output(data)) => {
-                        if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data })).await.is_err() { break; }
+                        if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data.as_ref() })).await.is_err() { break; }
                     }
                     Ok(SessionEvent::UpstreamSessionChanged { id, cwd }) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id, "cwd": cwd })).await.is_err() { break; }
