@@ -1,5 +1,19 @@
 import type { AgentSession, AgentWorkspace, AgentWorkspaceSnapshot } from "../../types/agents";
 
+export function sameAgentWorkspaces(current: AgentWorkspace[], next: AgentWorkspace[]) {
+  return current.length === next.length && current.every((workspace, index) => {
+    const candidate = next[index];
+    return candidate !== undefined
+      && workspace.id === candidate.id
+      && workspace.name === candidate.name
+      && workspace.activeAgentSessionId === candidate.activeAgentSessionId
+      && workspace.createdAt === candidate.createdAt
+      && workspace.updatedAt === candidate.updatedAt
+      && workspace.members.length === candidate.members.length
+      && workspace.members.every((member, memberIndex) => member.agentSessionId === candidate.members[memberIndex]?.agentSessionId);
+  });
+}
+
 export function agentWorkspaceSessions(workspace: AgentWorkspace | null, sessions: AgentSession[]) {
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   return (workspace?.members ?? []).flatMap(({ agentSessionId }) => {

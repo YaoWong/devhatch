@@ -1,6 +1,31 @@
 import type { AgentSession, HistoryResponse } from "../../types/agents";
 import { pathMatches } from "../../shared/lib/utils";
 
+export function agentHistoryPollDelay(active: boolean, historyAgentId: string | null, hasPendingSession: boolean) {
+  if (!active || !historyAgentId) return null;
+  return hasPendingSession ? 1000 : 10000;
+}
+
+export function sameAgentSessions(current: AgentSession[], next: AgentSession[]) {
+  return current.length === next.length && current.every((session, index) => {
+    const candidate = next[index];
+    return candidate !== undefined
+      && session.id === candidate.id
+      && session.agentId === candidate.agentId
+      && session.agentName === candidate.agentName
+      && session.kind === candidate.kind
+      && session.upstreamSessionId === candidate.upstreamSessionId
+      && session.name === candidate.name
+      && session.cwd === candidate.cwd
+      && session.shell === candidate.shell
+      && session.status === candidate.status
+      && session.cols === candidate.cols
+      && session.rows === candidate.rows
+      && session.createdAt === candidate.createdAt
+      && session.exitCode === candidate.exitCode;
+  });
+}
+
 export function shouldShowAgentSessionSearch(sessionCount: number, historyCount: number, search: string) {
   return sessionCount + historyCount > 7 || search.trim().length > 0;
 }

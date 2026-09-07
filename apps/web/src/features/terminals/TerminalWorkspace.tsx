@@ -1,5 +1,5 @@
 import { ChevronRight, Ellipsis, Minus, Pencil, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +9,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
-import { TerminalSurface } from "../../shared/terminal/TerminalSurface";
 import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
@@ -31,6 +30,8 @@ import {
   type TerminalLayoutPreset,
   type TerminalWorkspaceLayoutPreferences,
 } from "./terminalWorkspaceLayout";
+
+const TerminalSurface = lazy(() => import("../../shared/terminal/TerminalSurface").then((module) => ({ default: module.TerminalSurface })));
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -680,7 +681,9 @@ export function TerminalWorkspace({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </header>
-                <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(session.id); }} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onPasteImage={runtimeImagePaste?.(session)} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
+                <Suspense fallback={<div className={`terminal-surface ${shown || thumbnailSource ? "active" : ""}`} />}>
+                  <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource && thumbnailDockOpen} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(session.id); }} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onPasteImage={runtimeImagePaste?.(session)} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
+                </Suspense>
               </section>
             );
           })}

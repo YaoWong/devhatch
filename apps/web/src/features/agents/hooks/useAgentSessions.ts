@@ -4,6 +4,7 @@ import { deleteRemoteSession, renameRemoteSession } from "../../../api/terminals
 import type { DeleteTarget } from "../../../types/app";
 import type { AgentSession, HistoryResponse } from "../../../types/agents";
 import { logicalPath } from "../../../shared/lib/utils";
+import { agentHistoryPollDelay, sameAgentSessions } from "../selectors";
 import { errorMessage, type HomePaths } from "./shared";
 
 const emptyHistory: HistoryResponse = { available: false, diagnostic: null, sessions: [] };
@@ -122,18 +123,17 @@ export function useAgentSessions({
     });
   }, [historyAgentId]);
 
+  const hasPendingHistorySession = Boolean(historyAgentId) && sessions.some(
+    (session) => session.agentId === historyAgentId && !session.upstreamSessionId,
+  );
+  const historyPollDelay = agentHistoryPollDelay(active, historyAgentId, hasPendingHistorySession);
+
   useEffect(() => {
-    if (historyAgentId) void refreshHistory();
-    const delay =
-      historyAgentId &&
-      sessions.some((session) => session.agentId === historyAgentId && !session.upstreamSessionId)
-        ? 1000
-        : 10000;
-    const timer = window.setInterval(() => {
-      if (active && historyAgentId) void refreshHistory();
-    }, delay);
+    if (historyPollDelay === null) return;
+    void refreshHistory();
+    const timer = window.setInterval(() => void refreshHistory(), historyPollDelay);
     return () => window.clearInterval(timer);
-  }, [active, historyAgentId, refreshHistory, sessions]);
+  }, [historyPollDelay, refreshHistory]);
 
   const applySessions = useCallback(
     (nextSessions: AgentSession[], paths: HomePaths) => {
@@ -142,10 +142,12 @@ export function useAgentSessions({
         ...session,
         cwd: logicalPath(session.cwd, paths?.home, paths?.resolvedHome),
       }));
-      sessionsRef.current = normalized;
-      setSessions(normalized);
-      setActiveId((current) =>
-        current && normalized.some((session) => session.id === current) ? current : (normalized[0]?.id ?? null),
+      const current = sessionsRef.current;
+      const resolved = sameAgentSessions(current, normalized) ? current : normalized;
+      sessionsRef.current = resolved;
+      setSessions(resolved);
+      setActiveId((activeSessionId) =>
+        activeSessionId && resolved.some((session) => session.id === activeSessionId) ? activeSessionId : (resolved[0]?.id ?? null),
       );
     },
     [],

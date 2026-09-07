@@ -9,6 +9,7 @@ import {
   mergeAgentWorkspaceMetadata,
   reconcileAgentWorkspaces,
   reconcileAgentWorkspaceSnapshot,
+  sameAgentWorkspaces,
   selectedWorkspaceAfterDisband,
   workspaceOwningSession,
 } from "../agentWorkspaceState";
@@ -51,11 +52,13 @@ export function useAgentWorkspace({
     const filtered = reconcileAgentWorkspaces(next, {
       has: (id) => !removedSessionIdsRef.current.has(id),
     });
-    workspacesRef.current = filtered;
-    setWorkspaces(filtered);
+    const currentWorkspaces = workspacesRef.current;
+    const resolved = sameAgentWorkspaces(currentWorkspaces, filtered) ? currentWorkspaces : filtered;
+    workspacesRef.current = resolved;
+    setWorkspaces(resolved);
     setSelectedAgentWorkspaceId((current) => {
       const candidate = preferred === undefined ? current : preferred;
-      const selected = candidate && filtered.some((workspace) => workspace.id === candidate) ? candidate : (filtered[0]?.id ?? null);
+      const selected = candidate && resolved.some((workspace) => workspace.id === candidate) ? candidate : (resolved[0]?.id ?? null);
       selectedAgentWorkspaceIdRef.current = selected;
       return selected;
     });

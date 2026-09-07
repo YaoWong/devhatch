@@ -1,9 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
+import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 
 describe("terminal thumbnail", () => {
   it("uses a bounded output size", () => {
     expect(terminalThumbnailSize).toEqual({ width: 320, height: 200 });
+  });
+
+  it("coalesces capture requests while encoding is in flight", () => {
+    const capture = new TerminalThumbnailCaptureState();
+    expect(capture.start()).toBe(true);
+    expect(capture.start()).toBe(false);
+    expect(capture.start()).toBe(false);
+    expect(capture.finish()).toBe(true);
+    expect(capture.start()).toBe(true);
+    expect(capture.finish()).toBe(false);
+  });
+
+  it("resets pending capture work", () => {
+    const capture = new TerminalThumbnailCaptureState();
+    capture.start();
+    capture.start();
+    capture.reset();
+    expect(capture.start()).toBe(true);
+    expect(capture.finish()).toBe(false);
   });
 
   it("maps canvas layers relative to the screen", () => {

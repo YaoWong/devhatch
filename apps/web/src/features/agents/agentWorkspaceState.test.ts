@@ -9,6 +9,7 @@ import {
   reconcileAgentWorkspaces,
   reconcileAgentWorkspaceSnapshot,
   reconcileLaunchedAgentWorkspaces,
+  sameAgentWorkspaces,
   selectedWorkspaceAfterDisband,
   workspaceOwningSession,
 } from "./agentWorkspaceState";
@@ -74,6 +75,12 @@ describe("agent workspace state", () => {
   it("preserves workspace references when all members and active IDs are live", () => {
     const current = [workspace(["open", "pi"])];
     expect(reconcileAgentWorkspaces(current, new Set(["open", "pi"]))).toBe(current);
+  });
+
+  it("detects semantically unchanged workspace snapshots", () => {
+    const current = [workspace(["open", "pi"])];
+    expect(sameAgentWorkspaces(current, current.map((item) => ({ ...item, members: item.members.map((member) => ({ ...member })) })))).toBe(true);
+    expect(sameAgentWorkspaces(current, [{ ...current[0], activeAgentSessionId: "pi" }])).toBe(false);
   });
 
   it("filters a deleted session from a delayed authoritative workspace", () => {

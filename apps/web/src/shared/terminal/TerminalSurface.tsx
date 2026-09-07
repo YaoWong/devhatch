@@ -9,7 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { SocketConnection } from "./socketConnection";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
-import { terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
+import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
 
 const socketProtocol = () => window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -95,6 +95,8 @@ export function TerminalSurface({
   useEffect(() => {
     if (activationFrameRef.current !== null) cancelAnimationFrame(activationFrameRef.current);
     activationFrameRef.current = null;
+    const terminal = terminalRef.current;
+    if (terminal) terminal.options.screenReaderMode = visible;
     if (visible) {
       activationFrameRef.current = requestAnimationFrame(() => {
         activationFrameRef.current = null;
@@ -142,6 +144,7 @@ export function TerminalSurface({
     let focusFrame: number | null = null;
     let thumbnailTimer: number | null = null;
     let lastThumbnailAt = 0;
+    const thumbnailCapture = new TerminalThumbnailCaptureState();
     let lastResize = "";
     let snapshotDimensions: { cols: number; rows: number } | null = null;
     const connection = new SocketConnection(
@@ -164,7 +167,7 @@ export function TerminalSurface({
         fontWeightBold: "bold",
         lineHeight: 1,
         linkHandler: { activate: (_event, url) => onOpenLink(url) },
-        screenReaderMode: true,
+        screenReaderMode: visibleRef.current,
         scrollback: 5000,
         theme: terminalThemes[initialThemeRef.current],
       });
@@ -230,12 +233,16 @@ export function TerminalSurface({
     const emitThumbnail = () => {
       thumbnailTimer = null;
       const callback = onThumbnailRef.current;
-      if (disposed || !thumbnailEnabledRef.current || !callback) return;
+      if (disposed || !thumbnailEnabledRef.current || !callback || !thumbnailCapture.start()) return;
       const generation = ++thumbnailGenerationRef.current;
-      void captureThumbnail().then((blob) => {
-        if (!blob || disposed || !thumbnailEnabledRef.current || generation !== thumbnailGenerationRef.current) return;
-        onThumbnailRef.current?.(session.id, blob);
-      });
+      void captureThumbnail()
+        .then((blob) => {
+          if (!blob || disposed || !thumbnailEnabledRef.current || generation !== thumbnailGenerationRef.current) return;
+          onThumbnailRef.current?.(session.id, blob);
+        })
+        .finally(() => {
+          if (thumbnailCapture.finish()) scheduleThumbnail();
+        });
     };
     const scheduleThumbnail = () => {
       if (disposed || !thumbnailEnabledRef.current || !onThumbnailRef.current || thumbnailTimer !== null) return;
@@ -431,6 +438,7 @@ export function TerminalSurface({
       if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
       fontUpdateFrameRef.current = null;
       if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
+      thumbnailCapture.reset();
       thumbnailGenerationRef.current += 1;
       observer.disconnect();
       container.removeEventListener("paste", paste, true);
