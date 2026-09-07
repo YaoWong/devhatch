@@ -14,6 +14,7 @@ import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
+  activeTerminalSurfaceIds,
   minimizeTerminal,
   reconcileTerminalWorkspaceDock,
   stageTerminal,
@@ -106,13 +107,12 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 }
 
 export function TerminalWorkspace({
-  visible, busy, launching, sessions, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", sessionIdentity, stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  visible, busy, launching, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", sessionIdentity, stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
   onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, runtimeImagePaste, onOpenLink, onError, onDismissError,
 }: {
   visible: boolean;
   busy: boolean;
   launching: boolean;
-  sessions: TerminalInfo[];
   visibleSessions: TerminalInfo[];
   workspace?: TerminalWorkspaceInfo | null;
   workspaceKey?: string | null;
@@ -214,11 +214,9 @@ export function TerminalWorkspace({
   const thumbnailDockOpen = hasThumbnailDock && (!thumbnailsAutoHide || thumbnailDockExpanded);
   const thumbnailsReserveSpace = hasThumbnailDock && !thumbnailsAutoHide;
   const sessionById = new Map(visibleSessions.map((session) => [session.id, session]));
-  const orderedSessions = [
-    ...currentState.stagedIds.map((id) => sessionById.get(id)).filter((session): session is TerminalInfo => Boolean(session)),
-    ...visibleSessions.filter((session) => !staged.has(session.id)),
-    ...sessions.filter((session) => !memberIdSet.has(session.id)),
-  ];
+  const orderedSessions = activeTerminalSurfaceIds(visible, currentState, memberIds)
+    .map((id) => sessionById.get(id))
+    .filter((session): session is TerminalInfo => Boolean(session));
 
   useEffect(() => () => {
     if (thumbnailCollapseTimerRef.current !== null) window.clearTimeout(thumbnailCollapseTimerRef.current);

@@ -120,6 +120,7 @@ impl Session {
             input: std::sync::Mutex::new(Some(input)),
             killer: std::sync::Mutex::new(killer),
             deleting: AtomicBool::new(false),
+            terminating: AtomicBool::new(false),
             completion: SessionCompletion::default(),
             events,
             agent_id: spawn.agent_id,
@@ -227,18 +228,33 @@ impl Session {
         (state.cols, state.rows)
     }
 
-    pub(crate) fn terminate(&self) {
+    pub(crate) fn terminate(self: &Arc<Self>) {
         self.input.lock().expect("input lock poisoned").take();
-        if self.state.lock().expect("session lock poisoned").status == SessionStatus::Running {
-            #[cfg(unix)]
-            if let Some(identity) = self.process_identity {
-                let _ = crate::process::signal_owned_child(identity, libc::SIGTERM);
-                std::thread::sleep(std::time::Duration::from_millis(250));
-                let _ = crate::process::signal_owned_child(identity, libc::SIGKILL);
-            }
-            let _ = self.killer.lock().expect("killer lock poisoned").kill();
+        if self.terminating.swap(true, Ordering::AcqRel) {
+            return;
         }
+        let running =
+            self.state.lock().expect("session lock poisoned").status == SessionStatus::Running;
         let _ = self.events.send(SessionEvent::Terminate);
+        if !running {
+            return;
+        }
+        #[cfg(unix)]
+        if let Some(identity) = self.process_identity {
+            let _ = crate::process::signal_owned_child(identity, libc::SIGTERM);
+            let session = Arc::clone(self);
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let _ = crate::process::signal_owned_child(identity, libc::SIGKILL);
+                if session.state.lock().expect("session lock poisoned").status
+                    == SessionStatus::Running
+                {
+                    let _ = session.killer.lock().expect("killer lock poisoned").kill();
+                }
+            });
+            return;
+        }
+        let _ = self.killer.lock().expect("killer lock poisoned").kill();
     }
 
     fn start_writer(

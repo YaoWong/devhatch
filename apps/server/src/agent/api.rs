@@ -408,6 +408,7 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
         return error(StatusCode::INTERNAL_SERVER_ERROR, "SESSION_REGISTRY_ERROR");
     }
     removed.mark_deleting();
+    drop(_lifecycle);
     removed.terminate();
     StatusCode::NO_CONTENT.into_response()
 }

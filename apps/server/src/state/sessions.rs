@@ -322,6 +322,43 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn terminate_returns_without_waiting_for_the_grace_period() {
+        let registry = Arc::new(SessionRegistry::default());
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        let session = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Terminal,
+                upstream_session_id: None,
+                pending_upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: None,
+                agent_name: None,
+                cleanup_path: None,
+                runtime_endpoint: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        let started = std::time::Instant::now();
+
+        session.terminate();
+
+        assert!(started.elapsed() < Duration::from_millis(200));
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn live_snapshot_rejects_deleting_and_exited_registry_entries() {
         let registry = Arc::new(SessionRegistry::default());

@@ -89,7 +89,6 @@ export function AppWorkspaceContent({
         visible={mode === "terminal"}
         busy={busy}
         launching={terminal.launching}
-        sessions={terminal.sessions}
         visibleSessions={terminal.visibleSessions}
         workspace={terminal.selectedWorkspace}
         phases={phases}

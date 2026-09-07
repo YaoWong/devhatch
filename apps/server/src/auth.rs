@@ -3,7 +3,10 @@ use std::{
     error::Error,
     fmt,
     net::IpAddr,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{
+        Arc, LazyLock, Mutex, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -36,6 +39,7 @@ pub struct AuthState {
     setup_token_hash: Option<String>,
     login_attempts: Mutex<HashMap<IpAddr, VecDeque<u64>>>,
     session_lifecycle: tokio::sync::RwLock<()>,
+    session_leases: Mutex<HashMap<String, Weak<AtomicBool>>>,
     secure_cookie: bool,
 }
 
@@ -56,6 +60,7 @@ pub struct LoginRequest {
 pub(crate) struct AuthIdentity {
     session_id: String,
     csrf_token: String,
+    expires_at: u64,
 }
 
 #[derive(Debug)]
@@ -92,6 +97,7 @@ impl AuthState {
             setup_token_hash: setup_token.map(hash_token),
             login_attempts: Mutex::new(HashMap::new()),
             session_lifecycle: tokio::sync::RwLock::new(()),
+            session_leases: Mutex::new(HashMap::new()),
             secure_cookie,
         }
     }
@@ -128,6 +134,32 @@ impl AuthState {
 
     pub(crate) fn session_lifecycle(&self) -> &tokio::sync::RwLock<()> {
         &self.session_lifecycle
+    }
+
+    pub(crate) fn session_lease(&self, identity: &AuthIdentity) -> Arc<AtomicBool> {
+        let mut leases = self
+            .session_leases
+            .lock()
+            .expect("session leases lock poisoned");
+        leases.retain(|_, lease| lease.strong_count() > 0);
+        if let Some(lease) = leases.get(&identity.session_id).and_then(Weak::upgrade) {
+            return lease;
+        }
+        let lease = Arc::new(AtomicBool::new(!identity.is_expired()));
+        leases.insert(identity.session_id.clone(), Arc::downgrade(&lease));
+        lease
+    }
+
+    fn revoke_session(&self, session_id: &str) {
+        if let Some(lease) = self
+            .session_leases
+            .lock()
+            .expect("session leases lock poisoned")
+            .remove(session_id)
+            .and_then(|lease| lease.upgrade())
+        {
+            lease.store(false, Ordering::Release);
+        }
     }
 }
 
@@ -252,6 +284,7 @@ async fn logout_response(pool: &SqlitePool, auth: &AuthState, identity: &AuthIde
     if revoke_identity(pool, identity).await.is_err() {
         return database_error();
     }
+    auth.revoke_session(&identity.session_id);
     let cookie = cookie_header("", true, auth.secure_cookie);
     with_no_store((StatusCode::NO_CONTENT, [(header::SET_COOKIE, cookie)]).into_response())
 }
@@ -376,19 +409,26 @@ async fn authenticate(
         return Ok(None);
     };
     let now = clock::now() as i64;
-    sqlx::query_as::<_, (String, String)>(
-        "SELECT id, csrf_token FROM auth_sessions WHERE token_hash = ? AND expires_at > ?",
+    sqlx::query_as::<_, (String, String, i64)>(
+        "SELECT id, csrf_token, expires_at FROM auth_sessions WHERE token_hash = ? AND expires_at > ?",
     )
     .bind(hash_token(&token))
     .bind(now)
     .fetch_optional(pool)
     .await
     .map(|session| {
-        session.map(|(session_id, csrf_token)| AuthIdentity {
+        session.map(|(session_id, csrf_token, expires_at)| AuthIdentity {
             session_id,
             csrf_token,
+            expires_at: expires_at.max(0) as u64,
         })
     })
+}
+
+impl AuthIdentity {
+    pub(crate) fn is_expired(&self) -> bool {
+        self.expires_at <= clock::now()
+    }
 }
 
 pub(crate) async fn validate_identity(
@@ -635,10 +675,13 @@ mod tests {
         let identity = AuthIdentity {
             session_id: "session-1".into(),
             csrf_token: "csrf".into(),
+            expires_at: u64::MAX,
         };
         let auth = AuthState::new(None, false);
+        let lease = auth.session_lease(&identity);
         let response = logout_response(&pool, &auth, &identity).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(lease.load(std::sync::atomic::Ordering::Acquire));
         assert!(response.headers().get(header::SET_COOKIE).is_none());
         assert_eq!(
             response_body(response).await,
@@ -658,6 +701,7 @@ mod tests {
         );
         let identity = authenticate(&pool, &headers).await.unwrap().unwrap();
         assert_eq!(identity.session_id, "active");
+        assert!(!identity.is_expired());
         assert!(validate_identity(&pool, &identity).await.unwrap());
         sqlx::query("DELETE FROM auth_sessions WHERE id = 'active'")
             .execute(&pool)
@@ -669,8 +713,37 @@ mod tests {
         let expired = AuthIdentity {
             session_id: "expired".into(),
             csrf_token: "csrf".into(),
+            expires_at: now.saturating_sub(1) as u64,
         };
         assert!(!validate_identity(&pool, &expired).await.unwrap());
+        assert!(expired.is_expired());
+    }
+
+    #[tokio::test]
+    async fn logout_revokes_active_connection_leases() {
+        let pool = pool().await;
+        let now = crate::clock::now() as i64;
+        insert_session(&pool, "active", "token", now + 60_000).await;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("devhatch_session=token"),
+        );
+        let identity = authenticate(&pool, &headers).await.unwrap().unwrap();
+        let auth = AuthState::new(None, false);
+        let first = auth.session_lease(&identity);
+        let second = auth.session_lease(&identity);
+        assert!(Arc::ptr_eq(&first, &second));
+        assert!(first.load(std::sync::atomic::Ordering::Acquire));
+
+        let response = logout_response(&pool, &auth, &identity).await;
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(!first.load(std::sync::atomic::Ordering::Acquire));
+        assert!(
+            auth.session_lease(&identity)
+                .load(std::sync::atomic::Ordering::Acquire)
+        );
     }
 
     #[test]

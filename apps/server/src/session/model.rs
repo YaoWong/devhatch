@@ -49,6 +49,7 @@ pub(crate) struct Session {
     pub(super) input: Mutex<Option<SyncSender<Vec<u8>>>>,
     pub(super) killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     pub(super) deleting: AtomicBool,
+    pub(super) terminating: AtomicBool,
     pub(super) completion: SessionCompletion,
     pub(super) events: broadcast::Sender<SessionEvent>,
     pub(super) agent_id: Option<&'static str>,

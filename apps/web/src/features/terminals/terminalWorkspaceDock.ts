@@ -44,6 +44,18 @@ export function reconcileTerminalWorkspaceDock(
   return { stagedIds, minimizedIds };
 }
 
+export function activeTerminalSurfaceIds(
+  visible: boolean,
+  state: TerminalWorkspaceDockState,
+  memberIds: string[],
+) {
+  if (!visible) return [];
+  const members = new Set(memberIds);
+  const stagedIds = state.stagedIds.filter((id) => members.has(id));
+  const staged = new Set(stagedIds);
+  return [...stagedIds, ...memberIds.filter((id) => !staged.has(id))];
+}
+
 export function stageTerminal(
   state: TerminalWorkspaceDockState,
   id: string,

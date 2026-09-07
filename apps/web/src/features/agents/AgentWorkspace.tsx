@@ -73,7 +73,6 @@ export function AgentWorkspace({
     visible={visible}
     busy={busy}
     launching={launching}
-    sessions={displaySessions}
     visibleSessions={visibleSessions}
     workspaceKey={agentWorkspaceKey(selectedAgentWorkspaceId)}
     activeSessionId={selectedActiveId}

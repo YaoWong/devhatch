@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampTerminalWorkspaceCapacity, minimizeTerminal, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, stageTerminal, terminalViewTransitionName } from "./terminalWorkspaceDock";
+import { activeTerminalSurfaceIds, clampTerminalWorkspaceCapacity, minimizeTerminal, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, stageTerminal, terminalViewTransitionName } from "./terminalWorkspaceDock";
 
 const state = (stagedIds: string[], minimizedIds: string[] = []) => ({ stagedIds, minimizedIds });
 
@@ -10,6 +10,12 @@ describe("terminal workspace dock", () => {
     expect(terminalViewTransitionName(id)).toBe(name);
     expect(terminalViewTransitionName(`${id}-other`)).not.toBe(name);
     expect(name).toMatch(/^terminal-pane-[0-9a-f]{16}$/);
+  });
+
+  it("keeps every visible workspace surface mounted with staged surfaces first", () => {
+    expect(activeTerminalSurfaceIds(true, state(["b", "a"], ["c"]), ["a", "b", "c", "d"])).toEqual(["b", "a", "c", "d"]);
+    expect(activeTerminalSurfaceIds(true, state(["gone", "a"], ["b"]), ["a", "b", "c"])).toEqual(["a", "b", "c"]);
+    expect(activeTerminalSurfaceIds(false, state(["b", "a"], ["c"]), ["a", "b", "c"])).toEqual([]);
   });
 
   it("appends a restored terminal", () => {
