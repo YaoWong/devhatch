@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../types/agents";
-import { agentHistoryPollDelay, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
+import { agentHistoryPollDelay, runWhenVisible, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
 
 const session = (overrides: Partial<AgentSession> = {}): AgentSession => ({
   id: "session-1",
@@ -69,12 +69,26 @@ describe("agent session selectors", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
 
     visibilityState = "hidden";
+    const queuedInterval = intervalCallbacks.get(1);
     visibilityListeners[0]?.();
     expect(scheduler.clearInterval).toHaveBeenCalledWith(1);
+    queuedInterval?.();
     expect(refresh).toHaveBeenCalledTimes(2);
 
     unsubscribe();
     expect(visibilityListeners).toHaveLength(0);
+  });
+
+  it("gates event-driven work by current visibility", () => {
+    const target = { visibilityState: "hidden" as DocumentVisibilityState };
+    const refresh = vi.fn(() => Promise.resolve());
+
+    expect(runWhenVisible(target, refresh)).toBeUndefined();
+    expect(refresh).not.toHaveBeenCalled();
+
+    target.visibilityState = "visible";
+    expect(runWhenVisible(target, refresh)).toBeInstanceOf(Promise);
+    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it("can schedule a visible poll without an initial refresh", () => {
@@ -93,7 +107,7 @@ describe("agent session selectors", () => {
     const unsubscribe = subscribeVisiblePolling(target, scheduler, refresh, 5000, false);
 
     expect(refresh).not.toHaveBeenCalled();
-    expect(scheduler.setInterval).toHaveBeenCalledWith(refresh, 5000);
+    expect(scheduler.setInterval).toHaveBeenCalledWith(expect.any(Function), 5000);
     unsubscribe();
     expect(listeners).toHaveLength(0);
   });

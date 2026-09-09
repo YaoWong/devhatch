@@ -14,7 +14,7 @@ import {
   workspaceOwningSession,
 } from "../agentWorkspaceState";
 import { completeAgentSessionLaunch } from "../agentWorkspaceLaunch";
-import { mergeAgentSessions, subscribeVisiblePolling, substituteHistoryTitles } from "../selectors";
+import { mergeAgentSessions, runWhenVisible, subscribeVisiblePolling, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
 import { useAgentLaunch } from "./useAgentLaunch";
@@ -112,10 +112,14 @@ export function useAgentWorkspace({
     workspaceRefreshRef.current = request;
     return request;
   }, [applyAuthoritativeSnapshot, reportError]);
+  const refreshVisibleAuthoritativeSnapshot = useCallback(
+    () => runWhenVisible(document, refreshAuthoritativeSnapshot) ?? Promise.resolve(),
+    [refreshAuthoritativeSnapshot],
+  );
   useEffect(() => {
     if (!active) return;
-    return subscribeVisiblePolling(document, window, () => void refreshAuthoritativeSnapshot(), 5000, false);
-  }, [active, refreshAuthoritativeSnapshot]);
+    return subscribeVisiblePolling(document, window, () => void refreshVisibleAuthoritativeSnapshot(), 5000, false);
+  }, [active, refreshVisibleAuthoritativeSnapshot]);
   const refreshAuthoritativeWorkspaces = useCallback(async <T,>(apply: (authoritative: AgentWorkspace[]) => T): Promise<T> => {
     const snapshot = await workspaceMutationsRef.current.readLatest(AGENT_WORKSPACES_MUTATION_KEY, agentWorkspaces);
     const reconciled = reconcileAgentWorkspaceSnapshot(snapshot);

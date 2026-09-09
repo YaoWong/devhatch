@@ -1,8 +1,11 @@
 import type { AgentSession, HistoryResponse } from "../../types/agents";
 import { pathMatches } from "../../shared/lib/utils";
 
-type VisibilityTarget = {
+type VisibilityStateTarget = {
   readonly visibilityState: DocumentVisibilityState;
+};
+
+type VisibilityTarget = VisibilityStateTarget & {
   addEventListener: (type: "visibilitychange", listener: () => void) => void;
   removeEventListener: (type: "visibilitychange", listener: () => void) => void;
 };
@@ -12,6 +15,11 @@ type IntervalScheduler = {
   clearInterval: (handle: number) => void;
 };
 
+export function runWhenVisible<T>(target: VisibilityStateTarget, callback: () => T) {
+  if (target.visibilityState !== "visible") return undefined;
+  return callback();
+}
+
 export function subscribeVisiblePolling(
   target: VisibilityTarget,
   scheduler: IntervalScheduler,
@@ -20,6 +28,7 @@ export function subscribeVisiblePolling(
   refreshInitially: boolean,
 ) {
   let timer: number | null = null;
+  const poll = () => runWhenVisible(target, callback);
   const clear = () => {
     if (timer !== null) scheduler.clearInterval(timer);
     timer = null;
@@ -27,8 +36,8 @@ export function subscribeVisiblePolling(
   const schedule = (refresh: boolean) => {
     clear();
     if (target.visibilityState !== "visible") return;
-    if (refresh) callback();
-    timer = scheduler.setInterval(callback, delay);
+    if (refresh) poll();
+    timer = scheduler.setInterval(poll, delay);
   };
   const update = () => schedule(true);
   schedule(refreshInitially);

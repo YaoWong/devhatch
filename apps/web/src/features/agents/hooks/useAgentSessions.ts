@@ -4,7 +4,7 @@ import { deleteRemoteSession, renameRemoteSession } from "../../../api/terminals
 import type { DeleteTarget } from "../../../types/app";
 import type { AgentSession, HistoryResponse } from "../../../types/agents";
 import { logicalPath } from "../../../shared/lib/utils";
-import { agentHistoryPollDelay, sameAgentSessions, subscribeVisiblePolling } from "../selectors";
+import { agentHistoryPollDelay, runWhenVisible, sameAgentSessions, subscribeVisiblePolling } from "../selectors";
 import { errorMessage, type HomePaths } from "./shared";
 
 const emptyHistory: HistoryResponse = { available: false, diagnostic: null, sessions: [] };
@@ -110,6 +110,10 @@ export function useAgentSessions({
     [historyAgentId, reportError],
   );
   const retryHistory = useCallback(() => refreshHistory(true), [refreshHistory]);
+  const refreshVisibleHistory = useCallback(
+    () => runWhenVisible(document, refreshHistory) ?? Promise.resolve(),
+    [refreshHistory],
+  );
 
   useEffect(() => {
     historySelection.current += 1;
@@ -130,8 +134,8 @@ export function useAgentSessions({
 
   useEffect(() => {
     if (historyPollDelay === null) return;
-    return subscribeVisiblePolling(document, window, () => void refreshHistory(), historyPollDelay, true);
-  }, [historyPollDelay, refreshHistory]);
+    return subscribeVisiblePolling(document, window, () => void refreshVisibleHistory(), historyPollDelay, true);
+  }, [historyPollDelay, refreshVisibleHistory]);
 
   const applySessions = useCallback(
     (nextSessions: AgentSession[], paths: HomePaths) => {
@@ -164,15 +168,18 @@ export function useAgentSessions({
   );
 
   const removeSession = useCallback(
-    (id: string) => {
+    (id: string, refreshWhileHidden = false) => {
       mutationVersion.current += 1;
       const next = sessionsRef.current.filter((item) => item.id !== id);
       sessionsRef.current = next;
       setSessions(next);
       setActiveId((current) => (current === id ? (next[0]?.id ?? null) : current));
-      window.setTimeout(() => void refreshHistory(), 500);
+      window.setTimeout(
+        () => void (refreshWhileHidden ? refreshHistory() : refreshVisibleHistory()),
+        500,
+      );
     },
-    [refreshHistory],
+    [refreshHistory, refreshVisibleHistory],
   );
 
   const updateUpstreamSession = useCallback(
@@ -194,9 +201,9 @@ export function useAgentSessions({
       );
       sessionsRef.current = next;
       setSessions(next);
-      void refreshHistory();
+      void refreshVisibleHistory();
     },
-    [homePaths, refreshHistory],
+    [homePaths, refreshVisibleHistory],
   );
 
   const addSession = useCallback((session: AgentSession) => {
@@ -244,7 +251,7 @@ export function useAgentSessions({
   const deleteSession = useCallback(
     async (target: DeleteTarget): Promise<boolean> => {
       await deleteRemoteSession("/api/agent-sessions", target.id);
-      removeSession(target.id);
+      removeSession(target.id, true);
       return true;
     },
     [removeSession],
