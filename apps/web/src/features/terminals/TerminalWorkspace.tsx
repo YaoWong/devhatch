@@ -13,11 +13,13 @@ import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import {
-  activeTerminalSurfaceIds,
+  terminalSurfaceIds,
   minimizeTerminal,
   reconcileTerminalWorkspaceDock,
+  retainTerminalSurfaces,
   stageTerminal,
   terminalViewTransitionName,
+  type RetainedTerminalSurfaces,
   type TerminalWorkspaceCapacity,
   type TerminalWorkspaceDockState,
 } from "./terminalWorkspaceDock";
@@ -171,6 +173,7 @@ export function TerminalWorkspace({
   const isMobile = useMediaQuery("(max-width: 640px)");
   const effectiveCapacity = isMobile ? 1 : capacity;
   const [workspaceStates, setWorkspaceStates] = useState<Map<string, TerminalWorkspaceDockState>>(() => new Map());
+  const retainedSurfacesRef = useRef<RetainedTerminalSurfaces>({ workspaceId: null, ids: [] });
   const workspaceId = workspaceKey === undefined ? workspace?.id ?? null : workspaceKey;
   const activeId = activeSessionId === undefined ? workspace?.activeTerminalId ?? null : activeSessionId;
   const memberIds = useMemo(() => visibleSessions.map((session) => session.id), [visibleSessions]);
@@ -220,7 +223,8 @@ export function TerminalWorkspace({
   const thumbnailDockOpen = hasThumbnailDock && (!thumbnailsAutoHide || thumbnailDockExpanded);
   const thumbnailsReserveSpace = hasThumbnailDock && !thumbnailsAutoHide;
   const sessionById = new Map(visibleSessions.map((session) => [session.id, session]));
-  const orderedSessions = activeTerminalSurfaceIds(visible, currentState, memberIds)
+  const orderedSurfaceIds = terminalSurfaceIds(visible, retainedSurfacesRef.current, workspaceId, currentState, memberIds);
+  const orderedSessions = orderedSurfaceIds
     .map((id) => sessionById.get(id))
     .filter((session): session is TerminalInfo => Boolean(session));
 
@@ -234,6 +238,15 @@ export function TerminalWorkspace({
   }, []);
 
   useEffect(() => onLayoutCountChange(layoutCount), [layoutCount, onLayoutCountChange]);
+  useLayoutEffect(() => {
+    retainedSurfacesRef.current = retainTerminalSurfaces(
+      visible,
+      retainedSurfacesRef.current,
+      workspaceId,
+      currentState,
+      memberIds,
+    );
+  });
   useEffect(() => {
     if (!visible) setOpenActionSessionId(null);
   }, [visible]);
