@@ -1,9 +1,22 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use serde::{Deserialize, Serialize};
 
-use super::environment::{Prerequisites, prerequisites, public_url};
+use super::environment::{Prerequisites, prerequisites as detect_prerequisites, public_url};
 use super::{ID, NAME, Operation, OperationGuard, Progress, UpdateState, VERSION, WebAppManager};
+
+const PREREQUISITES_TTL: Duration = Duration::from_secs(30);
+const PREREQUISITES_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+pub(super) struct PrerequisitesCache {
+    value: Prerequisites,
+    refresh_after: Instant,
+    refreshing: bool,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,13 +55,26 @@ pub(super) struct PidRecord {
 
 impl WebAppManager {
     pub fn new(data_dir: &Path) -> Self {
-        Self::with_prerequisites(data_dir, prerequisites())
+        Self::with_prerequisite_probe(data_dir, detect_prerequisites)
     }
 
-    fn with_prerequisites(data_dir: &Path, prerequisites: Prerequisites) -> Self {
+    fn with_prerequisite_probe(data_dir: &Path, prerequisite_probe: fn() -> Prerequisites) -> Self {
+        Self::with_prerequisites(data_dir, prerequisite_probe(), prerequisite_probe)
+    }
+
+    fn with_prerequisites(
+        data_dir: &Path,
+        prerequisites: Prerequisites,
+        prerequisite_probe: fn() -> Prerequisites,
+    ) -> Self {
         Self {
             root: data_dir.join("webapps/open-design"),
-            prerequisites,
+            prerequisites: std::sync::Arc::new(tokio::sync::Mutex::new(PrerequisitesCache {
+                value: prerequisites,
+                refresh_after: Instant::now() + PREREQUISITES_TTL,
+                refreshing: false,
+            })),
+            prerequisite_probe,
             progress: std::sync::RwLock::new(Progress {
                 phase: "not-installed",
                 percent: 0,
@@ -69,6 +95,7 @@ impl WebAppManager {
     }
 
     pub(super) async fn view(&self) -> WebAppView {
+        let prerequisites = self.prerequisites().await;
         let installed = self.installed();
         let running = self.refresh_running().await;
         let progress = self
@@ -109,8 +136,38 @@ impl WebAppManager {
             url: running.then(public_url),
             install_path: self.root.display().to_string(),
             error: progress.error,
-            prerequisites: self.prerequisites,
+            prerequisites,
         }
+    }
+
+    async fn prerequisites(&self) -> Prerequisites {
+        let mut cache = self.prerequisites.lock().await;
+        let value = cache.value;
+        if Instant::now() < cache.refresh_after || cache.refreshing {
+            return value;
+        }
+        cache.refreshing = true;
+        drop(cache);
+        let prerequisites = self.prerequisites.clone();
+        let prerequisite_probe = self.prerequisite_probe;
+        tokio::spawn(async move {
+            let refreshed = tokio::time::timeout(
+                Duration::from_secs(5),
+                tokio::task::spawn_blocking(prerequisite_probe),
+            )
+            .await
+            .ok()
+            .and_then(Result::ok);
+            let mut cache = prerequisites.lock().await;
+            cache.refreshing = false;
+            if let Some(refreshed) = refreshed {
+                cache.value = refreshed;
+                cache.refresh_after = Instant::now() + PREREQUISITES_TTL;
+            } else {
+                cache.refresh_after = Instant::now() + PREREQUISITES_RETRY_DELAY;
+            }
+        });
+        value
     }
 
     pub(super) fn installed_version(&self) -> String {
@@ -270,23 +327,63 @@ impl WebAppManager {
 
 #[cfg(test)]
 mod tests {
-    use super::WebAppManager;
+    use super::{Duration, WebAppManager};
     use crate::web_app::{OPERATION_CONFLICT, Operation, environment::Prerequisites};
-    use std::sync::Arc;
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        time::Instant,
+    };
+
+    static PREREQUISITE_PROBES: AtomicUsize = AtomicUsize::new(0);
+
+    fn changed_prerequisites() -> Prerequisites {
+        PREREQUISITE_PROBES.fetch_add(1, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(50));
+        Prerequisites {
+            git: false,
+            node24: true,
+            corepack: true,
+        }
+    }
 
     #[tokio::test]
-    async fn view_uses_cached_prerequisites() {
+    async fn view_serves_stale_prerequisites_while_refreshing_once() {
+        PREREQUISITE_PROBES.store(0, Ordering::SeqCst);
         let data =
             std::env::temp_dir().join(format!("devhatch-prerequisites-{}", uuid::Uuid::new_v4()));
-        let expected = Prerequisites {
+        let initial = Prerequisites {
             git: true,
-            node24: true,
+            node24: false,
             corepack: false,
         };
-        let manager = WebAppManager::with_prerequisites(&data, expected);
+        let manager = WebAppManager::with_prerequisites(&data, initial, changed_prerequisites);
 
-        assert_eq!(manager.view().await.prerequisites, expected);
-        assert_eq!(manager.view().await.prerequisites, expected);
+        assert_eq!(manager.view().await.prerequisites, initial);
+        assert_eq!(PREREQUISITE_PROBES.load(Ordering::SeqCst), 0);
+        manager.prerequisites.lock().await.refresh_after = Instant::now();
+        let refreshed = Prerequisites {
+            git: false,
+            node24: true,
+            corepack: true,
+        };
+
+        assert_eq!(manager.view().await.prerequisites, initial);
+        assert_eq!(manager.view().await.prerequisites, initial);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if !manager.prerequisites.lock().await.refreshing {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(manager.view().await.prerequisites, refreshed);
+        assert_eq!(PREREQUISITE_PROBES.load(Ordering::SeqCst), 1);
     }
 
     fn manager() -> Arc<WebAppManager> {
