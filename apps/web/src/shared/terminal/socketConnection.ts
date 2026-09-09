@@ -78,6 +78,10 @@ export class SocketConnection {
     return "reconnect";
   }
 
+  isCurrent(generation: number) {
+    return this.current(generation);
+  }
+
   stop() {
     this.stopped = true;
     this.generation += 1;

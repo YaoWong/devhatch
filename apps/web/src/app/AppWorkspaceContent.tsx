@@ -1,9 +1,8 @@
-import type { Dispatch, SetStateAction } from "react";
+import { lazy, Suspense, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentWorkspace } from "../features/agents/AgentWorkspace";
 import { SettingsView } from "../features/settings/SettingsView";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
-import { SkillsWorkspace } from "../features/skills/SkillsWorkspace";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { TerminalWorkspace } from "../features/terminals/TerminalWorkspace";
 import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
@@ -13,6 +12,8 @@ import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
 import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
+
+const SkillsWorkspace = lazy(() => import("../features/skills/SkillsWorkspace").then((module) => ({ default: module.SkillsWorkspace })));
 
 type AppWorkspaceContentProps = {
   mode: WorkspaceMode;
@@ -83,13 +84,17 @@ export function AppWorkspaceContent({
   logoutBusy,
   logoutError,
 }: AppWorkspaceContentProps) {
+  const [webAppsVisited, setWebAppsVisited] = useState(mode === "webapp");
+  useEffect(() => {
+    if (mode === "webapp") setWebAppsVisited(true);
+  }, [mode]);
+  const webAppsMounted = webAppsVisited || mode === "webapp";
   return (
     <>
       <TerminalWorkspace
         visible={mode === "terminal"}
         busy={busy}
         launching={terminal.launching}
-        sessions={terminal.sessions}
         visibleSessions={terminal.visibleSessions}
         workspace={terminal.selectedWorkspace}
         phases={phases}
@@ -140,30 +145,38 @@ export function AppWorkspaceContent({
         onError={onError}
         onDismissError={onDismissError}
       />
-      {mode === "webapp" && (
-        <WebAppsWorkspace
-          app={webApps.openDesign}
-          operation={webApps.operation}
-          error={error}
-          settled={webApps.settled}
-          loadError={webApps.loadError}
-          onRetry={webApps.retry}
-          onInstall={webApps.install}
-          onStart={webApps.start}
-          onUpdate={webApps.update}
-          onCheckUpdate={webApps.checkUpdate}
-          onConfirm={onConfirm}
-          onDismissError={onDismissError}
-        />
+      {webAppsMounted && (
+        <div
+          className={`tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${mode === "webapp" ? "" : "tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`}
+          aria-hidden={mode !== "webapp"}
+          inert={mode !== "webapp" ? true : undefined}
+        >
+          <WebAppsWorkspace
+            app={webApps.openDesign}
+            operation={webApps.operation}
+            error={error}
+            settled={webApps.settled}
+            loadError={webApps.loadError}
+            onRetry={webApps.retry}
+            onInstall={webApps.install}
+            onStart={webApps.start}
+            onUpdate={webApps.update}
+            onCheckUpdate={webApps.checkUpdate}
+            onConfirm={onConfirm}
+            onDismissError={onDismissError}
+          />
+        </div>
       )}
       {mode === "skills" && (
-        <SkillsWorkspace
-          section={skillsSection}
-          controller={skills}
-          error={error}
-          onDismissError={onDismissError}
-          onConfirm={onConfirm}
-        />
+        <Suspense fallback={<div className="tw:grid tw:min-h-0 tw:place-content-center tw:bg-[var(--color-canvas)] tw:text-sm tw:text-muted-foreground" role="status">Loading Skills…</div>}>
+          <SkillsWorkspace
+            section={skillsSection}
+            controller={skills}
+            error={error}
+            onDismissError={onDismissError}
+            onConfirm={onConfirm}
+          />
+        </Suspense>
       )}
       {mode === "settings" && (
         <SettingsView

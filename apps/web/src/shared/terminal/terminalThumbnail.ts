@@ -1,5 +1,31 @@
 export const terminalThumbnailSize = { width: 320, height: 200 } as const;
 
+export class TerminalThumbnailCaptureState {
+  private inFlight = false;
+  private dirty = false;
+
+  start() {
+    if (this.inFlight) {
+      this.dirty = true;
+      return false;
+    }
+    this.inFlight = true;
+    return true;
+  }
+
+  finish() {
+    this.inFlight = false;
+    const repeat = this.dirty;
+    this.dirty = false;
+    return repeat;
+  }
+
+  reset() {
+    this.inFlight = false;
+    this.dirty = false;
+  }
+}
+
 export function terminalThumbnailBounds(
   screen: { left: number; top: number; width: number; height: number },
   layer: { left: number; top: number; width: number; height: number },

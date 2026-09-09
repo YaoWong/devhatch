@@ -10,6 +10,7 @@ import { Profiles } from "./Profiles";
 import { formatRepositoryOperationBytes, repositoryOperationLabel, repositoryOperationPercentage } from "./repositoryOperation";
 import { Repositories } from "./Repositories";
 import { SkillLibrary } from "./SkillLibrary";
+import { resolveScrollEdges } from "./scrollEdges";
 
 export function SkillsWorkspace({ section, controller, error, onDismissError, onConfirm }: {
   section: SkillsSection;
@@ -25,10 +26,9 @@ export function SkillsWorkspace({ section, controller, error, onDismissError, on
   const showBusy = useDelayedLoading(controller.busy);
   const percentage = operation ? repositoryOperationPercentage(operation.progress) : 0;
   const bytes = operation ? formatRepositoryOperationBytes(operation.downloadedBytes, operation.totalBytes) : null;
-  const updateScrollEdges = (element: HTMLDivElement) => setScrollEdges({
-    top: element.scrollTop <= 1,
-    bottom: element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
-  });
+  const updateScrollEdges = (element: HTMLDivElement) => {
+    setScrollEdges((current) => resolveScrollEdges(current, element));
+  };
   const scrollTo = (edge: "top" | "bottom") => {
     const element = scrollRef.current;
     if (!element) return;

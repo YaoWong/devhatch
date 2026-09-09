@@ -63,8 +63,12 @@ pub(crate) async fn list(
 ) -> Result<Vec<HistoryItem>, &'static str> {
     tokio::task::spawn_blocking(move || {
         let roots = resolve_roots(&workspaces).map_err(|_| "PI_HISTORY_DIRECTORY_NOT_FOUND")?;
-        let external_files = external_open_files(&owned_pids);
         let mut records = records_in_roots(&roots);
+        let candidate_files = records
+            .iter()
+            .map(|record| record.identity)
+            .collect::<HashSet<_>>();
+        let external_files = external_candidate_open_files(&owned_pids, &candidate_files);
         records.sort_by(|left, right| {
             right
                 .updated_at
@@ -221,6 +225,63 @@ fn external_open_files(owned_pids: &HashSet<u32>) -> HashSet<FileIdentity> {
 }
 
 #[cfg(target_os = "linux")]
+fn external_candidate_open_files(
+    owned_pids: &HashSet<u32>,
+    candidates: &HashSet<FileIdentity>,
+) -> HashSet<FileIdentity> {
+    if candidates.is_empty() {
+        return HashSet::new();
+    }
+    let Ok(processes) = fs::read_dir("/proc") else {
+        return HashSet::new();
+    };
+    let mut files = HashSet::new();
+    for process in processes.filter_map(Result::ok) {
+        let Some(pid) = process
+            .file_name()
+            .to_string_lossy()
+            .parse::<u32>()
+            .ok()
+            .filter(|pid| !owned_pids.contains(pid))
+        else {
+            continue;
+        };
+        let Ok(descriptors) = fs::read_dir(process.path().join("fd")) else {
+            continue;
+        };
+        let mut owned_descendant = None;
+        for descriptor in descriptors.filter_map(Result::ok) {
+            let descriptor_path = descriptor.path();
+            let Ok(metadata) = fs::metadata(&descriptor_path) else {
+                continue;
+            };
+            let identity = FileIdentity::from(&metadata);
+            if !metadata.is_file() || !candidates.contains(&identity) {
+                continue;
+            }
+            let fd = descriptor.file_name();
+            if !writable_fd(&format!("/proc/{pid}/fdinfo/{}", fd.to_string_lossy())) {
+                continue;
+            }
+            if *owned_descendant.get_or_insert_with(|| has_owned_ancestor(pid, owned_pids)) {
+                break;
+            }
+            let matches = fs::metadata(descriptor_path).is_ok_and(|metadata| {
+                metadata.is_file() && FileIdentity::from(&metadata) == identity
+            });
+            if !matches {
+                continue;
+            }
+            files.insert(identity);
+            if files.len() == candidates.len() {
+                return files;
+            }
+        }
+    }
+    files
+}
+
+#[cfg(target_os = "linux")]
 fn writable_fd(path: &str) -> bool {
     fs::read_to_string(path).ok().is_some_and(|value| {
         value.lines().any(|line| {
@@ -256,6 +317,14 @@ fn has_owned_ancestor(mut pid: u32, owned: &HashSet<u32>) -> bool {
 
 #[cfg(not(target_os = "linux"))]
 fn external_open_files(_: &HashSet<u32>) -> HashSet<FileIdentity> {
+    HashSet::new()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn external_candidate_open_files(
+    _: &HashSet<u32>,
+    _: &HashSet<FileIdentity>,
+) -> HashSet<FileIdentity> {
     HashSet::new()
 }
 
@@ -749,9 +818,44 @@ mod tests {
             .unwrap();
         file.write_all(b"\n").unwrap();
         let identity = FileIdentity::from(&file.metadata().unwrap());
+        let candidates = HashSet::from([identity]);
         assert!(external_open_files(&HashSet::new()).contains(&identity));
         assert!(!external_open_files(&HashSet::from([std::process::id()])).contains(&identity));
+        assert!(external_candidate_open_files(&HashSet::new(), &candidates).contains(&identity));
         drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn proc_fd_evidence_is_limited_to_candidate_files() {
+        use std::io::Write;
+
+        let root = temporary_root();
+        let candidate_path = root.join("candidate.jsonl");
+        let unrelated_path = root.join("unrelated.jsonl");
+        let mut candidate = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&candidate_path)
+            .unwrap();
+        let mut unrelated = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&unrelated_path)
+            .unwrap();
+        candidate.write_all(b"\n").unwrap();
+        unrelated.write_all(b"\n").unwrap();
+        let candidate_identity = FileIdentity::from(&candidate.metadata().unwrap());
+        let unrelated_identity = FileIdentity::from(&unrelated.metadata().unwrap());
+
+        let files =
+            external_candidate_open_files(&HashSet::new(), &HashSet::from([candidate_identity]));
+
+        assert!(files.contains(&candidate_identity));
+        assert!(!files.contains(&unrelated_identity));
+        drop(candidate);
+        drop(unrelated);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -763,7 +867,10 @@ mod tests {
         fs::write(&path, "\n").unwrap();
         let file = File::open(&path).unwrap();
         let identity = FileIdentity::from(&file.metadata().unwrap());
-        assert!(!external_open_files(&HashSet::new()).contains(&identity));
+        assert!(
+            !external_candidate_open_files(&HashSet::new(), &HashSet::from([identity]))
+                .contains(&identity)
+        );
         drop(file);
         fs::remove_dir_all(root).unwrap();
     }

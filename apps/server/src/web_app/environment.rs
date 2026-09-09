@@ -52,12 +52,21 @@ fn valid_http_url(value: &str) -> bool {
 }
 
 pub(super) fn prerequisites() -> Prerequisites {
+    prerequisites_with(executable_on_path("git").is_some(), node24_path, |node| {
+        sibling_executable(node, "corepack").is_some()
+    })
+}
+
+fn prerequisites_with(
+    git: bool,
+    resolve_node24: impl FnOnce() -> Option<PathBuf>,
+    corepack_exists: impl FnOnce(&Path) -> bool,
+) -> Prerequisites {
+    let node24 = resolve_node24();
     Prerequisites {
-        git: executable_on_path("git").is_some(),
-        node24: node24_path().is_some(),
-        corepack: node24_path()
-            .and_then(|node| sibling_executable(&node, "corepack"))
-            .is_some(),
+        git,
+        node24: node24.is_some(),
+        corepack: node24.as_deref().is_some_and(corepack_exists),
     }
 }
 
@@ -113,7 +122,7 @@ pub(super) fn prefixed_path(node: &Path) -> std::ffi::OsString {
     std::env::join_paths(paths).unwrap_or_default()
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Prerequisites {
     pub git: bool,
@@ -123,9 +132,27 @@ pub(super) struct Prerequisites {
 
 #[cfg(test)]
 mod tests {
-    use super::{prefixed_path, resolve_public_url};
+    use super::{prefixed_path, prerequisites_with, resolve_public_url};
     use crate::web_app::PORT;
-    use std::path::Path;
+    use std::{cell::Cell, path::Path};
+
+    #[test]
+    fn derives_prerequisites_from_one_node_resolution() {
+        let resolutions = Cell::new(0);
+        let prerequisites = prerequisites_with(
+            true,
+            || {
+                resolutions.set(resolutions.get() + 1);
+                Some("/opt/node24/bin/node".into())
+            },
+            |node| node == Path::new("/opt/node24/bin/node"),
+        );
+
+        assert_eq!(resolutions.get(), 1);
+        assert!(prerequisites.git);
+        assert!(prerequisites.node24);
+        assert!(prerequisites.corepack);
+    }
 
     #[test]
     fn prefers_current_public_url_and_accepts_legacy_url() {

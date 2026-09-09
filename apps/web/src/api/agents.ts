@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentInstall,
   AgentLaunchConfig,
   AgentLaunchConfigInput,
   AgentLaunchPath,
@@ -12,6 +13,14 @@ import { requestEmpty, requestJson } from "./client";
 
 export function agents() {
   return requestJson<{ agents: Agent[] }>("/api/agents");
+}
+
+export function installAgent(agentId: string) {
+  return requestJson<{ agentInstall: AgentInstall }>(
+    `/api/agents/${encodeURIComponent(agentId)}/install`,
+    { method: "POST" },
+    "Unable to install Agent CLI",
+  );
 }
 
 export function agentPaths() {

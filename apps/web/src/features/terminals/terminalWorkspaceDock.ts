@@ -44,6 +44,44 @@ export function reconcileTerminalWorkspaceDock(
   return { stagedIds, minimizedIds };
 }
 
+export type RetainedTerminalSurfaces = {
+  workspaceId: string | null;
+  ids: string[];
+};
+
+export function retainTerminalSurfaces(
+  visible: boolean,
+  retained: RetainedTerminalSurfaces,
+  workspaceId: string | null,
+  state: TerminalWorkspaceDockState,
+  memberIds: string[],
+): RetainedTerminalSurfaces {
+  const members = new Set(memberIds);
+  return {
+    workspaceId,
+    ids: visible
+      ? state.stagedIds.filter((id) => members.has(id))
+      : retained.workspaceId === workspaceId ? retained.ids.filter((id) => members.has(id)) : [],
+  };
+}
+
+export function terminalSurfaceIds(
+  visible: boolean,
+  retained: RetainedTerminalSurfaces,
+  workspaceId: string | null,
+  state: TerminalWorkspaceDockState,
+  memberIds: string[],
+) {
+  const members = new Set(memberIds);
+  if (!visible) {
+    if (retained.workspaceId !== workspaceId) return [];
+    return retained.ids.filter((id) => members.has(id));
+  }
+  const stagedIds = state.stagedIds.filter((id) => members.has(id));
+  const staged = new Set(stagedIds);
+  return [...stagedIds, ...memberIds.filter((id) => !staged.has(id))];
+}
+
 export function stageTerminal(
   state: TerminalWorkspaceDockState,
   id: string,

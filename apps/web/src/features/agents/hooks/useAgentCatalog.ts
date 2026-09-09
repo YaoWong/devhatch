@@ -1,9 +1,22 @@
 import { useCallback, useRef, useState } from "react";
-import { agentPaths, agents as listAgents, createAgentLaunchPath, deleteAgentLaunchPath, updateAgentLaunchPath } from "../../../api/agents";
+import {
+  agentPaths,
+  agents as listAgents,
+  createAgentLaunchPath,
+  deleteAgentLaunchPath,
+  installAgent as installAgentCli,
+  updateAgentLaunchPath,
+} from "../../../api/agents";
 import type { Agent, AgentLaunchPath } from "../../../types/agents";
 import { findAgentLaunchPath } from "../agentLaunchState";
 import { readDefaultAgentId, writeDefaultAgentId } from "../defaultAgentPreference";
 import { errorMessage } from "./shared";
+
+export type AgentInstallState = {
+  installing: boolean;
+  installed: boolean;
+  error: string | null;
+};
 
 export function useAgentCatalog({
   closeSidebar,
@@ -17,16 +30,64 @@ export function useAgentCatalog({
   const [defaultAgentId, setDefaultAgentIdState] = useState<string | null>(() => readDefaultAgentId());
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
-  const refreshGeneration = useRef(0);
+  const [installStates, setInstallStates] = useState<Record<string, AgentInstallState>>({});
+  const [installingAgentId, setInstallingAgentId] = useState<string | null>(null);
+  const [installAnnouncement, setInstallAnnouncement] = useState("");
+  const agentRefreshGeneration = useRef(0);
+  const pathRefreshGeneration = useRef(0);
   const mutationRef = useRef(false);
+  const installingRef = useRef<string | null>(null);
+
+  const refreshAgents = useCallback(async () => {
+    const generation = ++agentRefreshGeneration.current;
+    const data = await listAgents();
+    if (agentRefreshGeneration.current !== generation) return;
+    setAgents(data.agents);
+  }, []);
 
   const refreshData = useCallback(async () => {
-    const generation = ++refreshGeneration.current;
+    const agentGeneration = ++agentRefreshGeneration.current;
+    const pathGeneration = ++pathRefreshGeneration.current;
     const [agentData, pathData] = await Promise.all([listAgents(), agentPaths()]);
-    if (refreshGeneration.current !== generation) return;
-    setAgents(agentData.agents);
-    setPaths(pathData.agentLaunchPaths);
+    if (agentRefreshGeneration.current === agentGeneration) setAgents(agentData.agents);
+    if (pathRefreshGeneration.current === pathGeneration) setPaths(pathData.agentLaunchPaths);
   }, []);
+
+  const installAgent = useCallback(async (agentId: string) => {
+    if (installingRef.current) return false;
+    const agentName = agents.find((agent) => agent.id === agentId)?.name ?? "Agent CLI";
+    installingRef.current = agentId;
+    setInstallingAgentId(agentId);
+    setInstallAnnouncement(`Installing ${agentName}…`);
+    setInstallStates((current) => ({ ...current, [agentId]: { installing: true, installed: false, error: null } }));
+    try {
+      await installAgentCli(agentId);
+      try {
+        await refreshAgents();
+        setInstallStates((current) => ({ ...current, [agentId]: { installing: false, installed: true, error: null } }));
+        setInstallAnnouncement(`${agentName} installed.`);
+        return true;
+      } catch {
+        setInstallStates((current) => ({
+          ...current,
+          [agentId]: { installing: false, installed: true, error: "Installation completed, but agent status could not be refreshed." },
+        }));
+        setInstallAnnouncement(`${agentName} installed, but its status could not be refreshed.`);
+        return false;
+      }
+    } catch (reason) {
+      const message = errorMessage(reason);
+      setInstallStates((current) => ({
+        ...current,
+        [agentId]: { installing: false, installed: false, error: message },
+      }));
+      setInstallAnnouncement(`${agentName} installation failed: ${message}`);
+      return false;
+    } finally {
+      installingRef.current = null;
+      setInstallingAgentId(null);
+    }
+  }, [agents, refreshAgents]);
 
   const initializeAgents = useCallback((data: Awaited<ReturnType<typeof listAgents>>) => {
     setAgents(data.agents);
@@ -38,7 +99,7 @@ export function useAgentCatalog({
     writeDefaultAgentId(agentId);
   }, []);
   const initializePaths = useCallback((data: Awaited<ReturnType<typeof agentPaths>>) => {
-    refreshGeneration.current += 1;
+    pathRefreshGeneration.current += 1;
     setPaths(data.agentLaunchPaths);
   }, []);
 
@@ -46,7 +107,7 @@ export function useAgentCatalog({
     async (path: string) => {
       if (mutationRef.current) return false;
       mutationRef.current = true;
-      refreshGeneration.current += 1;
+      pathRefreshGeneration.current += 1;
       try {
         let item = findAgentLaunchPath(paths, path);
         if (!item) {
@@ -71,7 +132,7 @@ export function useAgentCatalog({
     async (path: AgentLaunchPath) => {
       if (mutationRef.current) return;
       mutationRef.current = true;
-      refreshGeneration.current += 1;
+      pathRefreshGeneration.current += 1;
       try {
         await updateAgentLaunchPath(path.id, { pinned: !path.pinned });
         await refreshData();
@@ -88,7 +149,7 @@ export function useAgentCatalog({
     async (path: AgentLaunchPath, alias: string) => {
       if (mutationRef.current) return false;
       mutationRef.current = true;
-      refreshGeneration.current += 1;
+      pathRefreshGeneration.current += 1;
       try {
         await updateAgentLaunchPath(path.id, { alias: alias.trim() || null });
         await refreshData();
@@ -107,7 +168,7 @@ export function useAgentCatalog({
     async (path: AgentLaunchPath) => {
       if (mutationRef.current) return;
       mutationRef.current = true;
-      refreshGeneration.current += 1;
+      pathRefreshGeneration.current += 1;
       try {
         await deleteAgentLaunchPath(path.id);
         await refreshData();
@@ -124,11 +185,15 @@ export function useAgentCatalog({
     defaultAgentId,
     selectedAgentId,
     selectedPathId,
+    installStates,
+    installingAgentId,
+    installAnnouncement,
     setPaths,
     setDefaultAgentId,
     setSelectedAgentId,
     setSelectedPathId,
     refreshData,
+    installAgent,
     initializeAgents,
     initializePaths,
     choosePath,

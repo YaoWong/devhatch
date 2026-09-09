@@ -309,10 +309,11 @@ fn presence_for(
     if active_here.contains(&row.id) {
         return Presence::ActiveHere;
     }
+    if current_time.saturating_sub(row.time_updated) > RECENT_MILLIS {
+        return Presence::Inactive;
+    }
     let directory = canonical_identity(&row.directory);
-    if current_time.saturating_sub(row.time_updated) <= RECENT_MILLIS
-        && external_directories.contains(&directory)
-    {
+    if external_directories.contains(&directory) {
         Presence::PossiblyActiveElsewhere
     } else {
         Presence::Inactive
@@ -333,11 +334,11 @@ fn scan_external_opencode_directories(owned: &HashSet<u32>) -> HashSet<String> {
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
-            if owned.contains(&pid) || has_owned_ancestor(pid, owned) {
+            if owned.contains(&pid) {
                 return None;
             }
             let comm = fs::read_to_string(entry.path().join("comm")).ok()?;
-            if comm.trim() != "opencode" {
+            if comm.trim() != "opencode" || has_owned_ancestor(pid, owned) {
                 return None;
             }
             fs::read_link(entry.path().join("cwd"))
@@ -422,7 +423,11 @@ mod tests {
         let external = HashSet::from(["/tmp".into()]);
         assert!(external.contains(&canonical_identity(&row().directory)));
         assert_eq!(
-            presence_for(&row(), &HashSet::new(), &external, 1_000_000),
+            presence_for(&row(), &HashSet::new(), &external, 301_000),
+            Presence::PossiblyActiveElsewhere
+        );
+        assert_eq!(
+            presence_for(&row(), &HashSet::new(), &external, 301_001),
             Presence::Inactive
         );
     }

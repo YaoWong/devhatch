@@ -28,6 +28,7 @@ export type Agent = {
   available: boolean;
   enabled: boolean;
   availability: "available" | "unavailable" | "coming-soon";
+  installable: boolean;
   version?: string | null;
   diagnostic?: string | null;
   launchConfigCount: number;
@@ -36,6 +37,11 @@ export type Agent = {
   supportsResume: boolean;
   supportsSkills: boolean;
   supportsImagePaste: boolean;
+};
+
+export type AgentInstall = {
+  agentId: string;
+  version: string;
 };
 
 export type AgentLaunchPath = {

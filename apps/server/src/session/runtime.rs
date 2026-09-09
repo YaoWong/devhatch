@@ -18,6 +18,7 @@ use super::model::{
 use crate::{clock::now, filesystem::path_string, state::SessionRegistry};
 
 const OUTPUT_LIMIT: usize = 512 * 1024;
+const OUTPUT_HIGH_WATER: usize = 640 * 1024;
 const INPUT_QUEUE_CAPACITY: usize = 64;
 
 type PtyChild = Box<dyn Child + Send>;
@@ -120,13 +121,14 @@ impl Session {
             input: std::sync::Mutex::new(Some(input)),
             killer: std::sync::Mutex::new(killer),
             deleting: AtomicBool::new(false),
+            terminating: AtomicBool::new(false),
             completion: SessionCompletion::default(),
             events,
             agent_id: spawn.agent_id,
             agent_name: spawn.agent_name,
             runtime_dir: cleanup_path.clone(),
             runtime_endpoint: spawn.runtime_endpoint,
-            runtime_input: tokio::sync::Mutex::new(()),
+            runtime_input: Arc::new(tokio::sync::Mutex::new(())),
         });
         if !sessions.insert(session.clone()) {
             return Err("server is shutting down".into());
@@ -227,18 +229,33 @@ impl Session {
         (state.cols, state.rows)
     }
 
-    pub(crate) fn terminate(&self) {
+    pub(crate) fn terminate(self: &Arc<Self>) {
         self.input.lock().expect("input lock poisoned").take();
-        if self.state.lock().expect("session lock poisoned").status == SessionStatus::Running {
-            #[cfg(unix)]
-            if let Some(identity) = self.process_identity {
-                let _ = crate::process::signal_owned_child(identity, libc::SIGTERM);
-                std::thread::sleep(std::time::Duration::from_millis(250));
-                let _ = crate::process::signal_owned_child(identity, libc::SIGKILL);
-            }
-            let _ = self.killer.lock().expect("killer lock poisoned").kill();
+        if self.terminating.swap(true, Ordering::AcqRel) {
+            return;
         }
+        let running =
+            self.state.lock().expect("session lock poisoned").status == SessionStatus::Running;
         let _ = self.events.send(SessionEvent::Terminate);
+        if !running {
+            return;
+        }
+        #[cfg(unix)]
+        if let Some(identity) = self.process_identity {
+            let _ = crate::process::signal_owned_child(identity, libc::SIGTERM);
+            let session = Arc::clone(self);
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let _ = crate::process::signal_owned_child(identity, libc::SIGKILL);
+                if session.state.lock().expect("session lock poisoned").status
+                    == SessionStatus::Running
+                {
+                    let _ = session.killer.lock().expect("killer lock poisoned").kill();
+                }
+            });
+            return;
+        }
+        let _ = self.killer.lock().expect("killer lock poisoned").kill();
     }
 
     fn start_writer(
@@ -301,6 +318,7 @@ impl Session {
     }
 
     fn publish_output(&self, data: String) {
+        let data: Arc<str> = data.into();
         let mut state = self.state.lock().expect("session lock poisoned");
         state.updated_at = now();
         state.output.push_str(&data);
@@ -371,7 +389,7 @@ fn enqueue_input(input: &SyncSender<Vec<u8>>, data: Vec<u8>) -> bool {
 }
 
 fn trim_output(output: &mut String) {
-    if output.len() <= OUTPUT_LIMIT {
+    if output.len() <= OUTPUT_HIGH_WATER {
         return;
     }
     let mut start = output.len() - OUTPUT_LIMIT;
@@ -385,7 +403,9 @@ fn trim_output(output: &mut String) {
 mod tests {
     use std::sync::mpsc::TryRecvError;
 
-    use super::{ChildCleanup, OUTPUT_LIMIT, cleanup_child, enqueue_input, trim_output};
+    use super::{
+        ChildCleanup, OUTPUT_HIGH_WATER, OUTPUT_LIMIT, cleanup_child, enqueue_input, trim_output,
+    };
 
     #[derive(Default)]
     struct CleanupState {
@@ -431,8 +451,12 @@ mod tests {
     }
 
     #[test]
-    fn trims_output_on_character_boundaries() {
-        let mut output = format!("é{}", "x".repeat(OUTPUT_LIMIT));
+    fn trims_output_at_a_high_water_mark_on_character_boundaries() {
+        let mut small_overflow = "x".repeat(OUTPUT_LIMIT + 1);
+        trim_output(&mut small_overflow);
+        assert_eq!(small_overflow.len(), OUTPUT_LIMIT + 1);
+
+        let mut output = format!("é{}", "x".repeat(OUTPUT_HIGH_WATER));
         trim_output(&mut output);
         assert_eq!(output.len(), OUTPUT_LIMIT);
         assert!(output.is_char_boundary(0));

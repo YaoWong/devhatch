@@ -126,6 +126,20 @@ describe("SocketConnection", () => {
     expect([...pending.values()][0].delay).toBe(500);
   });
 
+  it("exposes whether an asynchronous completion still belongs to the current generation", () => {
+    const { connection } = harness();
+    const first = connection.begin()!;
+
+    expect(connection.isCurrent(first.generation)).toBe(true);
+    connection.close(first.generation, 1006, vi.fn());
+    expect(connection.isCurrent(first.generation)).toBe(false);
+
+    const second = connection.begin()!;
+    expect(connection.isCurrent(second.generation)).toBe(true);
+    connection.stop();
+    expect(connection.isCurrent(second.generation)).toBe(false);
+  });
+
   it("stops after an explicit unauthorized close", () => {
     const { connection, pending, unauthorized } = harness();
     const current = connection.begin()!;

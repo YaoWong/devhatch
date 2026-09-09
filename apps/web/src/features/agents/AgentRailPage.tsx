@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Code2, Layers3 } from "lucide-react";
+import { ChevronDown, ChevronRight, Code2, Layers3, LoaderCircle } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,6 +58,10 @@ export function AgentRailPage({
   selectedProfileId,
   paths,
   selectedPathId,
+  installState,
+  activeInstallAgent,
+  installAnnouncement,
+  installBusy,
   includeSubdirectories,
   activeSession,
   sessions,
@@ -83,6 +87,7 @@ export function AgentRailPage({
   onUpdateConfig,
   onDeleteConfig,
   onChoosePath,
+  onInstallAgent,
   onSelectPath,
   onIncludeSubdirectoriesChange,
   onLaunch,
@@ -111,6 +116,10 @@ export function AgentRailPage({
   selectedProfileId: string | null;
   paths: AgentLaunchPath[];
   selectedPathId: string | null;
+  installState?: { installing: boolean; installed: boolean; error: string | null };
+  activeInstallAgent: Agent | null;
+  installAnnouncement: string;
+  installBusy: boolean;
   includeSubdirectories: boolean;
   activeSession: AgentSession | null;
   sessions: AgentSession[];
@@ -136,6 +145,7 @@ export function AgentRailPage({
   onUpdateConfig: (id: string, input: AgentLaunchConfigInput) => Promise<boolean>;
   onDeleteConfig: (id: string) => Promise<boolean>;
   onChoosePath: () => void;
+  onInstallAgent: (id: string) => Promise<boolean>;
   onSelectPath: (id: string) => void;
   onIncludeSubdirectoriesChange: (enabled: boolean) => void;
   onLaunch: (path: AgentLaunchPath) => void;
@@ -185,6 +195,7 @@ export function AgentRailPage({
   return (
     <div className="agent-rail-layout">
       <LiveRegion>{agentAnnouncement}</LiveRegion>
+      <LiveRegion>{installAnnouncement}</LiveRegion>
       {configOpen && (
         <AgentConfigDialog
           key={selectedAgent?.id}
@@ -230,6 +241,15 @@ export function AgentRailPage({
               renderTrigger={(agent) => <AgentOption agent={agent} fallback="Select agent" />}
               renderOption={(agent) => <AgentOption agent={agent} />}
             />
+            {selectedAgent && !selectedAgent.available && (
+              <AgentInstallNotice
+                agent={selectedAgent}
+                state={installState}
+                activeInstallAgent={activeInstallAgent}
+                installBusy={installBusy}
+                onInstall={() => void onInstallAgent(selectedAgent.id)}
+              />
+            )}
             <Card className={`tw:mt-1.5 tw:grid tw:w-full tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:px-0.5 tw:py-0 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-0.5"}`}>
               <Button
                 variant="ghost"
@@ -250,28 +270,6 @@ export function AgentRailPage({
               </Button>
               {!launchSetupCollapsed && (
                 <div className="tw:grid tw:gap-0.5" id="agent-launch-setup-body">
-                  {selectedAgent && !selectedAgent.available && (
-                    <Card className="tw:grid tw:min-w-0 tw:gap-1 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-sm">
-                      <strong>{selectedAgent.name} is not installed</strong>
-                      {selectedAgent.id === "opencode" ? (
-                        <>
-                          <span>Install it to launch agent sessions:</span>
-                          <code>curl -fsSL https://opencode.ai/install | bash</code>
-                        </>
-                      ) : selectedAgent.id === "pi" ? (
-                        <>
-                          <span>Install it to launch agent sessions:</span>
-                          <code>npm install -g --ignore-scripts @earendil-works/pi-coding-agent</code>
-                        </>
-                      ) : (
-                        <span>
-                          {selectedAgent.id === "traecli"
-                            ? "The traecli executable was not found on PATH. Install Trae CLI using its official distribution."
-                            : (selectedAgent.diagnostic ?? `Install ${selectedAgent.name} and make sure it is available on PATH.`)}
-                        </span>
-                      )}
-                    </Card>
-                  )}
                   {selectedAgent?.supportsSkills && (
                     <CustomSelect
                       density="comfortable"
@@ -355,6 +353,60 @@ export function AgentRailPage({
         onRetryHistory={onRetryHistory}
       />
     </div>
+  );
+}
+
+function AgentInstallNotice({
+  agent,
+  state,
+  activeInstallAgent,
+  installBusy,
+  onInstall,
+}: {
+  agent: Agent;
+  state?: { installing: boolean; installed: boolean; error: string | null };
+  activeInstallAgent: Agent | null;
+  installBusy: boolean;
+  onInstall: () => void;
+}) {
+  const commands: Record<string, string> = {
+    codex: "npm install -g --ignore-scripts @openai/codex",
+    opencode: "curl -fsSL https://opencode.ai/install | bash",
+    pi: "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
+  };
+  const command = commands[agent.id];
+  return (
+    <Card
+      className="tw:mt-1.5 tw:grid tw:min-w-0 tw:gap-2 tw:overflow-visible tw:rounded-[9px] tw:border tw:border-destructive tw:bg-[var(--color-danger-soft)] tw:px-2.5 tw:py-[9px] tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-destructive tw:ring-0 tw:[overflow-wrap:anywhere] tw:[&_code]:overflow-hidden tw:[&_code]:text-ellipsis tw:[&_code]:whitespace-nowrap tw:[&_code]:rounded-[5px] tw:[&_code]:bg-[color-mix(in_srgb,var(--color-danger-soft)_70%,var(--color-surface))] tw:[&_code]:px-1.5 tw:[&_code]:py-[5px] tw:[&_code]:font-mono tw:[&_code]:text-[calc(10px*var(--app-font-scale))] tw:[&_code]:leading-[1.4] tw:[&_code]:text-destructive tw:[&_code]:select-all tw:[&_strong]:text-sm"
+      aria-busy={installBusy || undefined}
+    >
+      <strong>{agent.name} is not installed</strong>
+      {agent.installable ? (
+        <>
+          <span>Install a managed copy to launch agent sessions.</span>
+          <Button
+            type="button"
+            size="sm"
+            className="tw:w-full"
+            disabled={installBusy}
+            onClick={onInstall}
+          >
+            {installBusy && <LoaderCircle className="spin" />}
+            {state?.installing
+              ? "Installing…"
+              : activeInstallAgent
+                ? `Installing ${activeInstallAgent.name}…`
+                : state?.error
+                  ? "Retry installation"
+                  : `Install ${agent.name}`}
+          </Button>
+          {state?.error && <span role="alert">{state.error}</span>}
+          {command && <><span>Or install it manually:</span><code>{command}</code></>}
+        </>
+      ) : (
+        <span>The traecli executable was not found on PATH. Install Trae CLI using its official distribution.</span>
+      )}
+    </Card>
   );
 }
 

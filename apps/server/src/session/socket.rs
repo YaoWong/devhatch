@@ -1,4 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use axum::{
     extract::{
@@ -55,15 +61,22 @@ async fn handle_socket(
     app_state: Arc<AppState>,
     identity: AuthIdentity,
 ) {
-    if !identity_valid(&app_state, &identity).await {
-        let _ = socket
-            .send(Message::Close(Some(axum::extract::ws::CloseFrame {
-                code: 1008,
-                reason: "authentication expired".into(),
-            })))
-            .await;
-        return;
-    }
+    let identity_lease = {
+        let lifecycle = app_state.auth().session_lifecycle().read().await;
+        let valid = identity_valid(&app_state, &identity).await;
+        let lease = valid.then(|| app_state.auth().session_lease(&identity));
+        drop(lifecycle);
+        let Some(lease) = lease else {
+            let _ = socket
+                .send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                    code: 1008,
+                    reason: "authentication expired".into(),
+                })))
+                .await;
+            return;
+        };
+        lease
+    };
     if !app_state.contains_session(&session) || session.is_deleting() {
         let _ = socket
             .send(Message::Close(Some(axum::extract::ws::CloseFrame {
@@ -110,12 +123,13 @@ async fn handle_socket(
         tokio::select! {
             message = receiver.next() => {
                 let Some(Ok(message)) = message else { break };
-                if !handle_client_message(&session, &app_state, &identity, &mut sender, message).await {
+                if !handle_client_message(&session, &app_state, &identity, &identity_lease, &mut sender, message).await {
                     break;
                 }
             }
             _ = auth_check.tick() => {
-                if !identity_valid(&app_state, &identity).await {
+                if !identity_lease.load(Ordering::Acquire) || !identity_valid(&app_state, &identity).await {
+                    identity_lease.store(false, Ordering::Release);
                     close_unauthorized(&mut sender).await;
                     break;
                 }
@@ -123,7 +137,7 @@ async fn handle_socket(
             event = events.recv() => {
                 match event {
                     Ok(SessionEvent::Output(data)) => {
-                        if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data })).await.is_err() { break; }
+                        if send_json(&mut sender, serde_json::json!({ "type": "output", "data": data.as_ref() })).await.is_err() { break; }
                     }
                     Ok(SessionEvent::UpstreamSessionChanged { id, cwd }) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id, "cwd": cwd })).await.is_err() { break; }
@@ -176,6 +190,7 @@ async fn handle_client_message(
     session: &Arc<Session>,
     app_state: &AppState,
     identity: &AuthIdentity,
+    identity_lease: &AtomicBool,
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     message: Message,
 ) -> bool {
@@ -190,11 +205,14 @@ async fn handle_client_message(
         ClientMessage::Input { .. } | ClientMessage::Resize { .. }
     ) {
         let lifecycle = app_state.auth().session_lifecycle().read().await;
-        if !identity_valid(app_state, identity).await {
+        if !identity_lease.load(Ordering::Acquire) || identity.is_expired() {
+            identity_lease.store(false, Ordering::Release);
+            drop(lifecycle);
             close_unauthorized(sender).await;
             return false;
         }
         if !app_state.contains_session(session) || session.is_deleting() {
+            drop(lifecycle);
             let _ = sender
                 .send(Message::Close(Some(axum::extract::ws::CloseFrame {
                     code: 1000,
@@ -212,6 +230,7 @@ async fn handle_client_message(
             if let Some(data) = data.as_str().filter(|data| data.len() <= 64 * 1024)
                 && !session.write_input(data)
             {
+                drop(_lifecycle);
                 let _ = sender
                     .send(Message::Close(Some(axum::extract::ws::CloseFrame {
                         code: 1013,

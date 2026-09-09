@@ -9,11 +9,12 @@ import {
   mergeAgentWorkspaceMetadata,
   reconcileAgentWorkspaces,
   reconcileAgentWorkspaceSnapshot,
+  sameAgentWorkspaces,
   selectedWorkspaceAfterDisband,
   workspaceOwningSession,
 } from "../agentWorkspaceState";
 import { completeAgentSessionLaunch } from "../agentWorkspaceLaunch";
-import { mergeAgentSessions, substituteHistoryTitles } from "../selectors";
+import { mergeAgentSessions, runWhenVisible, subscribeVisiblePolling, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
 import { useAgentLaunch } from "./useAgentLaunch";
@@ -51,11 +52,13 @@ export function useAgentWorkspace({
     const filtered = reconcileAgentWorkspaces(next, {
       has: (id) => !removedSessionIdsRef.current.has(id),
     });
-    workspacesRef.current = filtered;
-    setWorkspaces(filtered);
+    const currentWorkspaces = workspacesRef.current;
+    const resolved = sameAgentWorkspaces(currentWorkspaces, filtered) ? currentWorkspaces : filtered;
+    workspacesRef.current = resolved;
+    setWorkspaces(resolved);
     setSelectedAgentWorkspaceId((current) => {
       const candidate = preferred === undefined ? current : preferred;
-      const selected = candidate && filtered.some((workspace) => workspace.id === candidate) ? candidate : (filtered[0]?.id ?? null);
+      const selected = candidate && resolved.some((workspace) => workspace.id === candidate) ? candidate : (resolved[0]?.id ?? null);
       selectedAgentWorkspaceIdRef.current = selected;
       return selected;
     });
@@ -109,12 +112,14 @@ export function useAgentWorkspace({
     workspaceRefreshRef.current = request;
     return request;
   }, [applyAuthoritativeSnapshot, reportError]);
+  const refreshVisibleAuthoritativeSnapshot = useCallback(
+    () => runWhenVisible(document, refreshAuthoritativeSnapshot) ?? Promise.resolve(),
+    [refreshAuthoritativeSnapshot],
+  );
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (active) void refreshAuthoritativeSnapshot();
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [active, refreshAuthoritativeSnapshot]);
+    if (!active) return;
+    return subscribeVisiblePolling(document, window, () => void refreshVisibleAuthoritativeSnapshot(), 5000, false);
+  }, [active, refreshVisibleAuthoritativeSnapshot]);
   const refreshAuthoritativeWorkspaces = useCallback(async <T,>(apply: (authoritative: AgentWorkspace[]) => T): Promise<T> => {
     const snapshot = await workspaceMutationsRef.current.readLatest(AGENT_WORKSPACES_MUTATION_KEY, agentWorkspaces);
     const reconciled = reconcileAgentWorkspaceSnapshot(snapshot);
@@ -332,6 +337,9 @@ export function useAgentWorkspace({
     defaultAgentId: catalog.defaultAgentId,
     selectedAgent,
     selectedPathId: catalog.selectedPathId,
+    installStates: catalog.installStates,
+    installingAgentId: catalog.installingAgentId,
+    installAnnouncement: catalog.installAnnouncement,
     includeSubdirectories,
     displaySessions,
     mergedSessions,
@@ -361,6 +369,7 @@ export function useAgentWorkspace({
     launch,
     launching,
     choosePath: catalog.choosePath,
+    installAgent: catalog.installAgent,
     pinPath: catalog.pinPath,
     renamePath: catalog.renamePath,
     deletePath: catalog.deletePath,

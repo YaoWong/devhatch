@@ -90,8 +90,9 @@ describe("terminal accessibility styles", () => {
     expect(terminalSurfaceSource).toContain("spin tw:size-[13px]");
   });
 
-  it("enables xterm screen reader mode and themed IME composition", () => {
-    expect(terminalSurfaceSource).toContain("screenReaderMode: true");
+  it("enables xterm screen reader mode for visible terminals and themed IME composition", () => {
+    expect(terminalSurfaceSource).toContain("screenReaderMode: visibleRef.current");
+    expect(terminalSurfaceSource).toContain("terminal.options.screenReaderMode = visible");
     expect(terminalCss).toMatch(/\.terminal-xterm-host \.xterm \.composition-view \{[^}]*background: var\(--color-surface\);[^}]*color: var\(--color-text\);[^}]*\}/);
   });
 

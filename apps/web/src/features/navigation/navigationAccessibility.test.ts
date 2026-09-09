@@ -114,6 +114,17 @@ describe("navigation rail accessibility", () => {
     expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .skills-menu-label { display: none; }');
   });
 
+  it("previews rail resizing without updating App state", () => {
+    expect(appSource).toContain('appRef.current?.style.setProperty("--navigation-rail-width", `${value}px`)');
+    expect(appSource).toContain("onPreview={previewRailWidth}");
+    expect(appSource).not.toContain("setDraftRailWidth");
+    expect(resizeHandleSource).toContain("onPointerMove={(event) => {");
+    expect(resizeHandleSource).toContain("onPreview(next);");
+    expect(resizeHandleSource).toContain("if (commit) onCommit(drag.currentWidth);");
+    expect(resizeHandleSource).toContain("onPreview(valueRef.current);");
+    expect(resizeHandleSource).not.toContain("onPreview(drag.startWidth);");
+  });
+
   it("contains enlarged text at narrow widths", () => {
     expect(railSource).toContain("tw:min-w-0 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap");
     expect(agentSessionListSource).toContain("tw:flex tw:min-h-[20px] tw:flex-wrap");

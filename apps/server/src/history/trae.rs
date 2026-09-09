@@ -517,8 +517,15 @@ fn verified_peer_file(path: &Path, history_ids: &HashSet<String>) -> Option<Stri
         return None;
     }
     let peer: SessionPeer = serde_json::from_slice(&bytes).ok()?;
+    if !peer_is_relevant(&peer.thread_id, history_ids) {
+        return None;
+    }
     let evidence = peer_evidence(&peer, history_ids);
     verified_external_peer(&evidence).then_some(peer.thread_id)
+}
+
+fn peer_is_relevant(thread_id: &str, history_ids: &HashSet<String>) -> bool {
+    valid_session_id(thread_id) && history_ids.contains(thread_id)
 }
 
 fn peer_evidence(peer: &SessionPeer, history_ids: &HashSet<String>) -> PeerEvidence {
@@ -753,6 +760,15 @@ mod tests {
             .await
             .unwrap();
         pool
+    }
+
+    #[test]
+    fn rejects_peers_unrelated_to_visible_history() {
+        let id = Uuid::new_v4().to_string();
+        let history_ids = HashSet::from([id.clone()]);
+        assert!(peer_is_relevant(&id, &history_ids));
+        assert!(!peer_is_relevant(&Uuid::new_v4().to_string(), &history_ids));
+        assert!(!peer_is_relevant("not-a-uuid", &history_ids));
     }
 
     #[test]

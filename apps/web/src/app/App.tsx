@@ -174,11 +174,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const canvasHandleHoverRef = useRef(false);
   const canvasEdgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const suppressCanvasEdgeFocusRef = useRef(false);
+  const appRef = useRef<HTMLElement | null>(null);
   const canvasMobileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const canvasRailRef = useRef<HTMLElement | null>(null);
   const canvasHandleRef = useRef<HTMLDivElement | null>(null);
   const breakpointFocusTargetRef = useRef<"mobile" | "desktop" | null>(null);
-  const [draftRailWidth, setDraftRailWidth] = useState(navigationRailWidthPx);
   const confirmedRailWidthRef = useRef(navigationRailWidthPx);
   const [railResizing, setRailResizing] = useState(false);
   const railResizingRef = useRef(false);
@@ -280,14 +280,17 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [setWorkspaceCapacity]);
   useEffect(() => {
     confirmedRailWidthRef.current = navigationRailWidthPx;
-    setDraftRailWidth(navigationRailWidthPx);
+    appRef.current?.style.setProperty("--navigation-rail-width", `${navigationRailWidthPx}px`);
   }, [navigationRailWidthPx]);
+  const previewRailWidth = useCallback((value: number) => {
+    appRef.current?.style.setProperty("--navigation-rail-width", `${value}px`);
+  }, []);
   const cancelRailResize = useCallback(() => {
     if (!railResizingRef.current) return;
     railResizingRef.current = false;
     setRailResizing(false);
-    setDraftRailWidth(confirmedRailWidthRef.current);
-  }, []);
+    previewRailWidth(confirmedRailWidthRef.current);
+  }, [previewRailWidth]);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 920px)");
     return subscribeMobileNavigationLifecycle(query, window, (movingToMobile) => {
@@ -595,10 +598,11 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
 
   return (
     <main
+      ref={appRef}
       style={
         {
           "--agent-launch-paths-max-height": `${agentLaunchPathsMaxHeightPx}px`,
-          "--navigation-rail-width": `${draftRailWidth}px`,
+          "--navigation-rail-width": `${navigationRailWidthPx}px`,
         } as CSSProperties
       }
       className={
@@ -767,12 +771,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       </MobileNavigationSheet>
       {!mobileNavigation && (
         <RailResizeHandle
-        handleRef={canvasHandleRef}
-         value={draftRailWidth}
-         hidden={!canvasPinned && !canvasOpen}
-        onPreview={setDraftRailWidth}
-        onCommit={setNavigationRailWidthPx}
-        onResizingChange={(resizing) => {
+          handleRef={canvasHandleRef}
+          value={navigationRailWidthPx}
+          hidden={!canvasPinned && !canvasOpen}
+          onPreview={previewRailWidth}
+          onCommit={setNavigationRailWidthPx}
+          onResizingChange={(resizing) => {
           railResizingRef.current = resizing;
           setRailResizing(resizing);
           if (resizing) cancelCanvasClose();

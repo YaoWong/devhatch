@@ -30,6 +30,10 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
         .route("/api/settings", get(settings::get).patch(settings::update))
         .route("/api/agents", get(agent::agents))
         .route(
+            "/api/agents/{agentId}/install",
+            axum::routing::post(agent::install),
+        )
+        .route(
             "/api/agent-launch-configs",
             get(launch_config::list).post(launch_config::create),
         )

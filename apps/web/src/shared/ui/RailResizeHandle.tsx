@@ -15,13 +15,21 @@ type Props = {
 
 const clamp = (value: number) => Math.min(480, Math.max(240, Math.round(value)));
 
+const setAccessibleValue = (element: HTMLDivElement, value: number) => {
+  element.setAttribute("aria-valuenow", String(value));
+  element.setAttribute("aria-valuetext", `${value} pixels`);
+};
+
 export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit, onResizingChange, onPointerEnter, onPointerLeave, onFocus, onBlur }: Props) {
   const dragRef = useRef<{
+    element: HTMLDivElement;
     pointerId: number;
     startX: number;
     startWidth: number;
     currentWidth: number;
   } | null>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const callbacksRef = useRef({ onPreview, onResizingChange });
   callbacksRef.current = { onPreview, onResizingChange };
   useEffect(() => {
@@ -31,7 +39,8 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       if (!drag) return;
       dragRef.current = null;
       callbacksRef.current.onResizingChange(false);
-      callbacksRef.current.onPreview(drag.startWidth);
+      setAccessibleValue(drag.element, valueRef.current);
+      callbacksRef.current.onPreview(valueRef.current);
     };
     query.addEventListener("change", cancel);
     window.addEventListener("pageshow", cancel);
@@ -53,7 +62,10 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (commit) onCommit(drag.currentWidth);
-    else onPreview(drag.startWidth);
+    else {
+      setAccessibleValue(event.currentTarget, valueRef.current);
+      onPreview(valueRef.current);
+    }
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -90,6 +102,7 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       onPointerDown={(event) => {
         if (hidden || event.button !== 0 || window.matchMedia("(max-width: 920px)").matches) return;
         dragRef.current = {
+          element: event.currentTarget,
           pointerId: event.pointerId,
           startX: event.clientX,
           startWidth: value,
@@ -104,6 +117,7 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
         if (drag?.pointerId !== event.pointerId) return;
         const next = clamp(drag.startWidth + event.clientX - drag.startX);
         drag.currentWidth = next;
+        setAccessibleValue(event.currentTarget, next);
         onPreview(next);
       }}
       onPointerUp={(event) => finish(event, true)}

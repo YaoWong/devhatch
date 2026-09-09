@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::{
     Json,
@@ -281,9 +284,29 @@ async fn create_workspace(
 }
 
 async fn reconcile(pool: &SqlitePool, live: &HashSet<String>) -> Result<(), sqlx::Error> {
+    let owned =
+        sqlx::query_scalar::<_, String>("SELECT agent_session_id FROM agent_workspace_members")
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .collect::<HashSet<_>>();
+    if !reconciliation_needed(&owned, live, None) {
+        return Ok(());
+    }
     let mut transaction = pool.begin().await?;
     reconcile_transaction(&mut transaction, live, None).await?;
     transaction.commit().await
+}
+
+fn reconciliation_needed(
+    owned: &HashSet<String>,
+    live: &HashSet<String>,
+    exclude_unowned: Option<&str>,
+) -> bool {
+    owned.iter().any(|id| !live.contains(id))
+        || live
+            .iter()
+            .any(|id| !owned.contains(id) && exclude_unowned != Some(id.as_str()))
 }
 
 async fn reconcile_transaction(
@@ -334,11 +357,22 @@ async fn reconcile_transaction(
 async fn list_items(pool: &SqlitePool) -> Result<Vec<AgentWorkspace>, sqlx::Error> {
     let rows = sqlx::query_as::<_, WorkspaceRow>("SELECT id, name, active_agent_session_id, created_at, updated_at FROM agent_workspaces ORDER BY created_at, id")
         .fetch_all(pool).await?;
-    let mut workspaces = Vec::with_capacity(rows.len());
-    for row in rows {
-        workspaces.push(assemble(pool, row).await?);
+    let members = sqlx::query_as::<_, (String, String)>("SELECT workspace_id, agent_session_id FROM agent_workspace_members ORDER BY workspace_id, position, agent_session_id")
+        .fetch_all(pool).await?;
+    let mut members_by_workspace = HashMap::<_, Vec<_>>::new();
+    for (workspace_id, agent_session_id) in members {
+        members_by_workspace
+            .entry(workspace_id)
+            .or_default()
+            .push(AgentWorkspaceMember { agent_session_id });
     }
-    Ok(workspaces)
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let members = members_by_workspace.remove(&row.id).unwrap_or_default();
+            assemble_row(row, members)
+        })
+        .collect())
 }
 
 async fn find(pool: &SqlitePool, id: &str) -> Result<Option<AgentWorkspace>, sqlx::Error> {
@@ -361,14 +395,18 @@ pub(crate) async fn exists(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Er
 async fn assemble(pool: &SqlitePool, row: WorkspaceRow) -> Result<AgentWorkspace, sqlx::Error> {
     let members = sqlx::query_as::<_, AgentWorkspaceMember>("SELECT agent_session_id FROM agent_workspace_members WHERE workspace_id = ? ORDER BY position, agent_session_id")
         .bind(&row.id).fetch_all(pool).await?;
-    Ok(AgentWorkspace {
+    Ok(assemble_row(row, members))
+}
+
+fn assemble_row(row: WorkspaceRow, members: Vec<AgentWorkspaceMember>) -> AgentWorkspace {
+    AgentWorkspace {
         id: row.id,
         name: row.name,
         active_agent_session_id: row.active_agent_session_id,
         members,
         created_at: row.created_at,
         updated_at: row.updated_at,
-    })
+    }
 }
 
 async fn member_belongs(
@@ -440,8 +478,8 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::{
-        create_workspace, exists, find, reconcile, reconcile_and_attach_agent_session,
-        remove_agent_session, session_ids_are_live,
+        create_workspace, exists, find, list_items, reconcile, reconcile_and_attach_agent_session,
+        reconciliation_needed, remove_agent_session, session_ids_are_live,
     };
 
     async fn pool() -> sqlx::SqlitePool {
@@ -475,6 +513,57 @@ mod tests {
         assert!(!exists(&pool, "missing").await.unwrap());
         let workspace = create_workspace(&pool, None, &[]).await.unwrap();
         assert!(exists(&pool, &workspace.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn list_items_preserves_member_order_and_empty_workspaces() {
+        let pool = pool().await;
+        let populated = create_workspace(&pool, Some("populated".into()), &members(&["b", "a"]))
+            .await
+            .unwrap();
+        let empty = create_workspace(&pool, Some("empty".into()), &[])
+            .await
+            .unwrap();
+
+        let workspaces = list_items(&pool).await.unwrap();
+
+        let populated = workspaces
+            .iter()
+            .find(|workspace| workspace.id == populated.id)
+            .unwrap();
+        assert_eq!(
+            populated
+                .members
+                .iter()
+                .map(|member| member.agent_session_id.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "a"]
+        );
+        assert!(
+            workspaces
+                .iter()
+                .find(|workspace| workspace.id == empty.id)
+                .unwrap()
+                .members
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reconciliation_only_runs_for_stale_or_unowned_sessions() {
+        let owned = HashSet::from(["live".to_string()]);
+        let live = HashSet::from(["live".to_string()]);
+        assert!(!reconciliation_needed(&owned, &live, None));
+        assert!(reconciliation_needed(
+            &owned,
+            &HashSet::from(["other".to_string()]),
+            None
+        ));
+        assert!(!reconciliation_needed(
+            &HashSet::new(),
+            &HashSet::from(["pending".to_string()]),
+            Some("pending")
+        ));
     }
 
     #[tokio::test]
