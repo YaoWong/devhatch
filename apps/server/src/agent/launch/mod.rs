@@ -2,6 +2,7 @@ use std::{
     env,
     ffi::OsString,
     net::{Ipv4Addr, SocketAddrV4, TcpListener},
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -33,23 +34,39 @@ use workspace::{
 const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
 
-pub(super) fn available(kind: AgentKind) -> bool {
-    executable_path(kind.as_str()).is_some()
+pub(super) async fn installed_version(data_dir: &Path, kind: AgentKind) -> Option<String> {
+    verified_executable(data_dir, kind)
+        .await
+        .map(|(_, version)| version)
 }
 
-pub(super) async fn installed_version(kind: AgentKind) -> Option<String> {
-    let executable_name = kind.as_str();
-    let executable = executable_path(executable_name)?;
-    let mut command = tokio::process::Command::new(executable);
-    crate::process::configure_tokio_command(&mut command);
-    let output = tokio::time::timeout(Duration::from_secs(2), command.arg("--version").output())
+pub(crate) async fn verified_executable(
+    data_dir: &Path,
+    kind: AgentKind,
+) -> Option<(PathBuf, String)> {
+    for executable in executable_candidates(data_dir, kind) {
+        let Ok(output) = crate::process::command_output(
+            tokio::process::Command::new(&executable).arg("--version"),
+            Duration::from_secs(2),
+            16 * 1024,
+        )
         .await
-        .ok()?
-        .ok()?;
-    if !output.status.success() {
-        return None;
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let Some(version) = parse_version(kind, &output.stdout) else {
+            continue;
+        };
+        return Some((executable, version));
     }
-    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    None
+}
+
+fn parse_version(kind: AgentKind, output: &[u8]) -> Option<String> {
+    let version = String::from_utf8_lossy(output).trim().to_string();
     let prefix = match kind {
         AgentKind::Codex => "codex-cli",
         AgentKind::OpenCode => "opencode",
@@ -88,12 +105,55 @@ fn version_at_least(version: &str, minimum: [u64; 3]) -> bool {
             .is_some_and(|current| current.as_slice() >= minimum.as_slice())
 }
 
-pub(crate) fn executable_path(executable: &str) -> Option<PathBuf> {
+pub(crate) fn managed_agent_prefix(data_dir: &Path, kind: AgentKind) -> PathBuf {
+    data_dir.join("agent-clis").join(kind.as_str())
+}
+
+fn executable_candidates(data_dir: &Path, kind: AgentKind) -> Vec<PathBuf> {
+    let mut candidates = path_executable(kind.as_str())
+        .into_iter()
+        .collect::<Vec<_>>();
+    if let Some(managed) = managed_executable_path(data_dir, kind)
+        && !candidates.contains(&managed)
+    {
+        candidates.push(managed);
+    }
+    candidates
+}
+
+fn managed_executable_path(data_dir: &Path, kind: AgentKind) -> Option<PathBuf> {
+    executable_in_prefix(&managed_agent_prefix(data_dir, kind), kind.as_str())
+}
+
+pub(crate) fn executable_in_prefix(prefix: &Path, executable: &str) -> Option<PathBuf> {
+    let prefix_metadata = std::fs::symlink_metadata(prefix).ok()?;
+    if prefix_metadata.file_type().is_symlink()
+        || !prefix_metadata.is_dir()
+        || prefix_metadata.uid() != unsafe { libc::geteuid() }
+        || prefix_metadata.permissions().mode() & 0o022 != 0
+    {
+        return None;
+    }
+    let prefix = std::fs::canonicalize(prefix).ok()?;
+    let executable = std::fs::canonicalize(prefix.join("bin").join(executable)).ok()?;
+    if !executable.starts_with(&prefix) {
+        return None;
+    }
+    let metadata = std::fs::metadata(&executable).ok()?;
+    (metadata.is_file()
+        && metadata.uid() == unsafe { libc::geteuid() }
+        && metadata.permissions().mode() & 0o111 != 0
+        && metadata.permissions().mode() & 0o022 == 0)
+        .then_some(executable)
+}
+
+fn path_executable(executable: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
             .map(|path| path.join(executable))
             .find_map(|path| {
-                path.is_file()
+                let metadata = std::fs::metadata(&path).ok()?;
+                (metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
                     .then(|| std::fs::canonicalize(path).ok())
                     .flatten()
             })
@@ -102,6 +162,7 @@ pub(crate) fn executable_path(executable: &str) -> Option<PathBuf> {
 
 pub(super) fn spawn_codex(
     state: Arc<AppState>,
+    executable: PathBuf,
     request: CreateRequest,
     home: PathBuf,
     resume: Option<(String, PathBuf)>,
@@ -118,9 +179,6 @@ pub(super) fn spawn_codex(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
-    let executable = executable_path(CODEX_ID).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "codex executable not found")
-    })?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
@@ -240,6 +298,7 @@ fn codex_args(
 
 pub(super) fn spawn_opencode(
     state: Arc<AppState>,
+    executable: PathBuf,
     request: CreateRequest,
     upstream_session_id: Option<String>,
     launch_config: AgentLaunchConfig,
@@ -255,12 +314,6 @@ pub(super) fn spawn_opencode(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
-    let executable = executable_path("opencode").ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "opencode executable not found",
-        )
-    })?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
@@ -347,6 +400,7 @@ pub(super) fn spawn_opencode(
 
 pub(super) fn spawn_traecli(
     state: Arc<AppState>,
+    executable: PathBuf,
     request: CreateRequest,
     session_id: String,
     history_path: Option<&Path>,
@@ -363,9 +417,6 @@ pub(super) fn spawn_traecli(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
-    let executable = executable_path("traecli").ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "traecli executable not found")
-    })?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
@@ -502,6 +553,7 @@ fn start_trae_identity_watcher(
 
 pub(super) fn spawn_pi(
     state: Arc<AppState>,
+    executable: PathBuf,
     request: CreateRequest,
     session_id: String,
     history_path: Option<&Path>,
@@ -518,9 +570,6 @@ pub(super) fn spawn_pi(
     if !cwd.is_dir() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
     }
-    let executable = executable_path(PI_ID).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "pi executable not found")
-    })?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;

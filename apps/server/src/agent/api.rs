@@ -21,8 +21,8 @@ use crate::{
 use super::{
     kind::{AgentDefinition, AgentKind, OPENCODE_ID, definition},
     launch::{
-        available, installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
-        supports_image_paste,
+        installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
+        supports_image_paste, verified_executable,
     },
     runtime::reconcile::{start_codex_reconciler, start_fork_reconciler, start_history_reconciler},
     runtime_input::{PasteImageError, paste_image as paste_runtime_image},
@@ -63,7 +63,7 @@ pub async fn agents(State(state): State<Arc<AppState>>) -> Response {
         async move {
             let agent = definition(kind);
             let (version, summary) = tokio::join!(
-                installed_version(agent.kind),
+                installed_version(state.data_dir(), agent.kind),
                 launch_config::summary(&state, agent.kind.as_str())
             );
             let (count, default) = summary.unwrap_or((0, None));
@@ -96,6 +96,7 @@ fn agent_view(
         "enabled": true,
         "availability": if available { "available" } else { "unavailable" },
         "diagnostic": if available { serde_json::Value::Null } else { serde_json::Value::String(kind.diagnostic().into()) },
+        "installable": kind.installable(),
         "supportsHistory": true,
         "supportsResume": agent.supports_resume,
         "supportsSkills": agent.supports_skills,
@@ -124,9 +125,9 @@ pub async fn create(
     if request.skill_profile_id.is_some() && !agent.supports_skills {
         return error(StatusCode::BAD_REQUEST, "AGENT_SKILLS_UNSUPPORTED");
     }
-    if !available(kind) {
+    let Some((executable, _)) = verified_executable(state.data_dir(), kind).await else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
-    }
+    };
     let workspace_id = request.workspace_id.clone();
     let _workspace_lifecycle = state.agent_workspace_lifecycle().lock().await;
     if let Some(workspace_id) = workspace_id.as_deref() {
@@ -172,6 +173,7 @@ pub async fn create(
             }
             let session = match spawn_codex(
                 state.clone(),
+                executable,
                 terminal_request,
                 home.clone(),
                 None,
@@ -195,6 +197,7 @@ pub async fn create(
             ));
             let session = match spawn_codex(
                 state.clone(),
+                executable,
                 terminal_request,
                 home,
                 Some((id, path)),
@@ -212,6 +215,7 @@ pub async fn create(
             }
             let session = match spawn_traecli(
                 state.clone(),
+                executable,
                 terminal_request,
                 thread_name,
                 None,
@@ -229,6 +233,7 @@ pub async fn create(
             ));
             let session = match spawn_traecli(
                 state.clone(),
+                executable,
                 terminal_request,
                 id,
                 Some(&path),
@@ -246,6 +251,7 @@ pub async fn create(
             }
             let session = match spawn_pi(
                 state.clone(),
+                executable,
                 terminal_request,
                 id,
                 None,
@@ -263,6 +269,7 @@ pub async fn create(
             ));
             let session = match spawn_pi(
                 state.clone(),
+                executable,
                 terminal_request,
                 id,
                 Some(&path),
@@ -280,6 +287,7 @@ pub async fn create(
             }
             let session = match spawn_opencode(
                 state.clone(),
+                executable,
                 terminal_request,
                 None,
                 launch_config,
@@ -299,6 +307,7 @@ pub async fn create(
             }
             let session = match spawn_opencode(
                 state.clone(),
+                executable,
                 terminal_request,
                 Some(id),
                 launch_config,
@@ -434,7 +443,7 @@ pub async fn paste_image(
         Ok(client) => client,
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "HTTP_CLIENT_ERROR"),
     };
-    match paste_runtime_image(&client, &session, content_type, body).await {
+    match paste_runtime_image(&client, state.data_dir(), &session, content_type, body).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(PasteImageError::Unsupported) => {
             error(StatusCode::CONFLICT, "AGENT_IMAGE_PASTE_UNSUPPORTED")

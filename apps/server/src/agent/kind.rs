@@ -47,6 +47,10 @@ impl AgentKind {
         }
     }
 
+    pub(crate) const fn installable(self) -> bool {
+        !matches!(self, Self::TraeCli)
+    }
+
     pub(crate) const fn history_backend(self) -> HistoryBackend {
         match self {
             Self::Codex => HistoryBackend::Codex,

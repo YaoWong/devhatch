@@ -224,6 +224,10 @@ export function AppNavigationRail({
           selectedProfileId={agent.selectedSkillProfileId}
           paths={agent.paths}
           selectedPathId={agent.selectedPathId}
+          installState={agent.selectedAgentId ? agent.installStates[agent.selectedAgentId] : undefined}
+          activeInstallAgent={agent.agents.find((item) => item.id === agent.installingAgentId) ?? null}
+          installAnnouncement={agent.installAnnouncement}
+          installBusy={agent.installingAgentId !== null}
           includeSubdirectories={agent.includeSubdirectories}
           activeSession={agent.launcherActiveSession}
           sessions={agent.selectedSessions}
@@ -252,6 +256,7 @@ export function AppNavigationRail({
           onUpdateConfig={agent.updateConfig}
           onDeleteConfig={agent.deleteConfig}
           onChoosePath={onPickAgentPath}
+          onInstallAgent={agent.installAgent}
           onSelectPath={(id) => agent.setSelectedPathId(agent.selectedPathId === id ? null : id)}
           onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
           onLaunch={(path) => {

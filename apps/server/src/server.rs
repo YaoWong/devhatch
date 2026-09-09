@@ -193,6 +193,7 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
             () = shutdown_signal() => {},
             () = shutdown_state.wait_for_internal_shutdown() => {},
         }
+        shutdown_state.begin_shutdown();
         let _ = stop.send(true);
         let _ = accept_stopped.await;
         if !shutdown_state

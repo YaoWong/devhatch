@@ -62,6 +62,7 @@ pub(super) fn configure_pi_endpoint(
 
 pub(crate) async fn paste_image(
     client: &reqwest::Client,
+    data_dir: &Path,
     session: &Session,
     content_type: &str,
     bytes: Bytes,
@@ -81,7 +82,7 @@ pub(crate) async fn paste_image(
         AgentKind::OpenCode => paste_opencode_image(client, session, bytes).await,
         AgentKind::Pi => paste_pi_image(client, session, bytes).await,
         AgentKind::Codex | AgentKind::TraeCli => {
-            let version = super::launch::installed_version(kind).await;
+            let version = super::launch::installed_version(data_dir, kind).await;
             if !super::launch::supports_image_paste(kind, version.as_deref()) {
                 return Err(PasteImageError::Unsupported);
             }

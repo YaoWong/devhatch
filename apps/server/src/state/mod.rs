@@ -24,6 +24,7 @@ pub struct AppState {
     history: Arc<HistoryCoordinator>,
     terminal_workspace_lifecycle: tokio::sync::Mutex<()>,
     agent_workspace_lifecycle: Arc<tokio::sync::Mutex<()>>,
+    agent_install_lock: tokio::sync::Mutex<()>,
     data_dir: PathBuf,
     pool: SqlitePool,
     history_pool: OpenCodeHistoryPool,
@@ -32,6 +33,8 @@ pub struct AppState {
     skill_repository_operations: SkillRepositoryOperationCoordinator,
     auth: AuthState,
     supervisor: std::sync::OnceLock<crate::supervisor::Supervisor>,
+    shutdown_started: tokio::sync::Notify,
+    shutting_down: std::sync::atomic::AtomicBool,
     internal_shutdown: tokio::sync::Notify,
     internal_shutdown_requested: std::sync::atomic::AtomicBool,
 }
@@ -51,6 +54,7 @@ impl AppState {
             history: Arc::new(HistoryCoordinator::default()),
             terminal_workspace_lifecycle: tokio::sync::Mutex::new(()),
             agent_workspace_lifecycle: Arc::new(tokio::sync::Mutex::new(())),
+            agent_install_lock: tokio::sync::Mutex::new(()),
             data_dir,
             pool,
             history_pool,
@@ -59,6 +63,8 @@ impl AppState {
             skill_repository_operations: SkillRepositoryOperationCoordinator::default(),
             auth: AuthState::new(setup_token, secure_cookie),
             supervisor: std::sync::OnceLock::new(),
+            shutdown_started: tokio::sync::Notify::new(),
+            shutting_down: std::sync::atomic::AtomicBool::new(false),
             internal_shutdown: tokio::sync::Notify::new(),
             internal_shutdown_requested: std::sync::atomic::AtomicBool::new(false),
         }
@@ -125,6 +131,10 @@ impl AppState {
         self.agent_workspace_lifecycle.as_ref()
     }
 
+    pub(crate) fn agent_install_lock(&self) -> &tokio::sync::Mutex<()> {
+        &self.agent_install_lock
+    }
+
     pub(crate) fn agent_exit_cleanup(&self) -> crate::session::SessionExitCleanup {
         let pool = self.pool.clone();
         let lifecycle = self.agent_workspace_lifecycle.clone();
@@ -170,6 +180,28 @@ impl AppState {
 
     pub(crate) fn supervisor(&self) -> Option<&crate::supervisor::Supervisor> {
         self.supervisor.get()
+    }
+
+    pub(crate) fn begin_shutdown(&self) {
+        if !self
+            .shutting_down
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            self.shutdown_started.notify_waiters();
+        }
+    }
+
+    pub(crate) async fn wait_for_shutdown(&self) {
+        loop {
+            let started = self.shutdown_started.notified();
+            if self
+                .shutting_down
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return;
+            }
+            started.await;
+        }
     }
 
     pub(crate) fn request_internal_shutdown(&self) {

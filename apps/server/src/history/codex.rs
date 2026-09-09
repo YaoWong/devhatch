@@ -419,11 +419,14 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
         WriterLock::Held => return Err(DeleteError::History(HistoryError::ExternalActive)),
         WriterLock::Inactive => {}
     }
-    let executable = agent::executable_path("codex").ok_or(DeleteError::Failed {
-        status: StatusCode::SERVICE_UNAVAILABLE,
-        code: "CODEX_UNAVAILABLE",
-        message: None,
-    })?;
+    let executable = agent::verified_executable(state.data_dir(), crate::agent::AgentKind::Codex)
+        .await
+        .map(|(executable, _)| executable)
+        .ok_or(DeleteError::Failed {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "CODEX_UNAVAILABLE",
+            message: None,
+        })?;
     let mut command = tokio::process::Command::new(executable);
     crate::process::configure_tokio_command(&mut command);
     let output = tokio::time::timeout(
