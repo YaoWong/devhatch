@@ -9,7 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
 import { SocketConnection } from "./socketConnection";
 import { loadTerminalFonts } from "./terminalFonts";
-import { TerminalWriteQueue } from "./terminalWriteQueue";
+import { registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
 import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
@@ -187,6 +187,8 @@ export function TerminalSurface({
       return;
     }
     terminalRef.current = terminal;
+    const snapshotReplayGuard = new TerminalSnapshotReplayGuard();
+    const snapshotReplayHandlers = registerTerminalSnapshotReplayHandlers(terminal.parser, snapshotReplayGuard);
     const terminalWriter = new TerminalWriteQueue(
       (data, onComplete) => terminal.write(data, onComplete),
       (generation) => {
@@ -362,6 +364,9 @@ export function TerminalSurface({
                   if (!disposed && socketRef.current === socket && connection.isCurrent(generation)) terminal.focus();
                 });
               }
+            }, {
+              onStart: () => snapshotReplayGuard.begin(generation),
+              onSettled: () => snapshotReplayGuard.end(generation),
             });
           }
           if (message.type === "output" && message.data) {
@@ -396,6 +401,7 @@ export function TerminalSurface({
       });
     };
     const input = terminal.onData((data) => {
+      if (snapshotReplayGuard.suppress(data)) return;
       const socket = socketRef.current;
       if (protocolReady && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data }));
       else inputBuffer = (inputBuffer + data).slice(-64 * 1024);
@@ -459,6 +465,7 @@ export function TerminalSurface({
       container.removeEventListener("paste", paste, true);
       input.dispose();
       render.dispose();
+      snapshotReplayHandlers.dispose();
       const socket = socketRef.current;
       socketRef.current = null;
       socket?.close(1000, "surface closed");

@@ -1,7 +1,36 @@
 import { describe, expect, it, vi } from "vitest";
-import { TerminalWriteQueue } from "./terminalWriteQueue";
+import { registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
 
 type WriteCall = { data: string; complete: () => void };
+type Params = (number | number[])[];
+type CsiHandler = { id: { prefix?: string; intermediates?: string; final: string }; callback: (params: Params) => boolean | Promise<boolean> };
+type DcsHandler = { id: { prefix?: string; intermediates?: string; final: string }; callback: (data: string, params: Params) => boolean | Promise<boolean> };
+type OscHandler = { ident: number; callback: (data: string) => boolean | Promise<boolean> };
+
+function parserHarness() {
+  const csi: CsiHandler[] = [];
+  const dcs: DcsHandler[] = [];
+  const osc: OscHandler[] = [];
+  const disposable = () => ({ dispose: vi.fn() });
+  const parser = {
+    registerCsiHandler: vi.fn((id: CsiHandler["id"], callback: CsiHandler["callback"]) => {
+      csi.push({ id, callback });
+      return disposable();
+    }),
+    registerDcsHandler: vi.fn((id: DcsHandler["id"], callback: DcsHandler["callback"]) => {
+      dcs.push({ id, callback });
+      return disposable();
+    }),
+    registerOscHandler: vi.fn((ident: number, callback: OscHandler["callback"]) => {
+      osc.push({ ident, callback });
+      return disposable();
+    }),
+  };
+  const runCsi = (id: CsiHandler["id"], params: Params) => csi.find((handler) => JSON.stringify(handler.id) === JSON.stringify(id))?.callback(params);
+  const runDcs = (id: DcsHandler["id"], data: string, params: Params) => dcs.find((handler) => JSON.stringify(handler.id) === JSON.stringify(id))?.callback(data, params);
+  const runOsc = (ident: number, data: string) => osc.find((handler) => handler.ident === ident)?.callback(data);
+  return { parser, runCsi, runDcs, runOsc };
+}
 
 function harness(maxPendingCharacters?: number) {
   const writes: WriteCall[] = [];
@@ -36,6 +65,82 @@ describe("terminal write queue", () => {
     writes[2].complete();
     expect(liveComplete).toHaveBeenCalledOnce();
     expect(failure).not.toHaveBeenCalled();
+  });
+
+  it("ends snapshot lifecycle before queued live output", () => {
+    const { queue, writes } = harness();
+    const events: string[] = [];
+
+    queue.begin(1);
+    queue.snapshot(1, "snapshot", () => events.push("complete"), {
+      onStart: () => events.push("start"),
+      onSettled: () => events.push("settled"),
+    });
+    queue.write(1, "live", () => events.push("live"));
+
+    expect(events).toEqual(["start"]);
+    writes[0].complete();
+    expect(events).toEqual(["start", "settled", "complete"]);
+    expect(writes[1].data).toBe("live");
+    writes[1].complete();
+    expect(events).toEqual(["start", "settled", "complete", "live"]);
+  });
+
+  it("keeps active snapshot lifecycle until a replaced generation physically settles", () => {
+    const { queue, writes } = harness();
+    const settled = vi.fn();
+    const complete = vi.fn();
+
+    queue.begin(1);
+    queue.snapshot(1, "snapshot", complete, { onSettled: settled });
+    queue.begin(2);
+    expect(settled).not.toHaveBeenCalled();
+    writes[0].complete();
+
+    expect(settled).toHaveBeenCalledOnce();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("suppresses replay queries and generated color replies without dropping ordinary input", () => {
+    const { parser, runCsi, runDcs, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    registerTerminalSnapshotReplayHandlers(parser, guard);
+
+    expect(runCsi({ final: "c" }, [0])).toBe(false);
+    guard.begin(3);
+    expect(runCsi({ final: "c" }, [0])).toBe(true);
+    expect(runCsi({ final: "n" }, [6])).toBe(true);
+    expect(runCsi({ final: "t" }, [18])).toBe(true);
+    expect(runDcs({ intermediates: "$", final: "q" }, "m", [0])).toBe(true);
+
+    expect(runOsc(10, "?")).toBe(false);
+    expect(runOsc(11, "?")).toBe(false);
+    expect(guard.suppress("typed")).toBe(false);
+    expect(guard.suppress("\x1b]10;rgb:1d1d/1d1d/1f1f\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]11;rgb:ffff/ffff/ffff\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]11;rgb:ffff/ffff/ffff\x1b\\")).toBe(false);
+
+    guard.end(3);
+    expect(runCsi({ final: "c" }, [0])).toBe(false);
+    expect(guard.suppress("\x1b]10;rgb:1d1d/1d1d/1f1f\x1b\\")).toBe(false);
+  });
+
+  it("tracks indexed, stacked special-color, and focus replies only during replay", () => {
+    const { parser, runCsi, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    registerTerminalSnapshotReplayHandlers(parser, guard);
+    guard.begin(7);
+
+    expect(runOsc(4, "1;?;2;#ffffff;255;?")).toBe(false);
+    expect(runOsc(10, "?;?;?")).toBe(false);
+    expect(runCsi({ prefix: "?", final: "h" }, [1004])).toBe(false);
+    expect(guard.suppress("\x1b]4;1;rgb:1111/1111/1111\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]4;255;rgb:ffff/ffff/ffff\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]10;rgb:1111/1111/1111\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]11;rgb:2222/2222/2222\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b]12;rgb:3333/3333/3333\x1b\\")).toBe(true);
+    expect(guard.suppress("\x1b[I")).toBe(true);
+    expect(guard.suppress("user paste")).toBe(false);
   });
 
   it("always applies an empty snapshot through an in-band reset", () => {
