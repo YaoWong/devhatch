@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { AgentLaunchPath } from "../../types/agents";
+import type { LaunchPath } from "../../types/workspaces";
 import type { LaunchPathDisplay } from "../../types/app";
 import { displayPath, workspaceName } from "../../shared/lib/utils";
 import { dispatchCustomSelectOpenChange } from "../../shared/ui/customSelectPortal";
@@ -43,7 +43,7 @@ export function LaunchPaths({
   emptyMessage = "Choose a directory to launch your first session.",
   className = "",
 }: {
-  paths: AgentLaunchPath[];
+  paths: LaunchPath[];
   selectedPathId?: string | null;
   available: boolean;
   canAdd: boolean;
@@ -54,13 +54,13 @@ export function LaunchPaths({
   renamingId: string | null;
   onPageChange: (page: number) => void;
   onChoose: () => void;
-  onSelect?: (path: AgentLaunchPath) => void;
-  onLaunch: (path: AgentLaunchPath) => void;
-  onPin: (path: AgentLaunchPath) => void;
-  onRename: (path: AgentLaunchPath) => void;
-  onRenameSubmit: (path: AgentLaunchPath, alias: string) => Promise<boolean>;
+  onSelect?: (path: LaunchPath) => void;
+  onLaunch: (path: LaunchPath) => void;
+  onPin: (path: LaunchPath) => void;
+  onRename: (path: LaunchPath) => void;
+  onRenameSubmit: (path: LaunchPath, alias: string) => Promise<boolean>;
   onRenameCancel: () => void;
-  onDelete: (path: AgentLaunchPath) => void;
+  onDelete: (path: LaunchPath) => void;
   emptyMessage?: string;
   className?: string;
 }) {

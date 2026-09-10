@@ -11,9 +11,8 @@ use axum::{
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
-    agent, agent_workspace, auth, filesystem, history, launch_config, launch_path, settings,
-    skillink, state::AppState, supervisor, terminal, terminal_launch_path, terminal_workspace,
-    web_app,
+    agent, auth, filesystem, history, launch_config, launch_path, settings, skillink,
+    state::AppState, supervisor, terminal, web_app, workspace,
 };
 
 pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
@@ -97,32 +96,20 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             axum::routing::delete(history::remove),
         )
         .route(
-            "/api/agent-launch-paths",
+            "/api/launch-paths",
             get(launch_path::list).post(launch_path::create),
         )
         .route(
-            "/api/agent-launch-paths/{id}",
+            "/api/launch-paths/{id}",
             patch(launch_path::update).delete(launch_path::remove),
         )
         .route(
-            "/api/agent-launch-paths/{id}/touch",
-            axum::routing::post(launch_path::touch),
+            "/api/workspaces",
+            get(workspace::list).post(workspace::create),
         )
         .route(
-            "/api/terminal-launch-paths",
-            get(terminal_launch_path::list).post(terminal_launch_path::create),
-        )
-        .route(
-            "/api/terminal-launch-paths/{id}",
-            patch(terminal_launch_path::update).delete(terminal_launch_path::remove),
-        )
-        .route(
-            "/api/terminal-workspaces",
-            get(terminal_workspace::list).post(terminal_workspace::create),
-        )
-        .route(
-            "/api/terminal-workspaces/{id}",
-            patch(terminal_workspace::update).delete(terminal_workspace::remove),
+            "/api/workspaces/{id}",
+            patch(workspace::update).delete(workspace::remove),
         )
         .route("/api/terminals", get(terminal::list).post(terminal::create))
         .route(
@@ -130,14 +117,6 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
             patch(terminal::rename).delete(terminal::remove),
         )
         .route("/api/terminals/{id}/socket", get(terminal::socket))
-        .route(
-            "/api/agent-workspaces",
-            get(agent_workspace::list).post(agent_workspace::create),
-        )
-        .route(
-            "/api/agent-workspaces/{id}",
-            patch(agent_workspace::update).delete(agent_workspace::remove),
-        )
         .route("/api/agent-sessions", get(agent::list).post(agent::create))
         .route(
             "/api/agent-sessions/{id}",

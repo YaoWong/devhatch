@@ -19,12 +19,10 @@ import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 
 export function WorkspacePicker({
   initialPath,
-  purpose,
   onClose,
   onSelect,
 }: {
   initialPath?: string;
-  purpose: "add-launch-path" | "agent";
   onClose: () => void;
   onSelect: (path: string) => void;
 }) {
@@ -79,7 +77,7 @@ export function WorkspacePicker({
       ...parts.map((name, index) => ({ name, path: `/${parts.slice(0, index + 1).join("/")}` })),
     ];
   }, [listing]);
-  const title = purpose === "agent" ? "Add Agent Launch Path" : "Add Launch Path";
+  const title = "Add Launch Path";
   const confirmLabel = "Add Launch Path";
   const announcement = pickerError
     ? ""

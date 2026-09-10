@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clampTerminalLayoutCut, createTerminalLayoutDrag, defaultTerminalLayoutRatios, terminalLayoutPresets, terminalLayoutWeights } from "./terminalWorkspaceLayout";
+import { AGENT_WORKSPACE_LAYOUT_STORAGE_KEY, clampTerminalLayoutCut, createTerminalLayoutDrag, defaultTerminalLayoutRatios, migrateWorkspaceLayouts, readWorkspaceLayouts, TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY, terminalLayoutPresets, terminalLayoutWeights, WORKSPACE_LAYOUT_STORAGE_KEY } from "./terminalWorkspaceLayout";
 
 describe("terminal workspace layouts", () => {
   it("provides presets for every multi-terminal count", () => {
@@ -16,6 +16,37 @@ describe("terminal workspace layouts", () => {
     const cuts = defaultTerminalLayoutRatios(4, "columns");
     expect(clampTerminalLayoutCut(cuts, 1, 0.1, 0.2)).toBe(0.45);
     expect(clampTerminalLayoutCut(cuts, 1, 0.9, 0.2)).toBe(0.55);
+  });
+
+  it("namespaces legacy layouts and prefers terminal values on collisions", () => {
+    const terminal = { presets: { 2: "columns" as const }, ratios: {} };
+    const agent = { presets: { 2: "rows" as const }, ratios: {} };
+    expect(migrateWorkspaceLayouts({ same: terminal }, { same: agent })).toEqual({
+      "terminal:same": terminal,
+      "agent:same": agent,
+    });
+  });
+
+  it("merges missing legacy layouts without overwriting current values", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    const values = new Map<string, string>([
+      [TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({ shared: { presets: { 2: "columns" }, ratios: {} } })],
+      [AGENT_WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({ shared: { presets: { 2: "rows" }, ratios: {} } })],
+      [WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({ "terminal:shared": { presets: { 2: "rows" }, ratios: {} } })],
+    ]);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { getItem: (key: string) => values.get(key) ?? null },
+    });
+    try {
+      expect(readWorkspaceLayouts()).toEqual({
+        "terminal:shared": { presets: { 2: "rows" }, ratios: {} },
+        "agent:shared": { presets: { 2: "rows" }, ratios: {} },
+      });
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+      else Reflect.deleteProperty(globalThis, "localStorage");
+    }
   });
 
   it("coalesces drag previews by animation frame and commits only the final ratio", () => {

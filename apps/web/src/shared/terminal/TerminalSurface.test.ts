@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { terminalSocketPath } from "./socketConnection";
 import { applyTerminalTheme } from "./terminalThemes";
+
+describe("terminal transport", () => {
+  it("encodes the raw session id without a composite prefix", () => {
+    expect(terminalSocketPath("/api/agent-sessions", "same/id")).toBe("/api/agent-sessions/same%2Fid/socket");
+  });
+});
 
 describe("terminal theme", () => {
   it("repaints an existing terminal when the theme changes", () => {

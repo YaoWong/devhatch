@@ -88,6 +88,17 @@ export function substituteHistoryTitles(sessions: AgentSession[], history: Histo
   }));
 }
 
+export function replaceAgentSessions(
+  sessions: AgentSession[],
+  selectedAgentId: string | null,
+  replacements: AgentSession[],
+) {
+  const replacementsById = new Map(replacements.map((session) => [session.id, session]));
+  return sessions.map((session) => session.agentId === selectedAgentId
+    ? (replacementsById.get(session.id) ?? session)
+    : session);
+}
+
 export function mergeAgentSessions(
   sessions: AgentSession[],
   history: HistoryResponse,

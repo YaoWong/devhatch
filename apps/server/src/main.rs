@@ -1,5 +1,4 @@
 mod agent;
-mod agent_workspace;
 mod api;
 mod auth;
 mod clock;
@@ -16,9 +15,8 @@ mod skillink;
 mod state;
 mod supervisor;
 mod terminal;
-mod terminal_launch_path;
-mod terminal_workspace;
 mod web_app;
+mod workspace;
 
 const ADMIN_PASSWORD_FILE_ENV: &str = "DEVHATCH_ADMIN_PASSWORD_FILE";
 

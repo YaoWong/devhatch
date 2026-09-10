@@ -1,5 +1,9 @@
 import type { ConnectionPhase } from "../../types/terminals";
 
+export function terminalSocketPath(socketBase: string, sessionId: string) {
+  return `${socketBase}/${encodeURIComponent(sessionId)}/socket`;
+}
+
 export type CloseAction = "ignored" | "reconnect" | "terminal" | "unauthorized";
 
 type Schedule = (callback: () => void, delay: number) => unknown;

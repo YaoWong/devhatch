@@ -1,46 +1,41 @@
-import { lazy, Suspense, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { Bot } from "lucide-react";
+import { pasteAgentImage } from "../api/agents";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
-import { AgentWorkspace } from "../features/agents/AgentWorkspace";
 import { SettingsView } from "../features/settings/SettingsView";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
 import { TerminalWorkspace } from "../features/terminals/TerminalWorkspace";
-import type { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
 import type { TerminalLayoutCount, TerminalWorkspaceLayoutPreferences } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
+import type { useWorkspaceController } from "../features/terminals/useWorkspaceController";
 import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
-import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
+import type { ConnectionPhase } from "../types/terminals";
+import { isAgentSession, sessionKey, type WorkspaceSession } from "../types/workspaces";
 
 const SkillsWorkspace = lazy(() => import("../features/skills/SkillsWorkspace").then((module) => ({ default: module.SkillsWorkspace })));
 
 type AppWorkspaceContentProps = {
   mode: WorkspaceMode;
-  terminal: ReturnType<typeof useTerminalWorkspace>;
+  workspace: ReturnType<typeof useWorkspaceController>;
   agent: ReturnType<typeof useAgentWorkspace>;
   skills: ReturnType<typeof useSkillsWorkspace>;
   webApps: ReturnType<typeof useWebApps>;
   busy: boolean;
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
-  terminalCapacity: TerminalWorkspaceCapacity;
-  terminalThumbnailsAutoHide: boolean;
-  terminalThumbnailSide: "left" | "right";
-  terminalWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
-  agentCapacity: TerminalWorkspaceCapacity;
-  agentThumbnailsAutoHide: boolean;
-  agentThumbnailSide: "left" | "right";
-  agentWorkspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
+  capacity: TerminalWorkspaceCapacity;
+  thumbnailsAutoHide: boolean;
+  thumbnailSide: "left" | "right";
+  workspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
   skillsSection: SkillsSection;
-  onCloseSession: (session: TerminalInfo, isAgent: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
-  onPickAgentPath: () => void;
-  onPhaseChange: (id: string, phase: ConnectionPhase) => void;
-  onTerminalLayoutCountChange: (count: TerminalLayoutCount | null) => void;
-  onTerminalWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
-  onAgentLayoutCountChange: (count: TerminalLayoutCount | null) => void;
-  onAgentWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
+  onCloseSession: (session: WorkspaceSession, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
+  onPhaseChange: (key: string, phase: ConnectionPhase) => void;
+  onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
+  onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
@@ -52,30 +47,23 @@ type AppWorkspaceContentProps = {
 
 export function AppWorkspaceContent({
   mode,
-  terminal,
+  workspace,
   agent,
   skills,
   webApps,
   busy,
   phases,
   focusVersion,
-  terminalCapacity,
-  terminalThumbnailsAutoHide,
-  terminalThumbnailSide,
-  terminalWorkspaceLayouts,
-  agentCapacity,
-  agentThumbnailsAutoHide,
-  agentThumbnailSide,
-  agentWorkspaceLayouts,
+  capacity,
+  thumbnailsAutoHide,
+  thumbnailSide,
+  workspaceLayouts,
   error,
   skillsSection,
   onCloseSession,
-  onPickAgentPath,
   onPhaseChange,
-  onTerminalLayoutCountChange,
-  onTerminalWorkspaceLayoutChange,
-  onAgentLayoutCountChange,
-  onAgentWorkspaceLayoutChange,
+  onLayoutCountChange,
+  onWorkspaceLayoutChange,
   onError,
   onDismissError,
   onConfirm,
@@ -89,103 +77,62 @@ export function AppWorkspaceContent({
     if (mode === "webapp") setWebAppsVisited(true);
   }, [mode]);
   const webAppsMounted = webAppsVisited || mode === "webapp";
+  const displaySessions = useMemo(() => {
+    const namedAgents = new Map(agent.displaySessions.map((session) => [sessionKey(session), session]));
+    return workspace.visibleSessions.map((session) => namedAgents.get(sessionKey(session)) ?? session);
+  }, [agent.displaySessions, workspace.visibleSessions]);
   return (
     <>
       <TerminalWorkspace
         visible={mode === "terminal"}
         busy={busy}
-        launching={terminal.launching}
-        visibleSessions={terminal.visibleSessions}
-        workspace={terminal.selectedWorkspace}
+        launching={workspace.terminalLaunching || agent.launching}
+        visibleSessions={displaySessions}
+        workspace={workspace.selectedWorkspace}
+        workspaceLabel="workspace"
+        sessionLabel="session"
+        emptyIcon={<Bot />}
         phases={phases}
         focusVersion={focusVersion}
-        capacity={terminalCapacity}
-        thumbnailsAutoHide={terminalThumbnailsAutoHide}
-        thumbnailSide={terminalThumbnailSide}
-        workspaceLayouts={terminalWorkspaceLayouts}
+        capacity={capacity}
+        thumbnailsAutoHide={thumbnailsAutoHide}
+        thumbnailSide={thumbnailSide}
+        workspaceLayouts={workspaceLayouts}
         error={error}
-        onActivate={terminal.activateSession}
-        onRename={terminal.renameSession}
-        onClose={(session, returnFocus, fallbackFocus) => onCloseSession(session, false, returnFocus, fallbackFocus)}
-        onCreate={(cwd) => void terminal.addTerminal(cwd)}
+        onActivate={workspace.activateSession}
+        onRename={workspace.renameSession}
+        onClose={onCloseSession}
+        onCreate={(cwd) => void workspace.addTerminal(cwd)}
         onPhaseChange={onPhaseChange}
-        onLayoutCountChange={onTerminalLayoutCountChange}
-        onWorkspaceLayoutChange={onTerminalWorkspaceLayoutChange}
-        onOpenLink={onOpenTerminalLink}
-        onError={onError}
-        onDismissError={onDismissError}
-      />
-      <AgentWorkspace
-        visible={mode === "agent"}
-        busy={busy}
-        launching={agent.launching}
-        displaySessions={agent.displaySessions}
-        workspaceSessions={agent.workspaceSessions}
-        selectedAgentWorkspaceId={agent.selectedAgentWorkspaceId}
-        activeId={agent.activeId}
-        selectedAgent={agent.selectedAgent}
-        agents={agent.agents}
-        phases={phases}
-        focusVersion={focusVersion}
-        capacity={agentCapacity}
-        thumbnailsAutoHide={agentThumbnailsAutoHide}
-        thumbnailSide={agentThumbnailSide}
-        workspaceLayouts={agentWorkspaceLayouts}
-        error={error}
-        onActivate={agent.activateSession}
-        onRename={agent.renameSession}
-        onClose={(session, returnFocus, fallbackFocus) => onCloseSession(session, true, returnFocus, fallbackFocus)}
-        onChoosePath={onPickAgentPath}
-        onPhaseChange={onPhaseChange}
-        onLayoutCountChange={onAgentLayoutCountChange}
-        onWorkspaceLayoutChange={onAgentWorkspaceLayoutChange}
-        onRemoved={agent.removeSession}
-        onUpstreamSessionChange={agent.updateUpstreamSession}
+        onLayoutCountChange={onLayoutCountChange}
+        onWorkspaceLayoutChange={onWorkspaceLayoutChange}
+        onRemoved={(ref) => {
+          workspace.removeLocalSession(ref);
+          void agent.refreshHistory();
+        }}
+        onUpstreamSessionChange={(ref, upstreamId, cwd) => {
+          workspace.updateUpstreamSession(ref, upstreamId, cwd);
+          void agent.refreshHistory();
+        }}
+        runtimeImagePaste={(session) => {
+          if (!isAgentSession(session) || !agent.agents.find((item) => item.id === session.agentId)?.supportsImagePaste) return undefined;
+          return (image, signal) => pasteAgentImage(session.id, image, signal);
+        }}
         onOpenLink={onOpenTerminalLink}
         onError={onError}
         onDismissError={onDismissError}
       />
       {webAppsMounted && (
-        <div
-          className={`tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${mode === "webapp" ? "" : "tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`}
-          aria-hidden={mode !== "webapp"}
-          inert={mode !== "webapp" ? true : undefined}
-        >
-          <WebAppsWorkspace
-            app={webApps.openDesign}
-            operation={webApps.operation}
-            error={error}
-            settled={webApps.settled}
-            loadError={webApps.loadError}
-            onRetry={webApps.retry}
-            onInstall={webApps.install}
-            onStart={webApps.start}
-            onUpdate={webApps.update}
-            onCheckUpdate={webApps.checkUpdate}
-            onConfirm={onConfirm}
-            onDismissError={onDismissError}
-          />
+        <div className={`tw:min-h-0 tw:grid tw:grid-rows-[minmax(0,1fr)] ${mode === "webapp" ? "" : "tw:pointer-events-none tw:absolute tw:size-px tw:overflow-hidden tw:invisible"}`} aria-hidden={mode !== "webapp"} inert={mode !== "webapp" ? true : undefined}>
+          <WebAppsWorkspace app={webApps.openDesign} operation={webApps.operation} error={error} settled={webApps.settled} loadError={webApps.loadError} onRetry={webApps.retry} onInstall={webApps.install} onStart={webApps.start} onUpdate={webApps.update} onCheckUpdate={webApps.checkUpdate} onConfirm={onConfirm} onDismissError={onDismissError} />
         </div>
       )}
       {mode === "skills" && (
         <Suspense fallback={<div className="tw:grid tw:min-h-0 tw:place-content-center tw:bg-[var(--color-canvas)] tw:text-sm tw:text-muted-foreground" role="status">Loading Skills…</div>}>
-          <SkillsWorkspace
-            section={skillsSection}
-            controller={skills}
-            error={error}
-            onDismissError={onDismissError}
-            onConfirm={onConfirm}
-          />
+          <SkillsWorkspace section={skillsSection} controller={skills} error={error} onDismissError={onDismissError} onConfirm={onConfirm} />
         </Suspense>
       )}
-      {mode === "settings" && (
-        <SettingsView
-          onLogout={onLogout}
-          logoutBusy={logoutBusy}
-          logoutError={logoutError}
-          onConfirm={onConfirm}
-        />
-      )}
+      {mode === "settings" && <SettingsView onLogout={onLogout} logoutBusy={logoutBusy} logoutError={logoutError} onConfirm={onConfirm} />}
     </>
   );
 }

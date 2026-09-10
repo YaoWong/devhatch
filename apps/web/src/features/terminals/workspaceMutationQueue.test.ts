@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TerminalWorkspace } from "../../types/terminals";
-import { getOrCreateInFlightPromise, mergeDeletedTerminal, mergeTerminalSession, mergeWorkspaceMembers, WorkspaceMutationQueue } from "./workspaceMutationQueue";
+import { getOrCreateInFlightPromise, WorkspaceMutationQueue } from "./workspaceMutationQueue";
 
 describe("getOrCreateInFlightPromise", () => {
   it("returns one promise for duplicate work and clears it after success", async () => {
@@ -32,12 +31,6 @@ describe("getOrCreateInFlightPromise", () => {
 });
 
 describe("WorkspaceMutationQueue", () => {
-  it("retains a terminal returned by a stale successful create", () => {
-    const existing = { id: "existing" };
-    const returned = { id: "returned" };
-    expect(mergeTerminalSession([existing, returned], returned)).toEqual([existing, returned]);
-  });
-
   it("serializes mutations for one workspace", async () => {
     const queue = new WorkspaceMutationQueue();
     const order: string[] = [];
@@ -55,9 +48,9 @@ describe("WorkspaceMutationQueue", () => {
     expect(order).toEqual(["first:start", "first:end", "second"]);
   });
 
-  it("constructs queued writes from the latest authoritative workspace", async () => {
+  it("constructs queued writes from the latest state", async () => {
     const queue = new WorkspaceMutationQueue();
-    let workspace = { name: "old", activeTerminalId: "a" };
+    let workspace = { name: "old", activeSession: "a" };
     let release!: () => void;
     const rename = queue.run("workspace", async () => {
       await new Promise<void>((resolve) => { release = resolve; });
@@ -65,16 +58,16 @@ describe("WorkspaceMutationQueue", () => {
       return workspace;
     });
     const activate = queue.runLatest("workspace", () => workspace, async (latest) => {
-      workspace = { ...latest, activeTerminalId: "b" };
+      workspace = { ...latest, activeSession: "b" };
       return workspace;
     });
     await Promise.resolve();
     release();
     await Promise.all([rename.result, activate.result]);
-    expect(workspace).toEqual({ name: "renamed", activeTerminalId: "b" });
+    expect(workspace).toEqual({ name: "renamed", activeSession: "b" });
   });
 
-  it("marks older responses stale without coupling workspaces", () => {
+  it("marks older responses stale without coupling keys", () => {
     const queue = new WorkspaceMutationQueue();
     const first = queue.run("a", async () => undefined);
     const other = queue.run("b", async () => undefined);
@@ -84,7 +77,7 @@ describe("WorkspaceMutationQueue", () => {
     expect(queue.isLatest("b", other.generation)).toBe(true);
   });
 
-  it("captures a queued read version when the read starts", async () => {
+  it("captures a queued read generation when the read starts", async () => {
     const queue = new WorkspaceMutationQueue();
     let releaseMutation!: () => void;
     let releaseRead!: () => void;
@@ -101,19 +94,16 @@ describe("WorkspaceMutationQueue", () => {
     await concurrent.result;
   });
 
-  it("applies the first poll once as the latest generation", async () => {
+  it("applies the first read as the latest generation", async () => {
     const queue = new WorkspaceMutationQueue();
-    let polls = 0;
-    let applies = 0;
+    let reads = 0;
     const value = await queue.readLatest("workspace", async () => {
-      polls += 1;
+      reads += 1;
       return "state";
     });
-    applies += 1;
     expect(value).toBe("state");
     expect(queue.isLatest("workspace", 0)).toBe(true);
-    expect(polls).toBe(1);
-    expect(applies).toBe(1);
+    expect(reads).toBe(1);
   });
 
   it("retries an overtaken read and returns only the latest value", async () => {
@@ -132,6 +122,59 @@ describe("WorkspaceMutationQueue", () => {
     await expect(latest).resolves.toBe(2);
   });
 
+  it("retries an overtaken read before applying it", async () => {
+    const queue = new WorkspaceMutationQueue();
+    const applied: number[] = [];
+    let releaseRead!: () => void;
+    let reads = 0;
+    const refresh = queue.readAndApplyLatest("launch-paths", async () => {
+      reads += 1;
+      if (reads === 1) await new Promise<void>((resolve) => { releaseRead = resolve; });
+      return reads;
+    }, (value) => { applied.push(value); });
+    await Promise.resolve();
+    const mutation = queue.run("launch-paths", async () => undefined);
+    releaseRead();
+    await Promise.all([refresh, mutation.result]);
+    expect(reads).toBe(2);
+    expect(applied).toEqual([2]);
+  });
+
+  it("does not make a pending read block a later mutation", async () => {
+    const queue = new WorkspaceMutationQueue();
+    let releaseRead!: () => void;
+    let reads = 0;
+    const applied: number[] = [];
+    const refresh = queue.readAndApplyLatest("launch-paths", async () => {
+      reads += 1;
+      if (reads === 1) await new Promise<void>((resolve) => { releaseRead = resolve; });
+      return reads;
+    }, (value) => { applied.push(value); });
+    await Promise.resolve();
+    const mutation = queue.run("launch-paths", async () => "written");
+    await expect(mutation.result).resolves.toBe("written");
+    expect(applied).toEqual([]);
+    releaseRead();
+    await refresh;
+    expect(applied).toEqual([2]);
+  });
+
+  it("waits for an existing mutation before reading", async () => {
+    const queue = new WorkspaceMutationQueue();
+    let releaseMutation!: () => void;
+    let readStarted = false;
+    const mutation = queue.run("launch-paths", () => new Promise<void>((resolve) => { releaseMutation = resolve; }));
+    const refresh = queue.readAndApplyLatest("launch-paths", async () => {
+      readStarted = true;
+      return "state";
+    }, () => undefined);
+    await Promise.resolve();
+    expect(readStarted).toBe(false);
+    releaseMutation();
+    await Promise.all([mutation.result, refresh]);
+    expect(readStarted).toBe(true);
+  });
+
   it("returns a current version when no mutation overtakes a queued read", async () => {
     const queue = new WorkspaceMutationQueue();
     const mutation = queue.run("workspace", async () => undefined);
@@ -140,87 +183,5 @@ describe("WorkspaceMutationQueue", () => {
     const result = await read;
     expect(result.value).toBe("state");
     expect(queue.isLatest("workspace", result.generation)).toBe(true);
-  });
-
-  it("merges members from a stale create response without replacing newer workspace state", () => {
-    const member = (terminalId: string) => ({ terminalId });
-    const current = {
-      id: "workspace",
-      name: "renamed",
-      activeTerminalId: "second",
-      members: [member("first"), member("second")],
-      createdAt: 1,
-      updatedAt: 3,
-    };
-    const returned = {
-      ...current,
-      name: "old",
-      activeTerminalId: "created",
-      members: [member("first"), member("created")],
-      updatedAt: 2,
-    };
-    expect(mergeWorkspaceMembers([current], returned)).toEqual([{
-      ...current,
-      members: [...current.members, member("created")],
-    }]);
-  });
-
-  it("removes a deleted terminal after a queued activation makes its response stale", async () => {
-    const member = (terminalId: string) => ({ terminalId });
-    let current: TerminalWorkspace[] = [{
-      id: "workspace",
-      name: "renamed",
-      activeTerminalId: "a",
-      members: [member("a"), member("b")],
-      createdAt: 1,
-      updatedAt: 3,
-    }];
-    const staleResponse = {
-      ...current[0],
-      name: "old",
-      activeTerminalId: "b",
-      members: [member("b")],
-      updatedAt: 2,
-    };
-    const queue = new WorkspaceMutationQueue();
-    let releaseDelete!: () => void;
-    let releaseActivation!: () => void;
-    const deletion = queue.run("workspace", async () => {
-      await new Promise<void>((resolve) => { releaseDelete = resolve; });
-      return staleResponse;
-    });
-    current = [{ ...current[0], activeTerminalId: "b" }];
-    const activation = queue.run("workspace", async () => {
-      await new Promise<void>((resolve) => { releaseActivation = resolve; });
-    });
-    await Promise.resolve();
-    releaseDelete();
-    const response = await deletion.result;
-    await Promise.resolve();
-    expect(queue.isLatest("workspace", deletion.generation)).toBe(false);
-    current = mergeDeletedTerminal(current, "a", "workspace", response);
-    expect(current).toEqual([{
-      ...current[0],
-      members: [member("b")],
-    }]);
-    releaseActivation();
-    await activation.result;
-  });
-
-  it("retains a workspace when its last terminal is deleted", () => {
-    const workspace = {
-      id: "workspace",
-      name: null,
-      activeTerminalId: "a",
-      members: [{ terminalId: "a" }],
-      createdAt: 1,
-      updatedAt: 1,
-    };
-    const returned = { ...workspace, activeTerminalId: null, members: [], updatedAt: 2 };
-    expect(mergeDeletedTerminal([workspace], "a", workspace.id, returned)).toEqual([{
-      ...workspace,
-      activeTerminalId: null,
-      members: [],
-    }]);
   });
 });

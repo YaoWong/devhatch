@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Deserializer, Serialize};
-use sqlx::FromRow;
+use sqlx::{FromRow, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
 use crate::{api::ApiError, clock::now, filesystem::validated_directory, state::AppState};
@@ -26,9 +26,7 @@ struct LaunchPath {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateRequest {
-    #[serde(default)]
-    agent_id: Option<serde_json::Value>,
+pub(crate) struct CreateRequest {
     path: String,
     alias: Option<String>,
     #[serde(default)]
@@ -37,7 +35,7 @@ pub struct CreateRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateRequest {
+pub(crate) struct UpdateRequest {
     #[serde(default, deserialize_with = "deserialize_optional_alias")]
     alias: Option<Option<String>>,
     pinned: Option<bool>,
@@ -50,18 +48,17 @@ where
     Option::<String>::deserialize(deserializer).map(Some)
 }
 
-pub async fn list(State(state): State<Arc<AppState>>) -> Response {
+pub(crate) async fn list(State(state): State<Arc<AppState>>) -> Response {
     match list_items(state.pool()).await {
-        Ok(paths) => Json(serde_json::json!({ "agentLaunchPaths": paths })).into_response(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        Ok(paths) => Json(serde_json::json!({ "launchPaths": paths })).into_response(),
+        Err(_) => database_error(),
     }
 }
 
-pub async fn create(
+pub(crate) async fn create(
     State(state): State<Arc<AppState>>,
     Json(request): Json<CreateRequest>,
 ) -> Response {
-    let _ = request.agent_id;
     let alias = match validate_alias(request.alias) {
         Ok(value) => value,
         Err(code) => return error(StatusCode::BAD_REQUEST, code),
@@ -70,33 +67,25 @@ pub async fn create(
         Ok(value) => value,
         Err(code) => return error(StatusCode::BAD_REQUEST, code),
     };
-    let timestamp = now() as i64;
-    let item = LaunchPath {
-        id: Uuid::new_v4().to_string(),
-        path,
-        alias,
-        pinned: request.pinned,
-        last_used_at: timestamp,
-        created_at: timestamp,
-        updated_at: timestamp,
-    };
-    let result = save(state.pool(), &item).await;
-    match result {
+    match ensure_item(state.pool(), &path, alias.as_deref(), request.pinned).await {
         Ok(item) => (
             StatusCode::CREATED,
-            Json(serde_json::json!({ "agentLaunchPath": item })),
+            Json(serde_json::json!({ "launchPath": item })),
         )
             .into_response(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        Err(_) => database_error(),
     }
 }
 
-pub async fn update(
+pub(crate) async fn update(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(request): Json<UpdateRequest>,
 ) -> Response {
     let alias_supplied = request.alias.is_some();
+    if !alias_supplied && request.pinned.is_none() {
+        return error(StatusCode::BAD_REQUEST, "EMPTY_UPDATE");
+    }
     let alias = match request.alias {
         Some(value) => match validate_alias(value) {
             Ok(value) => value,
@@ -104,85 +93,76 @@ pub async fn update(
         },
         None => None,
     };
-    if !alias_supplied && request.pinned.is_none() {
-        return error(StatusCode::BAD_REQUEST, "EMPTY_UPDATE");
-    }
-    let result = sqlx::query("UPDATE agent_launch_paths SET alias = CASE WHEN ? THEN ? ELSE alias END, pinned = COALESCE(?, pinned), updated_at = ? WHERE id = ?")
-        .bind(alias_supplied).bind(alias).bind(request.pinned).bind(now() as i64).bind(&id).execute(state.pool()).await;
-    match result {
-        Ok(value) if value.rows_affected() == 1 => get(&state, &id).await,
-        Ok(_) => not_found(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-    }
-}
-
-pub async fn touch(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    let item = match find(&state, &id).await {
-        Ok(Some(value)) => value,
-        Ok(None) => return not_found(),
-        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-    };
-    if validated_directory(&item.path).is_err() {
-        return error(StatusCode::BAD_REQUEST, "INVALID_LAUNCH_PATH");
-    }
-    match sqlx::query("UPDATE agent_launch_paths SET last_used_at = ?, updated_at = ? WHERE id = ?")
-        .bind(now() as i64)
+    match sqlx::query_as::<_, LaunchPath>("UPDATE launch_paths SET alias = CASE WHEN ? THEN ? ELSE alias END, pinned = COALESCE(?, pinned), updated_at = ? WHERE id = ? RETURNING id, path, alias, pinned, last_used_at, created_at, updated_at")
+        .bind(alias_supplied)
+        .bind(alias)
+        .bind(request.pinned)
         .bind(now() as i64)
         .bind(&id)
-        .execute(state.pool())
+        .fetch_optional(state.pool())
         .await
     {
-        Ok(_) => get(&state, &id).await,
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        Ok(Some(item)) => Json(serde_json::json!({ "launchPath": item })).into_response(),
+        Ok(None) => not_found(),
+        Err(_) => database_error(),
     }
 }
 
-pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    match sqlx::query("DELETE FROM agent_launch_paths WHERE id = ?")
+pub(crate) async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
+    match sqlx::query("DELETE FROM launch_paths WHERE id = ?")
         .bind(id)
         .execute(state.pool())
         .await
     {
         Ok(value) if value.rows_affected() == 1 => StatusCode::NO_CONTENT.into_response(),
         Ok(_) => not_found(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        Err(_) => database_error(),
     }
 }
 
-async fn get(state: &AppState, id: &str) -> Response {
-    match find(state, id).await {
-        Ok(Some(value)) => Json(serde_json::json!({ "agentLaunchPath": value })).into_response(),
-        Ok(None) => not_found(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-    }
+pub(crate) async fn ensure(
+    transaction: &mut Transaction<'_, Sqlite>,
+    path: &str,
+) -> Result<(), sqlx::Error> {
+    let timestamp = now() as i64;
+    sqlx::query("INSERT INTO launch_paths (id, path, pinned, last_used_at, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET last_used_at = excluded.last_used_at, updated_at = excluded.updated_at")
+        .bind(Uuid::new_v4().to_string())
+        .bind(path)
+        .bind(timestamp)
+        .bind(timestamp)
+        .bind(timestamp)
+        .execute(&mut **transaction)
+        .await
+        .map(|_| ())
 }
 
-async fn save(pool: &sqlx::SqlitePool, item: &LaunchPath) -> Result<LaunchPath, sqlx::Error> {
-    sqlx::query_as::<_, LaunchPath>("INSERT INTO agent_launch_paths (id, path, alias, pinned, last_used_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET last_used_at = excluded.last_used_at, updated_at = excluded.updated_at RETURNING id, path, alias, pinned, last_used_at, created_at, updated_at")
-        .bind(&item.id)
-        .bind(&item.path)
-        .bind(&item.alias)
-        .bind(item.pinned)
-        .bind(item.last_used_at)
-        .bind(item.created_at)
-        .bind(item.updated_at)
+async fn ensure_item(
+    pool: &SqlitePool,
+    path: &str,
+    alias: Option<&str>,
+    pinned: bool,
+) -> Result<LaunchPath, sqlx::Error> {
+    let timestamp = now() as i64;
+    sqlx::query_as::<_, LaunchPath>("INSERT INTO launch_paths (id, path, alias, pinned, last_used_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET last_used_at = excluded.last_used_at, updated_at = excluded.updated_at RETURNING id, path, alias, pinned, last_used_at, created_at, updated_at")
+        .bind(Uuid::new_v4().to_string())
+        .bind(path)
+        .bind(alias)
+        .bind(pinned)
+        .bind(timestamp)
+        .bind(timestamp)
+        .bind(timestamp)
         .fetch_one(pool)
         .await
 }
 
-async fn list_items(pool: &sqlx::SqlitePool) -> Result<Vec<LaunchPath>, sqlx::Error> {
-    sqlx::query_as::<_, LaunchPath>("SELECT id, path, alias, pinned, last_used_at, created_at, updated_at FROM agent_launch_paths ORDER BY pinned DESC, last_used_at DESC, path COLLATE NOCASE")
+async fn list_items(pool: &SqlitePool) -> Result<Vec<LaunchPath>, sqlx::Error> {
+    sqlx::query_as::<_, LaunchPath>("SELECT id, path, alias, pinned, last_used_at, created_at, updated_at FROM launch_paths ORDER BY pinned DESC, last_used_at DESC, path COLLATE NOCASE")
         .fetch_all(pool)
         .await
 }
 
-async fn find(state: &AppState, id: &str) -> Result<Option<LaunchPath>, sqlx::Error> {
-    sqlx::query_as::<_, LaunchPath>("SELECT id, path, alias, pinned, last_used_at, created_at, updated_at FROM agent_launch_paths WHERE id = ?")
-        .bind(id).fetch_optional(state.pool()).await
-}
-
 pub(crate) async fn paths(state: &AppState) -> Result<Vec<std::path::PathBuf>, sqlx::Error> {
-    sqlx::query_scalar::<_, String>("SELECT path FROM agent_launch_paths")
+    sqlx::query_scalar::<_, String>("SELECT path FROM launch_paths")
         .fetch_all(state.pool())
         .await
         .map(|paths| paths.into_iter().map(Into::into).collect())
@@ -203,17 +183,30 @@ fn validate_alias(value: Option<String>) -> Result<Option<String>, &'static str>
 }
 
 fn not_found() -> Response {
-    error(StatusCode::NOT_FOUND, "AGENT_LAUNCH_PATH_NOT_FOUND")
+    error(StatusCode::NOT_FOUND, "LAUNCH_PATH_NOT_FOUND")
 }
+
+fn database_error() -> Response {
+    error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR")
+}
+
 fn error(status: StatusCode, code: &'static str) -> Response {
     ApiError::new(status, code).into_response()
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use axum::{Json, body::to_bytes, extract::State, http::StatusCode, response::Response};
+    use serde_json::Value;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{CreateRequest, LaunchPath, list_items, save, validate_alias};
+    use super::{
+        CreateRequest, UpdateRequest, create, ensure, ensure_item, list, list_items, remove,
+        update, validate_alias,
+    };
+    use crate::state::{AppState, OpenCodeHistoryPool};
 
     async fn pool() -> sqlx::SqlitePool {
         let pool = SqlitePoolOptions::new()
@@ -225,114 +218,146 @@ mod tests {
         pool
     }
 
-    #[test]
-    fn validates_alias() {
-        assert_eq!(validate_alias(Some("  ".into())).unwrap(), None);
-        assert!(validate_alias(Some("x".repeat(121))).is_err());
+    async fn state() -> (tempfile::TempDir, Arc<AppState>) {
+        let root = tempfile::tempdir().unwrap();
+        let pool = pool().await;
+        let skillink = skillink::Skillink::open(Some(root.path().join("skillink")))
+            .await
+            .unwrap();
+        let state = Arc::new(AppState::new(
+            root.path().to_owned(),
+            pool,
+            OpenCodeHistoryPool::new(root.path().join("history.db")),
+            skillink,
+            None,
+            false,
+        ));
+        (root, state)
+    }
+
+    async fn response_json(response: Response) -> Value {
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
     }
 
     #[test]
-    fn accepts_and_ignores_legacy_agent_id() {
-        let missing: CreateRequest = serde_json::from_str(r#"{"path":"/tmp"}"#).unwrap();
-        assert!(missing.agent_id.is_none());
-        let legacy: CreateRequest =
-            serde_json::from_str(r#"{"agentId":{"unsupported":true},"path":"/tmp"}"#).unwrap();
-        assert!(legacy.agent_id.is_some());
+    fn validates_requests_and_aliases() {
+        assert_eq!(
+            validate_alias(Some("  label  ".into())).unwrap(),
+            Some("label".into())
+        );
+        assert_eq!(validate_alias(Some("  ".into())).unwrap(), None);
+        assert!(validate_alias(Some("x".repeat(121))).is_err());
         assert!(serde_json::from_str::<CreateRequest>(r#"{"path":"/tmp","extra":1}"#).is_err());
     }
 
-    #[test]
-    fn response_omits_agent_id() {
-        let value = serde_json::to_value(LaunchPath {
-            id: "id".into(),
-            path: "/path".into(),
-            alias: None,
-            pinned: false,
-            last_used_at: 1,
-            created_at: 1,
-            updated_at: 1,
-        })
-        .unwrap();
-        assert!(value.get("agentId").is_none());
+    #[tokio::test]
+    async fn handlers_use_unified_response_shapes_and_delete_status() {
+        let (root, state) = state().await;
+        let response = create(
+            State(state.clone()),
+            Json(CreateRequest {
+                path: root.path().to_string_lossy().into_owned(),
+                alias: Some("Root".into()),
+                pinned: true,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created = response_json(response).await;
+        assert!(created.get("launchPath").is_some());
+        assert!(created.get("agentLaunchPath").is_none());
+        let id = created["launchPath"]["id"].as_str().unwrap().to_string();
+
+        let response = list(State(state.clone())).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let listed = response_json(response).await;
+        assert_eq!(listed["launchPaths"].as_array().unwrap().len(), 1);
+
+        let response = update(
+            State(state.clone()),
+            axum::extract::Path(id.clone()),
+            Json(UpdateRequest {
+                alias: Some(Some("Renamed".into())),
+                pinned: Some(false),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let updated = response_json(response).await;
+        assert_eq!(updated["launchPath"]["alias"], "Renamed");
+        assert_eq!(updated["launchPath"]["pinned"], false);
+
+        let response = remove(State(state), axum::extract::Path(id)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
-    async fn path_conflict_is_global_and_listing_uses_global_order() {
+    async fn creates_touches_pins_orders_and_deletes_paths() {
         let pool = pool().await;
-        let first = LaunchPath {
-            id: "first".into(),
-            path: "/same".into(),
-            alias: Some("First".into()),
-            pinned: true,
-            last_used_at: 1,
-            created_at: 1,
-            updated_at: 1,
-        };
-        let mut duplicate = LaunchPath {
-            id: "duplicate".into(),
-            path: "/same".into(),
-            alias: Some("Duplicate".into()),
-            pinned: false,
-            last_used_at: 2,
-            created_at: 2,
-            updated_at: 2,
-        };
-        let saved = save(&pool, &first).await.unwrap();
-        let touched = save(&pool, &duplicate).await.unwrap();
-        assert_eq!(touched.id, saved.id);
-        assert_eq!(touched.alias, first.alias);
-        assert!(touched.pinned);
-        assert_eq!(touched.created_at, first.created_at);
-        assert_eq!(touched.last_used_at, duplicate.last_used_at);
-
-        duplicate.id = "other".into();
-        duplicate.path = "/other".into();
-        duplicate.last_used_at = 100;
-        save(&pool, &duplicate).await.unwrap();
-        let items = list_items(&pool).await.unwrap();
-        assert_eq!(
-            items
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            ["first", "other"]
-        );
-    }
-
-    #[tokio::test]
-    async fn fresh_baseline_has_final_agent_schema() {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
+        let first = ensure_item(&pool, "/first", Some("First"), false)
             .await
             .unwrap();
-        sqlx::migrate!().run(&pool).await.unwrap();
+        let second = ensure_item(&pool, "/second", None, false).await.unwrap();
+        let touched = ensure_item(&pool, "/first", None, true).await.unwrap();
+        assert_eq!(first.id, touched.id);
+        assert_eq!(touched.alias.as_deref(), Some("First"));
+        assert!(!touched.pinned);
+        sqlx::query("UPDATE launch_paths SET pinned = 1 WHERE id = ?")
+            .bind(&second.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(list_items(&pool).await.unwrap()[0].id, second.id);
+        sqlx::query("DELETE FROM launch_paths WHERE id = ?")
+            .bind(&first.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(list_items(&pool).await.unwrap().len(), 1);
+    }
 
-        let agent_id_columns: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM pragma_table_info('agent_launch_paths') WHERE name = 'agent_id'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(agent_id_columns, 0);
+    #[tokio::test]
+    async fn ensure_uses_the_callers_transaction() {
+        let pool = pool().await;
+        let mut transaction = pool.begin().await.unwrap();
+        ensure(&mut transaction, "/rolled-back").await.unwrap();
+        transaction.rollback().await.unwrap();
+        assert!(list_items(&pool).await.unwrap().is_empty());
+
+        let mut transaction = pool.begin().await.unwrap();
+        ensure(&mut transaction, "/saved").await.unwrap();
+        transaction.commit().await.unwrap();
+        assert_eq!(list_items(&pool).await.unwrap()[0].path, "/saved");
+    }
+
+    #[tokio::test]
+    async fn baseline_has_only_the_unified_launch_path_schema() {
+        let pool = pool().await;
         let index_sql: String = sqlx::query_scalar(
-            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'agent_launch_paths_order'",
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'launch_paths_order'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
         assert!(index_sql.contains("pinned DESC, last_used_at DESC, path COLLATE NOCASE"));
-        sqlx::query("INSERT INTO agent_launch_paths (id, path, pinned, last_used_at, created_at, updated_at) VALUES ('first', '/same', 0, 0, 0, 0)")
+        sqlx::query("INSERT INTO launch_paths (id, path, pinned, last_used_at, created_at, updated_at) VALUES ('first', '/same', 0, 0, 0, 0)")
             .execute(&pool)
             .await
             .unwrap();
         assert!(
-            sqlx::query("INSERT INTO agent_launch_paths (id, path, pinned, last_used_at, created_at, updated_at) VALUES ('duplicate', '/same', 0, 0, 0, 0)")
+            sqlx::query("INSERT INTO launch_paths (id, path, pinned, last_used_at, created_at, updated_at) VALUES ('duplicate', '/same', 0, 0, 0, 0)")
                 .execute(&pool)
                 .await
                 .is_err()
         );
-        for table in ["agent_workspaces", "agent_workspace_members"] {
+        for table in [
+            "terminal_launch_paths",
+            "agent_launch_paths",
+            "terminal_workspace_members",
+            "terminal_workspaces",
+            "agent_workspace_members",
+            "agent_workspaces",
+        ] {
             let exists: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
             )
@@ -340,14 +365,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-            assert_eq!(exists, 1, "missing {table}");
+            assert_eq!(exists, 0, "obsolete table {table} remains");
         }
-        let workspace_index: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'agent_workspace_members_workspace'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(workspace_index, 1);
     }
 }

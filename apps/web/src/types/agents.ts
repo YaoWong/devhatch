@@ -1,24 +1,10 @@
 import type { TerminalInfo } from "./terminals";
 
-export type AgentSession = TerminalInfo & {
+export type AgentSession = Omit<TerminalInfo, "kind"> & {
+  kind: "agent";
   agentId: string;
   agentName: string;
-  kind: string;
   upstreamSessionId?: string;
-};
-
-export type AgentWorkspace = {
-  id: string;
-  name: string | null;
-  activeAgentSessionId: string | null;
-  members: { agentSessionId: string }[];
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type AgentWorkspaceSnapshot = {
-  agentWorkspaces: AgentWorkspace[];
-  agentSessions: AgentSession[];
 };
 
 export type Agent = {
@@ -42,16 +28,6 @@ export type Agent = {
 export type AgentInstall = {
   agentId: string;
   version: string;
-};
-
-export type AgentLaunchPath = {
-  id: string;
-  path: string;
-  alias: string | null;
-  pinned: boolean;
-  lastUsedAt: number;
-  createdAt: number;
-  updatedAt: number;
 };
 
 export type AgentLaunchConfig = {

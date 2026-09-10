@@ -6,7 +6,7 @@ import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { selectCopyClass } from "../../shared/ui/railStyles";
 import {
-  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX,
   DEFAULT_FONT_SIZE_PX,
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_UI_SCALE_PERCENT,
@@ -37,7 +37,7 @@ export function SettingsView({
 }) {
   const {
     themeId,
-    agentLaunchPathsMaxHeightPx,
+    launchPathsMaxHeightPx,
     navigationRailWidthPx,
     fontSizePx,
     uiScalePercent,
@@ -54,7 +54,7 @@ export function SettingsView({
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
   const appearanceDirty = themeId !== DEFAULT_THEME_ID ||
-    agentLaunchPathsMaxHeightPx !== DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
+    launchPathsMaxHeightPx !== DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
     navigationRailWidthPx !== DEFAULT_NAVIGATION_RAIL_WIDTH_PX ||
     (supportsDisplaySettings && (fontSizePx !== DEFAULT_FONT_SIZE_PX || uiScalePercent !== DEFAULT_UI_SCALE_PERCENT));
 

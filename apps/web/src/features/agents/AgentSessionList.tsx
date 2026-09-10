@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { ConfirmAction } from "../../types/app";
-import type { AgentLaunchPath, AgentSession, HistorySession } from "../../types/agents";
+import type { AgentSession, HistorySession } from "../../types/agents";
+import type { LaunchPath } from "../../types/workspaces";
 import { displayPath } from "../../shared/lib/utils";
 import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { historyStatusClass, RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
@@ -62,7 +63,7 @@ export function AgentSessionList({
   launching: boolean;
   activeId: string | null;
   search: string;
-  selectedPath: AgentLaunchPath | null;
+  selectedPath: LaunchPath | null;
   includeSubdirectories: boolean;
   homePaths: HomePaths;
   onSearch: (value: string) => void;

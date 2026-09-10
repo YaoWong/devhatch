@@ -14,7 +14,7 @@ use crate::{
     filesystem::{default_cwd, home_dir, path_string, validated_directory},
     session::{Session, SessionKind, SessionSpawn, dimension, socket},
     state::AppState,
-    terminal_workspace,
+    workspace::{self, MemberIdentity},
 };
 
 const DEFAULT_COLS: u16 = 120;
@@ -93,7 +93,7 @@ pub async fn create(
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_CWD"),
     };
     let workspace_id = request.workspace_id.clone();
-    let _lifecycle = state.terminal_workspace_lifecycle().lock().await;
+    let _lifecycle = state.workspace_lifecycle().lock().await;
     let session = match spawn_with_cwd(state.clone(), request, cwd.clone().into()) {
         Ok(session) => session,
         Err(error) => {
@@ -107,18 +107,21 @@ pub async fn create(
                 .into_response();
         }
     };
-    let terminal_workspace = terminal_workspace::attach_terminal(
+    let member = MemberIdentity::new(session.id(), SessionKind::Terminal);
+    let (eligible, _) = state.workspace_snapshot();
+    let workspace = workspace::attach_session(
         state.pool(),
+        &eligible,
         workspace_id.as_deref(),
-        session.id(),
-        &cwd,
+        &member,
+        Some(&cwd),
     )
     .await;
-    let terminal_workspace = match terminal_workspace {
+    let workspace = match workspace {
         Ok(Some(workspace)) => workspace,
         Ok(None) => {
             cleanup_failed_spawn(&state, &session);
-            return error(StatusCode::NOT_FOUND, "TERMINAL_WORKSPACE_NOT_FOUND");
+            return error(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND");
         }
         Err(_) => {
             cleanup_failed_spawn(&state, &session);
@@ -129,7 +132,7 @@ pub async fn create(
         StatusCode::CREATED,
         Json(serde_json::json!({
             "terminal": session.view(),
-            "terminalWorkspace": terminal_workspace
+            "workspace": workspace
         })),
     )
         .into_response()
@@ -157,11 +160,16 @@ pub async fn rename(
 }
 
 pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    let _lifecycle = state.terminal_workspace_lifecycle().lock().await;
+    let _lifecycle = state.workspace_lifecycle().lock().await;
     let Some(session) = state.session(&id, SessionKind::Terminal) else {
         return error(StatusCode::NOT_FOUND, "TERMINAL_NOT_FOUND");
     };
-    let terminal_workspace = match terminal_workspace::remove_terminal(state.pool(), &id).await {
+    let workspace = match workspace::remove_member(
+        state.pool(),
+        &MemberIdentity::new(&id, SessionKind::Terminal),
+    )
+    .await
+    {
         Ok(workspace) => workspace,
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
     };
@@ -174,7 +182,10 @@ pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
     removed.mark_deleting();
     drop(_lifecycle);
     removed.terminate();
-    Json(serde_json::json!({ "terminalWorkspace": terminal_workspace })).into_response()
+    Json(serde_json::json!({
+        "workspace": workspace
+    }))
+    .into_response()
 }
 
 pub async fn socket(

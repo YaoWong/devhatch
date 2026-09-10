@@ -10,12 +10,12 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    agent_workspace,
     history::PreparedLaunch,
     launch_config::{self},
     session::{SessionKind, socket},
     state::AppState,
     terminal::{CreateRequest, RenameRequest, error, invalid_cwd},
+    workspace::{self, MemberIdentity},
 };
 
 use super::{
@@ -129,11 +129,15 @@ pub async fn create(
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     };
     let workspace_id = request.workspace_id.clone();
-    let _workspace_lifecycle = state.agent_workspace_lifecycle().lock().await;
+    let _workspace_lifecycle = state.workspace_lifecycle().lock().await;
     if let Some(workspace_id) = workspace_id.as_deref() {
-        match agent_workspace::exists(state.pool(), workspace_id).await {
-            Ok(true) => {}
-            Ok(false) => return error(StatusCode::NOT_FOUND, "AGENT_WORKSPACE_NOT_FOUND"),
+        match sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?)")
+            .bind(workspace_id)
+            .fetch_one(state.pool())
+            .await
+        {
+            Ok(1) => {}
+            Ok(_) => return error(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND"),
             Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
         }
     }
@@ -338,30 +342,47 @@ async fn created_session(
     workspace_id: Option<&str>,
     session: Arc<crate::session::Session>,
 ) -> Response {
-    let Some(live) = state.live_agent_ids_if_contains(&session) else {
+    created_session_inner(state, workspace_id, session, || {}).await
+}
+
+async fn created_session_inner<F>(
+    state: &Arc<AppState>,
+    workspace_id: Option<&str>,
+    session: Arc<crate::session::Session>,
+    after_snapshot: F,
+) -> Response
+where
+    F: FnOnce(),
+{
+    let Some(_) = state.live_agent_ids_if_contains(&session) else {
         cleanup_failed_spawn(state, &session).await;
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_SESSION_NOT_LIVE");
     };
-    match agent_workspace::reconcile_and_attach_agent_session(
-        state.pool(),
-        &live,
-        workspace_id,
-        session.id(),
-    )
-    .await
+    let member = MemberIdentity::new(session.id(), SessionKind::Agent);
+    let cwd = session.cwd();
+    let (eligible, _) = state.workspace_snapshot();
+    after_snapshot();
+    match workspace::attach_session(state.pool(), &eligible, workspace_id, &member, Some(&cwd))
+        .await
     {
-        Ok(Some(workspace)) => (
-            StatusCode::CREATED,
-            Json(serde_json::json!({
-                "agentSession": session.view(),
-                "agentWorkspace": workspace
-            })),
-        )
-            .into_response(),
+        Ok(Some(workspace)) => {
+            if state.live_agent_ids_if_contains(&session).is_none() {
+                cleanup_failed_spawn(state, &session).await;
+                return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_SESSION_NOT_LIVE");
+            }
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({
+                    "agentSession": session.view(),
+                    "workspace": workspace
+                })),
+            )
+                .into_response()
+        }
         Ok(None) => {
             cleanup_failed_spawn(state, &session).await;
             if workspace_id.is_some() {
-                error(StatusCode::NOT_FOUND, "AGENT_WORKSPACE_NOT_FOUND")
+                error(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND")
             } else {
                 error(StatusCode::INTERNAL_SERVER_ERROR, "AGENT_SPAWN_FAILED")
             }
@@ -376,7 +397,11 @@ async fn created_session(
 async fn cleanup_failed_spawn(state: &AppState, session: &Arc<crate::session::Session>) {
     state.remove_session(session.id(), SessionKind::Agent);
     session.mark_deleting();
-    let _ = agent_workspace::remove_agent_session(state.pool(), session.id()).await;
+    let _ = workspace::remove_member(
+        state.pool(),
+        &MemberIdentity::new(session.id(), SessionKind::Agent),
+    )
+    .await;
     session.terminate();
 }
 
@@ -402,11 +427,13 @@ pub async fn rename(
 }
 
 pub async fn remove(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
-    let _lifecycle = state.agent_workspace_lifecycle().lock().await;
+    let _lifecycle = state.workspace_lifecycle().lock().await;
     let Some(session) = state.session(&id, SessionKind::Agent) else {
         return error(StatusCode::NOT_FOUND, "AGENT_SESSION_NOT_FOUND");
     };
-    match agent_workspace::remove_agent_session(state.pool(), &id).await {
+    match workspace::remove_member(state.pool(), &MemberIdentity::new(&id, SessionKind::Agent))
+        .await
+    {
         Ok(_) => {}
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
     };
@@ -475,7 +502,7 @@ mod tests {
     use portable_pty::CommandBuilder;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{created_session, remove};
+    use super::{created_session, created_session_inner, remove};
     use crate::{
         session::{Session, SessionEvent, SessionKind, SessionSpawn},
         state::{AppState, OpenCodeHistoryPool},
@@ -545,6 +572,65 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exit_after_snapshot_is_rejected_and_attached_member_is_removed() {
+        let (temp, state) = state().await;
+        let lifecycle = state.workspace_lifecycle().lock().await;
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "read _; exit 0"]);
+        let session = Session::spawn(
+            state.session_registry(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                pending_upstream_session_id: None,
+                cwd: temp.path().to_owned(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                runtime_endpoint: None,
+                exit_cleanup: Some(state.agent_exit_cleanup()),
+            },
+            |_| {},
+        )
+        .unwrap();
+        sqlx::query("INSERT INTO workspaces (id, name, active_session_kind, active_session_id, created_at, updated_at) VALUES ('workspace', NULL, NULL, NULL, 0, 0)")
+            .execute(state.pool())
+            .await
+            .unwrap();
+        let response = created_session_inner(&state, Some("workspace"), session.clone(), || {
+            assert!(session.write_input("\n"));
+            for _ in 0..5000 {
+                if !session.is_live() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            panic!("agent did not exit after snapshot");
+        })
+        .await;
+
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert!(state.session(session.id(), SessionKind::Agent).is_none());
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+            .fetch_one(state.pool())
+            .await
+            .unwrap();
+        assert_eq!(members, 0);
+        drop(lifecycle);
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fast_exit_is_rejected_and_cannot_be_attached() {
         let temp = tempfile::tempdir().unwrap();
         let pool = SqlitePoolOptions::new()
@@ -564,7 +650,7 @@ mod tests {
             None,
             false,
         ));
-        let lifecycle = state.agent_workspace_lifecycle().lock().await;
+        let lifecycle = state.workspace_lifecycle().lock().await;
         let mut command = CommandBuilder::new("/bin/sh");
         command.args(["-c", "read _; exit 0"]);
         let session = Session::spawn(
@@ -589,7 +675,7 @@ mod tests {
         )
         .unwrap();
         let mut events = session.subscribe();
-        sqlx::query("INSERT INTO agent_workspaces (id, name, active_agent_session_id, created_at, updated_at) VALUES ('workspace', NULL, NULL, 0, 0)")
+        sqlx::query("INSERT INTO workspaces (id, name, active_session_kind, active_session_id, created_at, updated_at) VALUES ('workspace', NULL, NULL, NULL, 0, 0)")
             .execute(state.pool())
             .await
             .unwrap();
@@ -609,7 +695,7 @@ mod tests {
             axum::http::StatusCode::SERVICE_UNAVAILABLE
         );
         assert!(state.session(session.id(), SessionKind::Agent).is_none());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
             .fetch_one(state.pool())
             .await
             .unwrap();

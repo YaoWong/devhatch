@@ -22,8 +22,7 @@ pub(crate) use skill_repository_operation::{
 pub struct AppState {
     sessions: Arc<SessionRegistry>,
     history: Arc<HistoryCoordinator>,
-    terminal_workspace_lifecycle: tokio::sync::Mutex<()>,
-    agent_workspace_lifecycle: Arc<tokio::sync::Mutex<()>>,
+    workspace_lifecycle: Arc<tokio::sync::Mutex<()>>,
     agent_install_lock: tokio::sync::Mutex<()>,
     data_dir: PathBuf,
     pool: SqlitePool,
@@ -52,8 +51,7 @@ impl AppState {
         Self {
             sessions: Arc::new(SessionRegistry::default()),
             history: Arc::new(HistoryCoordinator::default()),
-            terminal_workspace_lifecycle: tokio::sync::Mutex::new(()),
-            agent_workspace_lifecycle: Arc::new(tokio::sync::Mutex::new(())),
+            workspace_lifecycle: Arc::new(tokio::sync::Mutex::new(())),
             agent_install_lock: tokio::sync::Mutex::new(()),
             data_dir,
             pool,
@@ -123,12 +121,8 @@ impl AppState {
         self.history.deletion_pending(agent_id, id)
     }
 
-    pub(crate) fn terminal_workspace_lifecycle(&self) -> &tokio::sync::Mutex<()> {
-        &self.terminal_workspace_lifecycle
-    }
-
-    pub(crate) fn agent_workspace_lifecycle(&self) -> &tokio::sync::Mutex<()> {
-        self.agent_workspace_lifecycle.as_ref()
+    pub(crate) fn workspace_lifecycle(&self) -> &tokio::sync::Mutex<()> {
+        self.workspace_lifecycle.as_ref()
     }
 
     pub(crate) fn agent_install_lock(&self) -> &tokio::sync::Mutex<()> {
@@ -137,15 +131,19 @@ impl AppState {
 
     pub(crate) fn agent_exit_cleanup(&self) -> crate::session::SessionExitCleanup {
         let pool = self.pool.clone();
-        let lifecycle = self.agent_workspace_lifecycle.clone();
+        let lifecycle = self.workspace_lifecycle.clone();
         let sessions = self.sessions.clone();
         let runtime = tokio::runtime::Handle::current();
         Box::new(move |session, code| {
             session.finish_exit(code);
             runtime.block_on(async move {
                 let _lifecycle = lifecycle.lock().await;
-                sessions.remove_if_same(session.id(), &session);
-                let _ = crate::agent_workspace::remove_agent_session(&pool, session.id()).await;
+                sessions.remove_if_same(&session);
+                let _ = crate::workspace::remove_member(
+                    &pool,
+                    &crate::workspace::MemberIdentity::new(session.id(), SessionKind::Agent),
+                )
+                .await;
                 session.publish_removed(code);
             });
         })
@@ -242,16 +240,10 @@ impl AppState {
         self.sessions.views(kind)
     }
 
-    pub(crate) fn terminal_ids(&self) -> HashSet<String> {
-        self.sessions.ids(SessionKind::Terminal)
-    }
-
-    pub(crate) fn agent_snapshot(&self) -> (HashSet<String>, Vec<SessionView>) {
-        self.sessions.live_snapshot(SessionKind::Agent)
-    }
-
-    pub(crate) fn agent_ids(&self) -> HashSet<String> {
-        self.agent_snapshot().0
+    pub(crate) fn workspace_snapshot(
+        &self,
+    ) -> (HashSet<crate::workspace::MemberIdentity>, Vec<SessionView>) {
+        self.sessions.workspace_snapshot()
     }
 
     pub(crate) fn contains_session(&self, session: &Arc<Session>) -> bool {
@@ -301,7 +293,7 @@ mod tests {
             None,
             false,
         ));
-        let lifecycle = state.agent_workspace_lifecycle().lock().await;
+        let lifecycle = state.workspace_lifecycle().lock().await;
         let mut command = CommandBuilder::new("/bin/sh");
         command.args(["-c", "read _; exit 0"]);
         let session = Session::spawn(
@@ -326,12 +318,12 @@ mod tests {
         )
         .unwrap();
         let mut events = session.subscribe();
-        sqlx::query("INSERT INTO agent_workspaces (id, name, active_agent_session_id, created_at, updated_at) VALUES ('workspace', NULL, ?, 0, 0)")
+        sqlx::query("INSERT INTO workspaces (id, name, active_session_kind, active_session_id, created_at, updated_at) VALUES ('workspace', NULL, 'agent', ?, 0, 0)")
             .bind(session.id())
             .execute(state.pool())
             .await
             .unwrap();
-        sqlx::query("INSERT INTO agent_workspace_members (agent_session_id, workspace_id, position) VALUES (?, 'workspace', 0)")
+        sqlx::query("INSERT INTO workspace_members (session_kind, session_id, workspace_id, position) VALUES ('agent', ?, 'workspace', 0)")
             .bind(session.id())
             .execute(state.pool())
             .await
@@ -348,7 +340,7 @@ mod tests {
         .unwrap();
         assert!(state.live_agent_ids_if_contains(&session).is_none());
         assert!(state.session(session.id(), SessionKind::Agent).is_some());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
             .fetch_one(state.pool())
             .await
             .unwrap();
@@ -367,7 +359,7 @@ mod tests {
                 .is_err()
         );
         assert!(state.session(session.id(), SessionKind::Agent).is_none());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
             .fetch_one(state.pool())
             .await
             .unwrap();

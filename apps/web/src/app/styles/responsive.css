@@ -6,7 +6,7 @@
 }
 
 @media (max-width: 920px) {
-  .canvas-rail-pinned:is(.mode-terminal, .mode-agent, .mode-skills, .mode-settings) > .rail ~ .shell { margin-left: 0; }
+  .canvas-rail-pinned:is(.mode-terminal, .mode-skills, .mode-settings) > .rail ~ .shell { margin-left: 0; }
   .rail-resize-handle { display: none; }
   .skills-rail-page .rail-page-title { min-height: 44px; padding-block: 2px; }
   .skills-rail-page .rail-detail { gap: 12px; padding-top: 4px; }

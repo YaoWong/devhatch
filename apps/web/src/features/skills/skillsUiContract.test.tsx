@@ -37,7 +37,7 @@ describe("Skills UI contracts", () => {
 
   it("uses the portaled mobile rail class and closes the sheet after selection", () => {
     expect(navigationRailSource).toContain('className={`${pageClass("skills")} skills-rail-page`}');
-    expect(navigationSource).toContain("onSelect={(section) => {\n             onSelectSkillsSection(section);\n             navigation.closeSidebar();\n           }}");
+    expect(navigationSource).toMatch(/onSelect=\{\(section\) => \{\s+onSelectSkillsSection\(section\);\s+navigation\.closeSidebar\(\);\s+\}\}/);
     expect(railSource).toContain("tw:[@media(max-width:920px)]:hidden");
     expect(railSource).toContain("skills-menu-label`}");
     expect(railSource).not.toContain("tw:skills-menu-label");

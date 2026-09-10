@@ -20,8 +20,8 @@ const terminalStyles = readFileSync(new URL("../../app/styles/terminal.css", imp
 
 describe("navigation rail accessibility", () => {
   it("targets the destination back button after forward navigation", () => {
-    expect(getRailFocusRequest("agent", "forward", "modes", "settings")).toEqual({
-      mode: "agent",
+    expect(getRailFocusRequest("terminal", "forward", "modes", "settings")).toEqual({
+      mode: "terminal",
       target: "back",
     });
   });

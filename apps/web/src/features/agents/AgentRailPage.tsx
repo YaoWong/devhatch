@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronRight, Code2, Layers3, LoaderCircle } from "lucide-react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Code2, Layers3, LoaderCircle, Play } from "lucide-react";
+import { useLayoutEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AgentIcon } from "../../shared/branding/Branding";
@@ -11,16 +11,13 @@ import type {
   Agent,
   AgentLaunchConfig,
   AgentLaunchConfigInput,
-  AgentLaunchPath,
   AgentSession,
-  AgentWorkspace,
 } from "../../types/agents";
-import type { ConfirmAction, LaunchPathDisplay } from "../../types/app";
+import type { ConfirmAction } from "../../types/app";
+import type { LaunchPath } from "../../types/workspaces";
 import type { SkillProfile } from "../../types/skills";
 import { AgentConfigDialog } from "./AgentConfigDialog";
-import { LaunchPaths } from "./LaunchPaths";
 import { AgentSessionList } from "./AgentSessionList";
-import { AgentWorkspaceList } from "./AgentWorkspaceList";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRows = Parameters<typeof AgentSessionList>[0]["rows"];
@@ -47,8 +44,6 @@ export function AgentRailPage({
   busy,
   launching,
   agents,
-  workspaces,
-  selectedWorkspaceId,
   selectedAgentId,
   selectedAgent,
   agentName,
@@ -75,25 +70,15 @@ export function AgentRailPage({
   rows,
   search,
   homePaths,
-  pathDisplay,
   onSelectAgent,
-  onSelectWorkspace,
-  onRenameWorkspace,
-  onDeleteWorkspace,
-  onCreateWorkspace,
   onSelectConfig,
   onSelectProfile,
   onCreateConfig,
   onUpdateConfig,
   onDeleteConfig,
-  onChoosePath,
   onInstallAgent,
-  onSelectPath,
   onIncludeSubdirectoriesChange,
   onLaunch,
-  onPinPath,
-  onRenamePath,
-  onDeletePath,
   onSearch,
   onActivateSession,
   onResume,
@@ -105,8 +90,6 @@ export function AgentRailPage({
   busy: boolean;
   launching: boolean;
   agents: Agent[];
-  workspaces: AgentWorkspace[];
-  selectedWorkspaceId: string | null;
   selectedAgentId: string | null;
   selectedAgent: Agent | null;
   agentName: string;
@@ -114,7 +97,7 @@ export function AgentRailPage({
   selectedConfigId: string | null;
   profiles: SkillProfile[];
   selectedProfileId: string | null;
-  paths: AgentLaunchPath[];
+  paths: LaunchPath[];
   selectedPathId: string | null;
   installState?: { installing: boolean; installed: boolean; error: string | null };
   activeInstallAgent: Agent | null;
@@ -133,25 +116,15 @@ export function AgentRailPage({
   rows: SessionRows;
   search: string;
   homePaths: HomePaths;
-  pathDisplay: LaunchPathDisplay;
   onSelectAgent: (id: string) => void;
-  onSelectWorkspace: (id: string) => void;
-  onRenameWorkspace: (workspace: AgentWorkspace, name: string) => Promise<boolean>;
-  onDeleteWorkspace: (workspace: AgentWorkspace) => Promise<boolean>;
-  onCreateWorkspace: () => void;
   onSelectConfig: (id: string) => void;
   onSelectProfile: (id: string | null) => void;
   onCreateConfig: (input: AgentLaunchConfigInput) => Promise<boolean>;
   onUpdateConfig: (id: string, input: AgentLaunchConfigInput) => Promise<boolean>;
   onDeleteConfig: (id: string) => Promise<boolean>;
-  onChoosePath: () => void;
   onInstallAgent: (id: string) => Promise<boolean>;
-  onSelectPath: (id: string) => void;
   onIncludeSubdirectoriesChange: (enabled: boolean) => void;
-  onLaunch: (path: AgentLaunchPath) => void;
-  onPinPath: (path: AgentLaunchPath) => Promise<void>;
-  onRenamePath: (path: AgentLaunchPath, alias: string) => Promise<boolean>;
-  onDeletePath: (path: AgentLaunchPath) => Promise<void>;
+  onLaunch: () => void;
   onSearch: (value: string) => void;
   onActivateSession: (id: string) => void;
   onResume: (id: string) => Promise<boolean>;
@@ -160,9 +133,6 @@ export function AgentRailPage({
   onDeleteHistory: (id: string) => Promise<void>;
   onRetryHistory: () => Promise<void>;
 }) {
-  const [page, setPage] = useState(1);
-  const [renamePath, setRenamePath] = useState<AgentLaunchPath | null>(null);
-  const [renameWorkspace, setRenameWorkspace] = useState<AgentWorkspace | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const showAgentLoading = useDelayedLoading(busy);
   const agentAnnouncement = showAgentLoading
@@ -180,17 +150,7 @@ export function AgentRailPage({
     setLaunchSetupCollapsed(readLaunchSetupCollapsed(launchSetupStorageKey));
   }, [launchSetupStorageKey]);
   const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
-  const pageCount = Math.max(1, Math.ceil(paths.length / 10));
-  useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
-
-  const deletePath = (path: AgentLaunchPath) =>
-    onConfirm({
-      title: "Delete launch path?",
-      description: `${path.path} will be removed from the Agent CLI library.`,
-      confirmLabel: "Delete path",
-      danger: true,
-      action: () => onDeletePath(path),
-    });
+  const selectedPath = paths.find((path) => path.id === selectedPathId) ?? null;
 
   return (
     <div className="agent-rail-layout">
@@ -211,19 +171,6 @@ export function AgentRailPage({
           onClose={() => setConfigOpen(false)}
         />
       )}
-      <AgentWorkspaceList
-        workspaces={workspaces}
-        selectedWorkspaceId={selectedWorkspaceId}
-        launching={launching}
-        renamingId={renameWorkspace?.id ?? null}
-        onSelect={onSelectWorkspace}
-        onRename={setRenameWorkspace}
-        onRenameSubmit={onRenameWorkspace}
-        onRenameCancel={() => setRenameWorkspace(null)}
-        onDelete={onDeleteWorkspace}
-        onCreate={onCreateWorkspace}
-        onConfirm={onConfirm}
-      />
       <div className={railMenuSectionClass}>
         <p className={railMenuLabelClass}>Agent CLI</p>
         {busy ? (
@@ -298,6 +245,21 @@ export function AgentRailPage({
                     <span><small>Launch script</small><strong>{selectedConfig?.name ?? "None"}</strong></span>
                     <ChevronRight />
                   </Button>
+                  <Button
+                    className="tw:mt-1 tw:w-full"
+                    type="button"
+                    disabled={!selectedAgent?.available || !selectedPath || launching}
+                    title={selectedPath ? `Launch in ${selectedPath.path}` : "Select a shared Launch Path first"}
+                    onClick={onLaunch}
+                  >
+                    <Play />
+                    {launching ? "Launching…" : `Launch ${selectedAgent?.name ?? "Agent"}`}
+                  </Button>
+                  {!selectedPath && (
+                    <p className="tw:m-0 tw:px-1 tw:pb-1 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-muted-foreground">
+                      Select a shared Launch Path to start this agent.
+                    </p>
+                  )}
                 </div>
               )}
             </Card>
@@ -306,26 +268,6 @@ export function AgentRailPage({
           <RailQuietMessage>No Agent CLI integrations found.</RailQuietMessage>
         )}
       </div>
-      <LaunchPaths
-        paths={paths}
-        selectedPathId={selectedPathId}
-        available={Boolean(selectedAgent?.available)}
-        canAdd
-        launching={launching}
-        homePaths={homePaths}
-        pathDisplay={pathDisplay}
-        page={page}
-        renamingId={renamePath?.id ?? null}
-        onPageChange={setPage}
-        onChoose={onChoosePath}
-        onSelect={(path) => onSelectPath(path.id)}
-        onLaunch={onLaunch}
-        onPin={(path) => void onPinPath(path)}
-        onRename={setRenamePath}
-        onRenameSubmit={onRenamePath}
-        onRenameCancel={() => setRenamePath(null)}
-        onDelete={deletePath}
-      />
       <AgentSessionList
         agentName={agentName}
         rows={rows}

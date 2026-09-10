@@ -7,6 +7,8 @@ export type TerminalWorkspaceLayoutPreferences = {
 };
 
 export const TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-terminal-workspace-layouts-v1";
+export const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v2";
+export const WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-workspace-layouts-v1";
 
 const presets: Record<TerminalLayoutCount, readonly TerminalLayoutPreset[]> = {
   2: ["columns", "rows"],
@@ -161,6 +163,24 @@ export function readTerminalWorkspaceLayouts(storageKey = TERMINAL_WORKSPACE_LAY
   } catch {
     return {};
   }
+}
+
+export function migrateWorkspaceLayouts(
+  terminalLayouts: Record<string, TerminalWorkspaceLayoutPreferences>,
+  agentLayouts: Record<string, TerminalWorkspaceLayoutPreferences>,
+) {
+  return {
+    ...Object.fromEntries(Object.entries(agentLayouts).map(([id, layout]) => [`agent:${id}`, layout])),
+    ...Object.fromEntries(Object.entries(terminalLayouts).map(([id, layout]) => [`terminal:${id}`, layout])),
+  };
+}
+
+export function readWorkspaceLayouts(): Record<string, TerminalWorkspaceLayoutPreferences> {
+  const migrated = migrateWorkspaceLayouts(
+    readTerminalWorkspaceLayouts(TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY),
+    readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY),
+  );
+  return { ...migrated, ...readTerminalWorkspaceLayouts(WORKSPACE_LAYOUT_STORAGE_KEY) };
 }
 
 export function writeTerminalWorkspaceLayouts(layouts: Record<string, TerminalWorkspaceLayoutPreferences>, storageKey = TERMINAL_WORKSPACE_LAYOUT_STORAGE_KEY) {

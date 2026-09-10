@@ -1,77 +1,32 @@
 import { useEffect } from "react";
-import { agentPaths, agents, agentWorkspaces } from "../api/agents";
-import { terminalLaunchPaths, terminals, terminalWorkspaces } from "../api/terminals";
+import { agents } from "../api/agents";
 
-type HomePaths = { home: string; resolvedHome: string } | null;
-type Terminals = Awaited<ReturnType<typeof terminals>>;
-type TerminalLaunchPaths = Awaited<ReturnType<typeof terminalLaunchPaths>>;
-type TerminalWorkspaces = Awaited<ReturnType<typeof terminalWorkspaces>>;
 type Agents = Awaited<ReturnType<typeof agents>>;
-type AgentWorkspaceSnapshot = Awaited<ReturnType<typeof agentWorkspaces>>;
-type Paths = Awaited<ReturnType<typeof agentPaths>>;
 
 export function useInitialWorkspaceData({
-  initializeTerminals,
-  initializeTerminalLaunchPaths,
-  initializeTerminalWorkspaces,
+  initializeWorkspace,
+  initializeLaunchPaths,
   initializeAgents,
-  initializeAgentWorkspaces,
-  initializePaths,
   onError,
   onReady,
 }: {
-  initializeTerminals: (data: Terminals) => void;
-  initializeTerminalLaunchPaths: (data: TerminalLaunchPaths, homePaths: HomePaths) => void;
-  initializeTerminalWorkspaces: (data: TerminalWorkspaces) => void;
+  initializeWorkspace: () => Promise<void>;
+  initializeLaunchPaths: () => Promise<void>;
   initializeAgents: (data: Agents) => void;
-  initializeAgentWorkspaces: (data: AgentWorkspaceSnapshot, homePaths: HomePaths) => void;
-  initializePaths: (data: Paths) => void;
   onError: (message: string) => void;
   onReady: () => void;
 }) {
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([
-      terminals(),
-      terminalLaunchPaths(),
-      terminalWorkspaces(),
-      agents(),
-      agentWorkspaces(),
-      agentPaths(),
-    ]).then((results) => {
+    Promise.allSettled([initializeWorkspace(), initializeLaunchPaths(), agents()]).then((results) => {
       if (cancelled) return;
-      const terminalResult = results[0];
-      const homePaths =
-        terminalResult.status === "fulfilled"
-          ? { home: terminalResult.value.home, resolvedHome: terminalResult.value.resolvedHome }
-          : null;
-      if (terminalResult.status === "fulfilled") initializeTerminals(terminalResult.value);
-      if (results[1].status === "fulfilled") initializeTerminalLaunchPaths(results[1].value, homePaths);
-      if (results[2].status === "fulfilled") initializeTerminalWorkspaces(results[2].value);
-      if (results[3].status === "fulfilled") initializeAgents(results[3].value);
-      if (results[4].status === "fulfilled") initializeAgentWorkspaces(results[4].value, homePaths);
-      if (results[5].status === "fulfilled") initializePaths(results[5].value);
+      if (results[2].status === "fulfilled") initializeAgents(results[2].value);
       const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
       if (failures.length) {
-        onError(
-          failures
-            .map((failure) => (failure.reason instanceof Error ? failure.reason.message : String(failure.reason)))
-            .join(" · "),
-        );
+        onError(failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason)).join(" · "));
       }
       onReady();
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    initializeAgents,
-    initializeAgentWorkspaces,
-    initializePaths,
-    initializeTerminalLaunchPaths,
-    initializeTerminalWorkspaces,
-    initializeTerminals,
-    onError,
-    onReady,
-  ]);
+    return () => { cancelled = true; };
+  }, [initializeAgents, initializeLaunchPaths, initializeWorkspace, onError, onReady]);
 }

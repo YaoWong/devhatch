@@ -3,7 +3,7 @@ import type { ThemeId } from "../../types/settings";
 
 export const ThemeContext = createContext<{
   themeId: ThemeId;
-  agentLaunchPathsMaxHeightPx: number;
+  launchPathsMaxHeightPx: number;
   navigationRailWidthPx: number;
   fontSizePx: number;
   uiScalePercent: number;
@@ -13,7 +13,7 @@ export const ThemeContext = createContext<{
   dismissError: () => void;
   resetAppearance: () => void;
   selectTheme: (themeId: ThemeId) => void;
-  setAgentLaunchPathsMaxHeightPx: (value: number) => void;
+  setLaunchPathsMaxHeightPx: (value: number) => void;
   setNavigationRailWidthPx: (value: number) => void;
   setFontSizePx: (value: number) => void;
   setUiScalePercent: (value: number) => void;

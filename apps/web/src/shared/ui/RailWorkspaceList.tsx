@@ -21,6 +21,7 @@ export function RailWorkspaceList<T extends RailWorkspace>({
   launching,
   renamingId,
   memberNoun,
+  memberSummary,
   emptyMessage,
   deleteDescription,
   onSelect,
@@ -36,6 +37,7 @@ export function RailWorkspaceList<T extends RailWorkspace>({
   launching: boolean;
   renamingId: string | null;
   memberNoun: string;
+  memberSummary?: (workspace: T) => string;
   emptyMessage: string;
   deleteDescription: string;
   onSelect: (id: string) => void;
@@ -71,7 +73,7 @@ export function RailWorkspaceList<T extends RailWorkspace>({
                >
                  <span>
                    <strong>{workspace.name || `Workspace ${index + 1}`}</strong>
-                   <small>{memberCount} {memberNoun}{memberCount === 1 ? "" : "s"}</small>
+                    <small>{memberSummary ? memberSummary(workspace) : `${memberCount} ${memberNoun}${memberCount === 1 ? "" : "s"}`}</small>
                  </span>
                </Button>
               <span className={`tw:flex ${renaming ? "tw:hidden" : ""}`}>
@@ -90,11 +92,11 @@ export function RailWorkspaceList<T extends RailWorkspace>({
                   variant="ghost"
                   size="icon"
                   className={`${workspaceActionClass} tw:hover:text-destructive!`}
-                  aria-label="Disband workspace"
-                  onClick={() => onConfirm({
-                    title: "Disband workspace?",
-                    description: deleteDescription,
-                    confirmLabel: "Disband",
+                   aria-label="Delete workspace"
+                   onClick={() => onConfirm({
+                     title: "Delete workspace?",
+                     description: deleteDescription,
+                     confirmLabel: "Delete",
                     danger: true,
                     action: () => onDelete(workspace),
                   })}
