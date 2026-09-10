@@ -1,8 +1,8 @@
 import type {
   Agent,
   AgentInstall,
-  AgentLaunchConfig,
-  AgentLaunchConfigInput,
+  LaunchConfig,
+  LaunchConfigInput,
   AgentSession,
   HistoryResponse,
 } from "../types/agents";
@@ -21,10 +21,14 @@ export function installAgent(agentId: string) {
   );
 }
 
-export function agentLaunchConfigs(agentId = "opencode") {
-  return requestJson<{ agentLaunchConfigs: AgentLaunchConfig[] }>(
-    `/api/agent-launch-configs?agentId=${encodeURIComponent(agentId)}`,
+export function launchConfigs(targetId: string) {
+  return requestJson<{ agentLaunchConfigs: LaunchConfig[] }>(
+    `/api/agent-launch-configs?agentId=${encodeURIComponent(targetId)}`,
   );
+}
+
+export function agentLaunchConfigs(agentId = "opencode") {
+  return launchConfigs(agentId);
 }
 
 export function history(agentId: string) {
@@ -54,25 +58,29 @@ export function pasteAgentImage(id: string, image: Blob, signal?: AbortSignal) {
   );
 }
 
-export function createAgentLaunchConfig(input: AgentLaunchConfigInput) {
-  return requestJson<{ agentLaunchConfig: AgentLaunchConfig }>(
+export function createLaunchConfig(input: LaunchConfigInput) {
+  return requestJson<{ agentLaunchConfig: LaunchConfig }>(
     "/api/agent-launch-configs",
     { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
     "Unable to create launch config",
   );
 }
 
-export function updateAgentLaunchConfig(id: string, input: Partial<AgentLaunchConfigInput>) {
-  return requestJson<{ agentLaunchConfig: AgentLaunchConfig }>(
+export function updateLaunchConfig(id: string, input: Partial<LaunchConfigInput>) {
+  return requestJson<{ agentLaunchConfig: LaunchConfig }>(
     `/api/agent-launch-configs/${id}`,
     { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(input) },
     "Unable to update launch config",
   );
 }
 
-export function deleteAgentLaunchConfig(id: string) {
+export function deleteLaunchConfig(id: string) {
   return requestEmpty(`/api/agent-launch-configs/${id}`, { method: "DELETE" }, "Unable to delete launch config");
 }
+
+export const createAgentLaunchConfig = createLaunchConfig;
+export const updateAgentLaunchConfig = updateLaunchConfig;
+export const deleteAgentLaunchConfig = deleteLaunchConfig;
 
 export function deleteAgentHistorySession(agentId: string, id: string) {
   return requestEmpty(

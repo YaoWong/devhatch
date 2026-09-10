@@ -441,6 +441,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     choosePath: workspace.chooseLaunchPath,
     reportError,
     onLaunched: closePicker,
+    launchTerminal: workspace.addTerminal,
     launchAgent: workspace.addAgent,
     activateSession: (id) => workspace.activateSession({ sessionId: id, kind: "agent" }),
     refreshLaunchPaths: workspace.refreshLaunchPaths,

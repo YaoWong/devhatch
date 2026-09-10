@@ -1,10 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installAgent } from "./agents";
+import { installAgent, launchConfigs } from "./agents";
 import { configureAuth } from "./client";
 
 afterEach(() => {
   configureAuth(null);
   vi.unstubAllGlobals();
+});
+
+describe("launch config API", () => {
+  it("loads configs for Terminal through the shared endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ agentLaunchConfigs: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(launchConfigs("terminal")).resolves.toEqual({ agentLaunchConfigs: [] });
+    expect(fetchMock.mock.calls[0]).toEqual(["/api/agent-launch-configs?agentId=terminal", undefined]);
+  });
 });
 
 describe("agent install API", () => {

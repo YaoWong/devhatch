@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AgentSession } from "../../../types/agents";
 import { selectedLaunchPath, type LaunchPath, type WorkspaceSession } from "../../../types/workspaces";
 import { launcherActiveSession } from "../agentLaunchState";
+import { readLaunchTargetId, TERMINAL_LAUNCH_TARGET_ID, writeLaunchTargetId } from "../launchSetupPreference";
 import { mergeAgentSessions, replaceAgentSessions, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
@@ -19,6 +20,7 @@ export function useAgentWorkspace({
   choosePath,
   reportError,
   onLaunched,
+  launchTerminal,
   launchAgent,
   activateSession,
   refreshLaunchPaths,
@@ -33,6 +35,7 @@ export function useAgentWorkspace({
   choosePath: (path: string) => Promise<boolean>;
   reportError: (message: string) => void;
   onLaunched: () => void;
+  launchTerminal: (cwd?: string, forceNewWorkspace?: boolean, launchConfigId?: string) => Promise<WorkspaceSession | null>;
   launchAgent: (options: {
     agentId: string;
     cwd?: string;
@@ -43,15 +46,29 @@ export function useAgentWorkspace({
   activateSession: (id: string) => void;
   refreshLaunchPaths: (preferred?: string | null) => Promise<void>;
 }) {
+  const [selectedTargetId, setSelectedTargetIdState] = useState(TERMINAL_LAUNCH_TARGET_ID);
   const [selectedSkillProfileId, setSelectedSkillProfileId] = useState<string | null>(null);
   const [includeSubdirectories, setIncludeSubdirectories] = useState(false);
   const [search, setSearch] = useState("");
   const [launching, setLaunching] = useState(false);
   const launchingRef = useRef(false);
   const catalog = useAgentCatalog();
-  const selectedAgent = catalog.agents.find((agent) => agent.id === catalog.selectedAgentId) ?? catalog.agents[0] ?? null;
-  const configs = useAgentConfigs(selectedAgent?.id ?? null, reportError);
-  const { clearConfigs, refreshConfigs } = configs;
+  const {
+    agents,
+    defaultAgentId,
+    initializeAgents: initializeAgentCatalog,
+    installAgent,
+    installAnnouncement,
+    installStates,
+    installingAgentId,
+    refreshData: refreshAgentData,
+    setDefaultAgentId,
+    setSelectedAgentId: setCatalogSelectedAgentId,
+  } = catalog;
+  const selectedAgent = selectedTargetId === TERMINAL_LAUNCH_TARGET_ID
+    ? null
+    : (agents.find((agent) => agent.id === selectedTargetId) ?? null);
+  const configs = useAgentConfigs(selectedTargetId, reportError);
   const history = useAgentSessions({
     sessions,
     active,
@@ -61,16 +78,9 @@ export function useAgentWorkspace({
   const selectedConfig = configs.configs.find((config) => config.id === configs.selectedConfigId) ?? null;
   const selectedPath = selectedLaunchPath(paths, selectedPathId);
 
-  useEffect(() => {
-    clearConfigs();
-    setSelectedSkillProfileId(null);
-    setSearch("");
-    if (selectedAgent?.id) void refreshConfigs().catch((reason) => reportError(errorMessage(reason)));
-  }, [selectedAgent?.id, clearConfigs, refreshConfigs, reportError]);
-
   const selectedSessions = useMemo(
-    () => sessions.filter((session) => session.agentId === selectedAgent?.id),
-    [selectedAgent?.id, sessions],
+    () => selectedAgent ? sessions.filter((session) => session.agentId === selectedAgent.id) : [],
+    [selectedAgent, sessions],
   );
   const selectedDisplaySessions = useMemo(
     () => substituteHistoryTitles(selectedSessions, history.history),
@@ -95,12 +105,53 @@ export function useAgentWorkspace({
     [history.history, homePaths, includeSubdirectories, search, selectedAgent?.supportsHistory, selectedDisplaySessions, selectedPath?.path],
   );
 
+  const setSelectedTargetId = useCallback((id: string) => {
+    if (id !== TERMINAL_LAUNCH_TARGET_ID) {
+      const agent = agents.find((item) => item.id === id);
+      if (!agent?.enabled || agent.availability === "coming-soon") return;
+      setCatalogSelectedAgentId(id);
+    }
+    setSelectedTargetIdState(id);
+    writeLaunchTargetId(id);
+    setSelectedSkillProfileId(null);
+    setSearch("");
+  }, [agents, setCatalogSelectedAgentId]);
+
+  const initializeAgents = useCallback((data: Parameters<typeof initializeAgentCatalog>[0]) => {
+    initializeAgentCatalog(data);
+    const storedTargetId = readLaunchTargetId();
+    const storedAgent = data.agents.find((agent) => agent.id === storedTargetId);
+    const targetId = storedTargetId === TERMINAL_LAUNCH_TARGET_ID
+      || (storedAgent?.enabled && storedAgent.availability !== "coming-soon")
+      ? storedTargetId
+      : TERMINAL_LAUNCH_TARGET_ID;
+    setSelectedTargetIdState(targetId);
+    if (targetId !== TERMINAL_LAUNCH_TARGET_ID) setCatalogSelectedAgentId(targetId);
+  }, [initializeAgentCatalog, setCatalogSelectedAgentId]);
+
   const launch = useCallback(async ({ cwd, upstreamSessionId }: { cwd?: string; upstreamSessionId?: string }) => {
     if (launchingRef.current) return false;
     launchingRef.current = true;
     setLaunching(true);
-    const agent = catalog.agents.find((item) => item.id === catalog.selectedAgentId) ?? null;
+    const targetId = selectedTargetId;
+    const agent = targetId === TERMINAL_LAUNCH_TARGET_ID
+      ? null
+      : (agents.find((item) => item.id === targetId) ?? null);
     try {
+      if (configs.loading || !configs.selectedConfigId) {
+        reportError("Launch config is not ready");
+        return false;
+      }
+      if (targetId === TERMINAL_LAUNCH_TARGET_ID) {
+        if (upstreamSessionId) {
+          reportError("Terminal sessions cannot resume agent history");
+          return false;
+        }
+        const created = await launchTerminal(cwd, false, configs.selectedConfigId);
+        if (!created) return false;
+        onLaunched();
+        return true;
+      }
       if (!agent?.available) {
         reportError(`${agent?.name ?? "Agent"} is unavailable`);
         return false;
@@ -118,7 +169,7 @@ export function useAgentWorkspace({
       if (!created) return false;
       onLaunched();
       try {
-        await Promise.all([history.refreshHistory(), catalog.refreshData(), refreshLaunchPaths()]);
+        await Promise.all([history.refreshHistory(), refreshAgentData(), refreshLaunchPaths()]);
       } catch (reason) {
         reportError(errorMessage(reason));
       }
@@ -130,14 +181,15 @@ export function useAgentWorkspace({
       launchingRef.current = false;
       setLaunching(false);
     }
-  }, [catalog, configs.selectedConfigId, history, launchAgent, onLaunched, refreshLaunchPaths, reportError, selectedSkillProfileId]);
+  }, [agents, configs.loading, configs.selectedConfigId, history, launchAgent, launchTerminal, onLaunched, refreshAgentData, refreshLaunchPaths, reportError, selectedSkillProfileId, selectedTargetId]);
 
   return {
     sessions,
     selectedSessions,
-    agents: catalog.agents,
+    agents,
     paths,
     configs: configs.configs,
+    configsLoading: configs.loading,
     selectedConfigId: configs.selectedConfigId,
     selectedSkillProfileId,
     selectedConfig,
@@ -148,38 +200,36 @@ export function useAgentWorkspace({
     activeId,
     activeSession: activeSession?.kind === "agent" ? activeSession : null,
     launcherActiveSession: launcherSession,
-    selectedAgentId: catalog.selectedAgentId,
-    defaultAgentId: catalog.defaultAgentId,
+    selectedTargetId,
+    selectedAgentId: selectedAgent?.id ?? null,
+    defaultAgentId,
     selectedAgent,
     selectedPathId,
     selectedPath,
     selectPath,
     choosePath,
-    installStates: catalog.installStates,
-    installingAgentId: catalog.installingAgentId,
-    installAnnouncement: catalog.installAnnouncement,
+    installStates,
+    installingAgentId,
+    installAnnouncement,
     includeSubdirectories,
     displaySessions,
     mergedSessions,
     search,
     setSearch,
-    setDefaultAgentId: catalog.setDefaultAgentId,
+    setDefaultAgentId,
     setSelectedConfigId: configs.setSelectedConfigId,
     setSelectedSkillProfileId,
     setIncludeSubdirectories,
-    setSelectedAgentId: (id: string) => {
-      configs.clearConfigs();
-      catalog.setSelectedAgentId(id);
-      setSelectedSkillProfileId(null);
-    },
-    initializeAgents: catalog.initializeAgents,
-    refreshData: catalog.refreshData,
+    setSelectedTargetId,
+    setSelectedAgentId: setSelectedTargetId,
+    initializeAgents,
+    refreshData: refreshAgentData,
     refreshConfigs: configs.refreshConfigs,
     refreshHistory: selectedAgent?.supportsHistory ? history.refreshHistory : async () => {},
     retryHistory: selectedAgent?.supportsHistory ? history.retryHistory : async () => {},
     launch,
     launching,
-    installAgent: catalog.installAgent,
+    installAgent,
     createConfig: configs.createConfig,
     updateConfig: configs.updateConfig,
     deleteConfig: configs.deleteConfig,

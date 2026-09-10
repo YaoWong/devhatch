@@ -91,13 +91,12 @@
 .agent-detail { flex: 1; gap: 16px; overflow: hidden; }
 .workbench-rail-layout { min-width: 0; min-height: 0; display: flex; flex: 1; flex-direction: column; gap: 16px; overflow: hidden; }
 .workbench-rail-layout > * { min-width: 0; min-height: 0; }
-.workspace-section { max-height: min(240px, 34%); display: flex; flex: 0 1 auto; flex-direction: column; overflow: hidden; }
+.workspace-section { display: flex; flex: none; flex-direction: column; overflow: visible; }
 .workspace-list { min-height: 0; }
-.agent-rail-layout { min-width: 0; min-height: min(220px, 40%); display: flex; flex: 1 1 220px; flex-direction: column; gap: 16px; overflow: hidden; }
-.agent-rail-layout > * { min-width: 0; min-height: 0; }
-.agent-launch-section { max-height: 45%; flex: 0 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.agent-launch-section { max-height: min(420px, 48%); flex: 0 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 3px; margin: -3px; }
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.paths-section { max-height: var(--launch-paths-max-height, 286px); flex: 0 1 auto; overflow: hidden; }
+.paths-section { flex: 1 1 120px; overflow: hidden; }
+.has-agent-history .paths-section { max-height: var(--launch-paths-max-height, 286px); flex: 0 1 auto; }
 .sessions-section { flex: 1 1 120px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: none; overflow: visible; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .sessions-section, .workspace-list { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }

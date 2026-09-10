@@ -24,10 +24,10 @@ export function listDirectories(directory?: string) {
   return requestJson<DirectoryListing>(`/api/filesystem/directories${query}`, undefined, "Unable to open this folder");
 }
 
-export function createTerminal(cwd?: string, workspaceId?: string | null) {
+export function createTerminal(cwd?: string, workspaceId?: string | null, launchConfigId?: string) {
   return requestJson<{ terminal: TerminalInfo; workspace: Workspace }>(
     "/api/terminals",
-    { method: "POST", ...json({ cwd, workspaceId }) },
+    { method: "POST", ...json({ cwd, workspaceId, launchConfigId }) },
     "Unable to create terminal session",
   );
 }

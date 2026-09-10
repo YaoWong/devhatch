@@ -52,6 +52,7 @@ impl AgentCreateRequest {
             cwd: self.cwd.clone(),
             cols: self.cols.clone(),
             rows: self.rows.clone(),
+            launch_config_id: None,
             workspace_id: None,
         }
     }

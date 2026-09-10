@@ -1,12 +1,13 @@
 import { useEffect, useState, type CSSProperties, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentRailPage } from "../features/agents/AgentRailPage";
+import { AgentSessionList } from "../features/agents/AgentSessionList";
 import { selectedAgentLaunchOptions } from "../features/agents/agentLaunchState";
 import { NavigationRail } from "../features/navigation/NavigationRail";
 import type { useNavigation } from "../features/navigation/useNavigation";
 import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
 import type { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
-import { WorkspaceList } from "../features/terminals/WorkspaceList";
+import { WorkspaceList, WorkspaceLaunchPaths } from "../features/terminals/WorkspaceList";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../features/terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWorkspaceDock";
 import type { useWorkspaceController } from "../features/terminals/useWorkspaceController";
@@ -149,17 +150,13 @@ export function AppNavigationRail({
       onDefaultAgentChange={agent.setDefaultAgentId}
       terminalContent={
         <div
-          className="workbench-rail-layout"
+          className={`workbench-rail-layout ${agent.selectedAgent ? "has-agent-history" : "terminal-target"}`}
           style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}
         >
           <WorkspaceList
             workspaces={workspace.workspaces}
-            launchPaths={workspace.launchPaths}
             selectedWorkspaceId={workspace.selectedWorkspaceId}
-            selectedPathId={workspace.selectedPathId}
-            homePaths={homePaths}
             launching={workspace.terminalLaunching || agent.launching}
-            pathDisplay={pathDisplay}
             onSelectWorkspace={(id) => {
               workspace.activateWorkspace(id);
               sessionSelected();
@@ -167,21 +164,15 @@ export function AppNavigationRail({
             onRenameWorkspace={workspace.renameWorkspace}
             onDeleteWorkspace={workspace.removeWorkspace}
             onNewWorkspace={onNewWorkspace}
-            onSelectPath={workspace.selectLaunchPath}
-            onLaunch={(path) => void workspace.addTerminal(path)}
-            onPinPath={(path) => void workspace.pinLaunchPath(path)}
-            onRenamePath={workspace.renameLaunchPath}
-            onDeletePath={workspace.removeLaunchPath}
             onConfirm={onConfirm}
-            onAddPath={onPickLaunchPath}
           />
           <AgentRailPage
             busy={busy}
-            launching={agent.launching}
+            launching={workspace.terminalLaunching || agent.launching}
+            configsLoading={agent.configsLoading}
             agents={agent.agents}
-            selectedAgentId={agent.selectedAgentId}
+            selectedTargetId={agent.selectedTargetId}
             selectedAgent={agent.selectedAgent}
-            agentName={agent.selectedAgent?.name ?? "Agent CLI"}
             configs={agent.configs}
             selectedConfigId={agent.selectedConfigId}
             profiles={skills.profiles}
@@ -192,46 +183,73 @@ export function AppNavigationRail({
             activeInstallAgent={agent.agents.find((item) => item.id === agent.installingAgentId) ?? null}
             installAnnouncement={agent.installAnnouncement}
             installBusy={agent.installingAgentId !== null}
-            includeSubdirectories={agent.includeSubdirectories}
-            activeSession={agent.launcherActiveSession}
-            sessions={agent.selectedSessions}
-            historyCount={agent.selectedAgent?.supportsHistory ? agent.history.sessions.length : 0}
-            supportsHistory={Boolean(agent.selectedAgent?.supportsHistory)}
-            historyAvailable={agent.history.available}
-            historyDiagnostic={agent.history.diagnostic}
-            historyLoading={agent.historyLoading}
-            historySettled={agent.historySettled}
-            historyLoadError={agent.historyLoadError}
-            rows={agent.mergedSessions}
-            search={agent.search}
-            homePaths={homePaths}
-            onSelectAgent={agent.setSelectedAgentId}
+            onSelectTarget={agent.setSelectedTargetId}
             onSelectConfig={agent.setSelectedConfigId}
             onSelectProfile={agent.setSelectedSkillProfileId}
             onCreateConfig={agent.createConfig}
             onUpdateConfig={agent.updateConfig}
             onDeleteConfig={agent.deleteConfig}
             onInstallAgent={agent.installAgent}
-            onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
             onLaunch={() => {
               const options = selectedAgentLaunchOptions(agent.selectedPath);
               if (options) void agent.launch(options);
             }}
-            onSearch={agent.setSearch}
-            onActivateSession={(id) => {
-              agent.activateSession(id);
-              sessionSelected();
-            }}
-            onResume={async (id) => {
-              const resumed = await agent.launch({ upstreamSessionId: id });
-              if (resumed) sessionSelected();
-              return resumed;
-            }}
-            onDeleteLive={onCloseAgentSession}
             onConfirm={onConfirm}
-            onDeleteHistory={agent.deleteHistorySession}
-            onRetryHistory={agent.retryHistory}
           />
+          <WorkspaceLaunchPaths
+            launchPaths={workspace.launchPaths}
+            selectedPathId={workspace.selectedPathId}
+            homePaths={homePaths}
+            launching={workspace.terminalLaunching || agent.launching}
+            launchTargetName={agent.selectedAgent?.name ?? "Terminal"}
+            launchAvailable={!busy && (!agent.selectedAgent || agent.selectedAgent.available) && !agent.configsLoading && Boolean(agent.selectedConfigId)}
+            pathDisplay={pathDisplay}
+            onSelectPath={workspace.selectLaunchPath}
+            onLaunch={(path) => {
+              workspace.ensureLaunchPathSelected(path.id);
+              void agent.launch({ cwd: path.path });
+            }}
+            onPinPath={(path) => void workspace.pinLaunchPath(path)}
+            onRenamePath={workspace.renameLaunchPath}
+            onDeletePath={workspace.removeLaunchPath}
+            onConfirm={onConfirm}
+            onAddPath={onPickLaunchPath}
+          />
+          {agent.selectedAgent && (
+            <AgentSessionList
+              agentName={agent.selectedAgent.name}
+              rows={agent.mergedSessions}
+              sessionCount={agent.selectedSessions.length}
+              historyCount={agent.selectedAgent.supportsHistory ? agent.history.sessions.length : 0}
+              supportsHistory={agent.selectedAgent.supportsHistory}
+              historyAvailable={agent.history.available}
+              historyDiagnostic={agent.history.diagnostic}
+              historyLoading={agent.historyLoading}
+              historySettled={agent.historySettled}
+              historyLoadError={agent.historyLoadError}
+              launching={workspace.terminalLaunching || agent.launching || agent.configsLoading || !agent.selectedConfigId || !agent.selectedAgent.available}
+              activeId={agent.launcherActiveSession?.id ?? null}
+              search={agent.search}
+              selectedPath={agent.selectedPath}
+              includeSubdirectories={agent.includeSubdirectories}
+              homePaths={homePaths}
+              onSearch={agent.setSearch}
+              onIncludeSubdirectoriesChange={agent.setIncludeSubdirectories}
+              onActivate={(id) => {
+                agent.activateSession(id);
+                sessionSelected();
+              }}
+              onResume={async (id) => {
+                const resumed = await agent.launch({ upstreamSessionId: id });
+                if (resumed) sessionSelected();
+                return resumed;
+              }}
+              onDeleteLive={onCloseAgentSession}
+              onConfirm={onConfirm}
+              onDeleteHistory={agent.deleteHistorySession}
+              onRetryHistory={agent.retryHistory}
+            />
+          )}
         </div>
       }
       skillsContent={

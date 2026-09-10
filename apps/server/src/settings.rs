@@ -399,12 +399,29 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(migrations, 6);
+        assert_eq!(migrations, 7);
         let launch_configs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_launch_configs")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(launch_configs, 4);
+        assert_eq!(launch_configs, 5);
+        let terminal_config: (String, String, bool, String, String, String) = sqlx::query_as(
+            "SELECT id, name, is_default, pre_launch_script, provider_script, tui_script FROM agent_launch_configs WHERE agent_id = 'terminal'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            terminal_config,
+            (
+                "terminal-default".to_owned(),
+                "Default".to_owned(),
+                true,
+                String::new(),
+                String::new(),
+                String::new(),
+            )
+        );
         for statement in [
             "UPDATE app_settings SET theme = 'dark' WHERE id = 1",
             "UPDATE app_settings SET launch_paths_max_height_px = 159 WHERE id = 1",
@@ -443,6 +460,7 @@ mod tests {
             include_str!("../migrations/0004_display_settings.sql"),
             include_str!("../migrations/0005_workspace.sql"),
             include_str!("../migrations/0006_workspace_integrity.sql"),
+            include_str!("../migrations/0007_terminal_launch_config.sql"),
         ] {
             sqlx::raw_sql(migration).execute(&pool).await.unwrap();
         }

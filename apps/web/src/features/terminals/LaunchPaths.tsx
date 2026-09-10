@@ -27,6 +27,7 @@ export function LaunchPaths({
   available,
   canAdd,
   launching,
+  launchTargetName,
   homePaths,
   pathDisplay,
   page,
@@ -48,6 +49,7 @@ export function LaunchPaths({
   available: boolean;
   canAdd: boolean;
   launching: boolean;
+  launchTargetName?: string;
   homePaths: HomePaths;
   pathDisplay: LaunchPathDisplay;
   page: number;
@@ -142,7 +144,7 @@ export function LaunchPaths({
                     variant="ghost"
                     size="icon"
                     className={pathActionClass}
-                    aria-label="Launch path"
+                    aria-label={`Launch ${launchTargetName ?? "session"} in ${item.path}`}
                     disabled={!available || launching}
                     onClick={(event) => {
                       onLaunch(item);

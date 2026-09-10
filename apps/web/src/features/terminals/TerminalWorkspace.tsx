@@ -246,6 +246,9 @@ export function TerminalWorkspace({
     );
   });
   useEffect(() => {
+    if (visible && !activeId) stageRef.current?.focus({ preventScroll: true });
+  }, [activeId, focusVersion, visible]);
+  useEffect(() => {
     if (!visible) setOpenActionSessionId(null);
   }, [visible]);
   useEffect(() => {

@@ -264,7 +264,8 @@ export function useWorkspaceController({
     selectedWorkspaceIdRef.current = id;
     setSelectedWorkspaceId(id);
     closeSidebar();
-  }, [closeSidebar]);
+    bumpFocus();
+  }, [bumpFocus, closeSidebar]);
 
   const activateSession = useCallback((ref: WorkspaceSessionRef) => {
     const workspace = workspaceOwningSession(workspacesRef.current, ref);
@@ -342,13 +343,13 @@ export function useWorkspaceController({
     }
   }, [applyWorkspaces, refresh, reportError]);
 
-  const addTerminal = useCallback(async (cwd?: string, forceNewWorkspace = false) => {
+  const addTerminal = useCallback(async (cwd?: string, forceNewWorkspace = false, launchConfigId?: string) => {
     if (terminalLaunchRef.current) return null;
     terminalLaunchRef.current = true;
     setTerminalLaunching(true);
     const selectionAtStart = selectedWorkspaceIdRef.current;
     const targetWorkspaceId = forceNewWorkspace ? null : selectionAtStart;
-    const mutation = queueRef.current.run(WORKSPACES_KEY, () => createTerminal(cwd, targetWorkspaceId));
+    const mutation = queueRef.current.run(WORKSPACES_KEY, () => createTerminal(cwd, targetWorkspaceId, launchConfigId));
     try {
       const { terminal, workspace } = await mutation.result;
       const normalized = normalizeSession(terminal, homePathsRef.current);
@@ -494,6 +495,11 @@ export function useWorkspaceController({
     setSelectedPathId((current) => toggleLaunchPathSelection(current, id));
   }, []);
 
+  const ensureLaunchPathSelected = useCallback((id: string) => {
+    if (!launchPathsRef.current.some((path) => path.id === id)) return;
+    setSelectedPathId(id);
+  }, []);
+
   const pinLaunchPath = useCallback((path: LaunchPath) => {
     return getOrCreateInFlightPromise(pinningPathRef.current, path.id, async () => {
       const mutation = queueRef.current.run(LAUNCH_PATHS_KEY, () => updateLaunchPath(path.id, { pinned: !path.pinned }));
@@ -569,6 +575,7 @@ export function useWorkspaceController({
     updateUpstreamSession,
     chooseLaunchPath,
     selectLaunchPath,
+    ensureLaunchPathSelected,
     pinLaunchPath,
     renameLaunchPath,
     removeLaunchPath,

@@ -1,4 +1,9 @@
-use std::{env, sync::Arc};
+use std::{
+    env,
+    os::unix::fs::PermissionsExt,
+    path::{Path as FsPath, PathBuf},
+    sync::Arc,
+};
 
 use axum::{
     Json,
@@ -12,6 +17,7 @@ use serde::Deserialize;
 use crate::{
     api::ApiError,
     filesystem::{default_cwd, home_dir, path_string, validated_directory},
+    launch_config::{self, AgentLaunchConfig, TERMINAL_ID},
     session::{Session, SessionKind, SessionSpawn, dimension, socket},
     state::AppState,
     workspace::{self, MemberIdentity},
@@ -26,6 +32,7 @@ pub(crate) struct CreateRequest {
     pub(crate) cwd: Option<serde_json::Value>,
     pub(crate) cols: Option<serde_json::Value>,
     pub(crate) rows: Option<serde_json::Value>,
+    pub(crate) launch_config_id: Option<String>,
     pub(crate) workspace_id: Option<String>,
 }
 
@@ -92,9 +99,31 @@ pub async fn create(
         Ok(value) => value,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_CWD"),
     };
+    let launch_config = match launch_config::resolve(
+        &state,
+        TERMINAL_ID,
+        request.launch_config_id.as_deref(),
+    )
+    .await
+    {
+        Ok(Some(config)) => config,
+        Ok(None) => return error(StatusCode::NOT_FOUND, "AGENT_LAUNCH_CONFIG_NOT_FOUND"),
+        Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+    };
     let workspace_id = request.workspace_id.clone();
     let _lifecycle = state.workspace_lifecycle().lock().await;
-    let session = match spawn_with_cwd(state.clone(), request, cwd.clone().into()) {
+    if let Some(workspace_id) = workspace_id.as_deref() {
+        match sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?)")
+            .bind(workspace_id)
+            .fetch_one(state.pool())
+            .await
+        {
+            Ok(1) => {}
+            Ok(_) => return error(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND"),
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
+        }
+    }
+    let session = match spawn_with_cwd(state.clone(), request, cwd.clone().into(), launch_config) {
         Ok(session) => session,
         Err(error) => {
             return (
@@ -120,11 +149,11 @@ pub async fn create(
     let workspace = match workspace {
         Ok(Some(workspace)) => workspace,
         Ok(None) => {
-            cleanup_failed_spawn(&state, &session);
+            cleanup_failed_spawn(&state, &session).await;
             return error(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND");
         }
         Err(_) => {
-            cleanup_failed_spawn(&state, &session);
+            cleanup_failed_spawn(&state, &session).await;
             return error(StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR");
         }
     };
@@ -200,21 +229,35 @@ pub async fn socket(
 pub(crate) fn spawn_with_cwd(
     state: Arc<AppState>,
     request: CreateRequest,
-    cwd: std::path::PathBuf,
+    cwd: PathBuf,
+    launch_config: AgentLaunchConfig,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let shell = resolve_shell();
-    let mut command = CommandBuilder::new(&shell);
-    command.arg("-l");
+    let run_dir = create_run_dir(state.data_dir())?;
+    let wrapper = run_dir.join("launch.sh");
+    if let Err(error) = write_wrapper(&wrapper, &launch_config) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
+    let mut command = CommandBuilder::new("/bin/sh");
+    command.arg(&wrapper);
+    command.arg(&shell);
     configure_environment(&mut command, &cwd);
+    command.env("DEVHATCH_AGENT_ID", TERMINAL_ID);
+    command.env("DEVHATCH_CONFIG_ID", &launch_config.id);
+    command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
+    command.env("DEVHATCH_CWD", &cwd);
+    command.env("DEVHATCH_CONFIG_DIR", &run_dir);
     let name = cwd
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .unwrap_or("Terminal")
         .to_string();
-    Session::spawn(
+    let cleanup_path = run_dir.clone();
+    let result = Session::spawn(
         state.session_registry(),
         SessionSpawn {
             command,
@@ -228,12 +271,48 @@ pub(crate) fn spawn_with_cwd(
             rows,
             agent_id: None,
             agent_name: None,
-            cleanup_path: None,
+            cleanup_path: Some(cleanup_path),
             runtime_endpoint: None,
             exit_cleanup: None,
         },
         |_| {},
-    )
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+fn create_run_dir(data_dir: &FsPath) -> std::io::Result<PathBuf> {
+    let root = data_dir.join("terminal-runs");
+    std::fs::create_dir_all(&root)?;
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
+    let run_dir = root.join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir(&run_dir)?;
+    std::fs::set_permissions(&run_dir, std::fs::Permissions::from_mode(0o700))?;
+    Ok(run_dir)
+}
+
+fn write_wrapper(path: &FsPath, config: &AgentLaunchConfig) -> std::io::Result<()> {
+    std::fs::write(path, wrapper_source(config))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+fn wrapper_source(config: &AgentLaunchConfig) -> String {
+    let mut source =
+        String::from("#!/bin/sh\nset -e\ndevhatch_login_shell=$1\nreadonly devhatch_login_shell\n");
+    for script in [
+        &config.pre_launch_script,
+        &config.provider_script,
+        &config.tui_script,
+    ] {
+        source.push_str(script);
+        if !script.ends_with('\n') {
+            source.push('\n');
+        }
+    }
+    source.push_str("exec \"$devhatch_login_shell\" -l\n");
+    source
 }
 
 pub(crate) fn configure_environment(command: &mut CommandBuilder, cwd: &std::path::Path) {
@@ -248,10 +327,15 @@ pub(crate) fn configure_environment(command: &mut CommandBuilder, cwd: &std::pat
     }
 }
 
-fn cleanup_failed_spawn(state: &AppState, session: &Arc<Session>) {
+async fn cleanup_failed_spawn(state: &AppState, session: &Arc<Session>) {
     state.remove_session(session.id(), SessionKind::Terminal);
     session.mark_deleting();
     session.terminate();
+    let _ = workspace::remove_member(
+        state.pool(),
+        &MemberIdentity::new(session.id(), SessionKind::Terminal),
+    )
+    .await;
 }
 
 pub(crate) fn invalid_cwd(value: Option<&serde_json::Value>) -> bool {
@@ -278,9 +362,56 @@ pub(crate) fn error(status: StatusCode, code: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use portable_pty::CommandBuilder;
+    use std::{os::unix::fs::PermissionsExt, process::Command, sync::Arc, time::Duration};
 
-    use super::configure_environment;
+    use axum::{Json, extract::State, http::StatusCode};
+    use portable_pty::CommandBuilder;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::{
+        CreateRequest, configure_environment, create, create_run_dir, spawn_with_cwd,
+        wrapper_source, write_wrapper,
+    };
+    use crate::{
+        launch_config::AgentLaunchConfig,
+        state::{AppState, OpenCodeHistoryPool},
+    };
+
+    fn config(scripts: [&str; 3]) -> AgentLaunchConfig {
+        AgentLaunchConfig {
+            id: "terminal-test".into(),
+            agent_id: "terminal".into(),
+            name: "Test".into(),
+            is_default: false,
+            pre_launch_script: scripts[0].into(),
+            provider_script: scripts[1].into(),
+            tui_script: scripts[2].into(),
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    async fn state() -> (tempfile::TempDir, Arc<AppState>) {
+        let root = tempfile::tempdir().unwrap();
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let skillink = skillink::Skillink::open(Some(root.path().join("skillink")))
+            .await
+            .unwrap();
+        let state = Arc::new(AppState::new(
+            root.path().to_owned(),
+            pool,
+            OpenCodeHistoryPool::new(root.path().join("history.db")),
+            skillink,
+            None,
+            false,
+        ));
+        (root, state)
+    }
 
     #[test]
     fn environment_removes_secret_but_keeps_key_file() {
@@ -293,5 +424,118 @@ mod tests {
             command.get_env("BYTE_API_API_KEY_FILE"),
             Some(std::ffi::OsStr::new("/private/key"))
         );
+    }
+
+    #[test]
+    fn wrapper_is_private_runs_all_scripts_and_execs_saved_argv() {
+        let root = tempfile::tempdir().unwrap();
+        let run_dir = create_run_dir(root.path()).unwrap();
+        let output = root.path().join("output");
+        let shell = root.path().join("login shell");
+        std::fs::write(
+            &shell,
+            "#!/bin/sh\nprintf 'shell:%s\\n' \"$1\" >> \"$OUTPUT\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let config = config([
+            "printf 'pre\\n' >> \"$OUTPUT\"",
+            "printf 'provider\\n' >> \"$OUTPUT\"\n",
+            "set -- /attacker\nprintf 'tui\\n' >> \"$OUTPUT\"",
+        ]);
+        let wrapper = run_dir.join("launch.sh");
+        write_wrapper(&wrapper, &config).unwrap();
+
+        assert_eq!(
+            std::fs::metadata(root.path().join("terminal-runs"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&run_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&wrapper).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let source = wrapper_source(&config);
+        assert!(!source.contains(shell.to_string_lossy().as_ref()));
+        assert!(source.ends_with("exec \"$devhatch_login_shell\" -l\n"));
+        let status = Command::new("/bin/sh")
+            .arg(&wrapper)
+            .arg(&shell)
+            .env("OUTPUT", &output)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(
+            std::fs::read_to_string(output).unwrap(),
+            "pre\nprovider\ntui\nshell:-l\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_config_defaults_and_wrong_owner_returns_not_found() {
+        let (root, state) = state().await;
+        let default = crate::launch_config::resolve(&state, "terminal", None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(default.id, "terminal-default");
+        let response = create(
+            State(state),
+            Json(CreateRequest {
+                cwd: Some(serde_json::Value::String(
+                    root.path().to_string_lossy().into_owned(),
+                )),
+                cols: None,
+                rows: None,
+                launch_config_id: Some("opencode-default".into()),
+                workspace_id: None,
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn invalid_workspace_does_not_start_terminal_script() {
+        let (root, state) = state().await;
+        let response = create(
+            State(state),
+            Json(CreateRequest {
+                cwd: Some(serde_json::Value::String(
+                    root.path().to_string_lossy().into_owned(),
+                )),
+                cols: None,
+                rows: None,
+                launch_config_id: None,
+                workspace_id: Some("missing".into()),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(!root.path().join("terminal-runs").exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn terminal_run_directory_is_removed_on_exit() {
+        let (root, state) = state().await;
+        let session = spawn_with_cwd(
+            state,
+            CreateRequest::default(),
+            root.path().to_owned(),
+            config(["exit 0", "", ""]),
+        )
+        .unwrap();
+        let run_dir = session.runtime_dir().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+        assert!(!run_dir.exists());
     }
 }

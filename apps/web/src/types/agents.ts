@@ -30,7 +30,7 @@ export type AgentInstall = {
   version: string;
 };
 
-export type AgentLaunchConfig = {
+export type LaunchConfig = {
   id: string;
   agentId: string;
   name: string;
@@ -42,10 +42,13 @@ export type AgentLaunchConfig = {
   updatedAt: number;
 };
 
-export type AgentLaunchConfigInput = Pick<
-  AgentLaunchConfig,
+export type LaunchConfigInput = Pick<
+  LaunchConfig,
   "agentId" | "name" | "isDefault" | "preLaunchScript" | "providerScript" | "tuiScript"
 >;
+
+export type AgentLaunchConfig = LaunchConfig;
+export type AgentLaunchConfigInput = LaunchConfigInput;
 export type HistorySession = {
   id: string;
   title: string;

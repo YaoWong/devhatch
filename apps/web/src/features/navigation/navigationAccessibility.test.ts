@@ -6,11 +6,15 @@ import webAppsSource from "../web-apps/WebApps.tsx?raw";
 import terminalSettingsSource from "../terminals/TerminalSettingsControls.tsx?raw";
 import terminalLayoutSource from "../terminals/TerminalLayoutPresetControl.tsx?raw";
 import launchPathsSource from "../terminals/LaunchPaths.tsx?raw";
+import terminalWorkspaceSource from "../terminals/TerminalWorkspace.tsx?raw";
+import workspaceControllerSource from "../terminals/useWorkspaceController.ts?raw";
+import agentRailSource from "../agents/AgentRailPage.tsx?raw";
 import agentSessionListSource from "../agents/AgentSessionList.tsx?raw";
 import appNavigationRailSource from "../../app/AppNavigationRail.tsx?raw";
 import resizeHandleSource from "../../shared/ui/RailResizeHandle.tsx?raw";
 import floatingAlertSource from "../../shared/ui/FloatingAlert.tsx?raw";
 import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
+import workspaceListSource from "../../shared/ui/RailWorkspaceList.tsx?raw";
 import navigationSource from "./useNavigation.ts?raw";
 import { getRailFocusRequest } from "./useNavigation";
 
@@ -151,16 +155,42 @@ describe("navigation rail accessibility", () => {
     expect(webAppsSource).toContain('<FloatingAlert className="tw:absolute tw:left-1/2 tw:bottom-[18px]');
   });
 
-  it("allocates remaining Workbench rail height to Agent History", () => {
-    expect(appNavigationRailSource).toContain('className="workbench-rail-layout"');
+  it("orders unified Workbench launch controls and renders history only for Agent targets", () => {
+    const workspaceIndex = appNavigationRailSource.indexOf("<WorkspaceList");
+    const setupIndex = appNavigationRailSource.indexOf("<AgentRailPage");
+    const pathsIndex = appNavigationRailSource.indexOf("<WorkspaceLaunchPaths");
+    const historyIndex = appNavigationRailSource.indexOf("{agent.selectedAgent && (");
+    expect(workspaceIndex).toBeGreaterThan(-1);
+    expect(setupIndex).toBeGreaterThan(workspaceIndex);
+    expect(pathsIndex).toBeGreaterThan(setupIndex);
+    expect(historyIndex).toBeGreaterThan(pathsIndex);
+    expect(appNavigationRailSource).toMatch(/onLaunch=\{\(path\) => \{\s*workspace\.ensureLaunchPathSelected\(path\.id\);\s*void agent\.launch\(\{ cwd: path\.path \}\);/);
+    expect(launchPathsSource).toContain('aria-label={`Launch ${launchTargetName ?? "session"} in ${item.path}`}');
+  });
+
+  it("allocates remaining Workbench rail height by launch target", () => {
+    expect(appNavigationRailSource).toContain("workbench-rail-layout ${agent.selectedAgent ? \"has-agent-history\" : \"terminal-target\"}");
     expect(appNavigationRailSource).toContain('style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}');
     expect(agentSessionListSource).toContain(">Agent History</p>");
     expect(shellStyles).toMatch(/\.agent-detail\s*{[^}]*overflow:\s*hidden/);
     expect(shellStyles).toMatch(/\.workbench-rail-layout\s*{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.workspace-section\s*{[^}]*max-height:\s*min\(240px, 34%\)[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.paths-section\s*{[^}]*max-height:\s*var\(--launch-paths-max-height, 286px\)[^}]*flex:\s*0 1 auto[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.agent-rail-layout\s*{[^}]*min-height:\s*min\(220px, 40%\)[^}]*flex:\s*1 1 220px[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.agent-launch-section\s*{[^}]*max-height:\s*45%[^}]*overflow-y:\s*auto/);
+    expect(shellStyles).toMatch(/\.workspace-section\s*{[^}]*flex:\s*none[^}]*overflow:\s*visible/);
+    expect(workspaceListSource).toContain("const currentWorkspace = workspaces[currentIndex]");
+    expect(workspaceListSource).toContain("const otherWorkspaces = currentWorkspace ? workspaces.filter");
+    expect(workspaceListSource).toContain("aria-expanded={expanded}");
+    expect(workspaceListSource).toContain("aria-controls={otherWorkspacesId}");
+    expect(workspaceListSource).toContain('event.key !== "Escape"');
+    expect(workspaceListSource).toContain("tw:max-h-[min(168px,24vh)]");
+    expect(workspaceListSource).toContain("setExpanded(false);");
+    expect(workspaceListSource).toMatch(/otherWorkspaces\.map[\s\S]*?aria-pressed=\{false\}[\s\S]*?setExpanded\(false\);[\s\S]*?onSelect\(workspace\.id\)/);
+    expect(workspaceControllerSource).toMatch(/const activateWorkspace[\s\S]*?closeSidebar\(\);[\s\S]*?bumpFocus\(\);/);
+    expect(terminalWorkspaceSource).toContain("if (visible && !activeId) stageRef.current?.focus({ preventScroll: true });");
+    expect(agentRailSource).toContain("disabled={busy || launching || configsLoading}");
+    expect(workspaceListSource.match(/aria-label="Rename workspace"/g)).toHaveLength(2);
+    expect(workspaceListSource.match(/aria-label="Delete workspace"/g)).toHaveLength(2);
+    expect(shellStyles).toMatch(/\.paths-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.has-agent-history \.paths-section\s*{[^}]*max-height:\s*var\(--launch-paths-max-height, 286px\)[^}]*flex:\s*0 1 auto/);
+    expect(shellStyles).toMatch(/\.agent-launch-section\s*{[^}]*max-height:\s*min\(420px, 48%\)[^}]*overflow-y:\s*auto/);
     expect(shellStyles).toMatch(/\.sessions-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow-y:\s*auto/);
     expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*flex:\s*none[^}]*overflow:\s*visible/);
   });
