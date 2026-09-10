@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSession } from "../../types/agents";
 import type { TerminalInfo } from "../../types/terminals";
 import type { Workspace } from "../../types/workspaces";
-import { launchPathSelection, mergeCreatedWorkspace, removeWorkspaceSession, workspaceSessions } from "./useWorkspaceController";
+import { launchPathSelection, mergeCreatedWorkspace, removeWorkspaceSession, toggleLaunchPathSelection, workspaceSessions } from "./useWorkspaceController";
 
 const base = {
   name: "session",
@@ -37,6 +37,12 @@ describe("unified workspace state", () => {
     ];
     expect(launchPathSelection(paths, "b")).toBe("b");
     expect(launchPathSelection(paths, "b", "a")).toBe("a");
+  });
+
+  it("toggles and switches launch path selection", () => {
+    expect(toggleLaunchPathSelection(null, "a")).toBe("a");
+    expect(toggleLaunchPathSelection("a", "a")).toBeNull();
+    expect(toggleLaunchPathSelection("a", "b")).toBe("b");
   });
 
   it("resolves mixed members in backend order", () => {

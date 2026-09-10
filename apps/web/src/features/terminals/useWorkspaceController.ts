@@ -55,6 +55,10 @@ export function launchPathSelection(
   return preferred === undefined && current === null ? null : (paths[0]?.id ?? null);
 }
 
+export function toggleLaunchPathSelection(current: string | null, id: string) {
+  return current === id ? null : id;
+}
+
 export function workspaceSessions(workspace: Workspace | null, sessions: WorkspaceSession[]) {
   const byKey = new Map(sessions.map((session) => [sessionKey(session), session]));
   return (workspace?.members ?? []).flatMap((member) => {
@@ -486,7 +490,8 @@ export function useWorkspaceController({
   }, [closeSidebar, reportError]);
 
   const selectLaunchPath = useCallback((id: string) => {
-    if (launchPathsRef.current.some((path) => path.id === id)) setSelectedPathId(id);
+    if (!launchPathsRef.current.some((path) => path.id === id)) return;
+    setSelectedPathId((current) => toggleLaunchPathSelection(current, id));
   }, []);
 
   const pinLaunchPath = useCallback((path: LaunchPath) => {

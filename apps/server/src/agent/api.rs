@@ -619,7 +619,7 @@ mod tests {
             axum::http::StatusCode::SERVICE_UNAVAILABLE
         );
         assert!(state.session(session.id(), SessionKind::Agent).is_none());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_sessions")
             .fetch_one(state.pool())
             .await
             .unwrap();
@@ -695,7 +695,7 @@ mod tests {
             axum::http::StatusCode::SERVICE_UNAVAILABLE
         );
         assert!(state.session(session.id(), SessionKind::Agent).is_none());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_sessions")
             .fetch_one(state.pool())
             .await
             .unwrap();

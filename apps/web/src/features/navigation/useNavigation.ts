@@ -48,7 +48,7 @@ export function useNavigation(bumpFocus: () => void) {
   });
   const modeMeta = useMemo(
     () => ({
-      terminal: { label: "Terminal", icon: SquareTerminal },
+      terminal: { label: "Workbench", icon: SquareTerminal },
       skills: { label: "Skills", icon: Sparkles },
       webapp: { label: "Web Apps", icon: Globe2 },
       settings: { label: "Settings", icon: Settings },

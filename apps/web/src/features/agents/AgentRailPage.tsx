@@ -171,7 +171,7 @@ export function AgentRailPage({
           onClose={() => setConfigOpen(false)}
         />
       )}
-      <div className={railMenuSectionClass}>
+      <div className={`${railMenuSectionClass} agent-launch-section`}>
         <p className={railMenuLabelClass}>Agent CLI</p>
         {busy ? (
           showAgentLoading ? <RailQuietMessage>Loading agents…</RailQuietMessage> : null

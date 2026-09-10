@@ -108,11 +108,18 @@ export function AgentSessionList({
     [],
   );
   return (
-    <div className={`${railMenuSectionClass} sessions-section`}>
+    <div
+      className={`${railMenuSectionClass} sessions-section ${scrolling ? "is-scrolling" : ""}`}
+      onScroll={() => {
+        setScrolling(true);
+        if (timer.current) window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setScrolling(false), 700);
+      }}
+    >
       <LiveRegion>{announcement}</LiveRegion>
       <div className="tw:mb-[8px] tw:grid tw:flex-none tw:gap-[6px]">
         <div className="tw:flex tw:min-h-[20px] tw:flex-wrap tw:items-center tw:justify-between tw:gap-[8px]">
-          <p className={`${railMenuLabelClass} tw:mb-0 tw:leading-[20px]`}>Sessions</p>
+          <p className={`${railMenuLabelClass} tw:mb-0 tw:leading-[20px]`}>Agent History</p>
           {selectedPath && (
             <label className="tw:inline-flex tw:min-h-10 tw:cursor-pointer tw:items-center tw:gap-1.5 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:text-[var(--color-text-muted)] tw:[@media(pointer:coarse)]:min-h-11">
               <span>Subdirectories</span>
@@ -143,14 +150,7 @@ export function AgentSessionList({
           </label>
         )}
       </div>
-      <div
-        className={`agent-session-list ${scrolling ? "is-scrolling" : ""}`}
-        onScroll={() => {
-          setScrolling(true);
-          if (timer.current) window.clearTimeout(timer.current);
-          timer.current = window.setTimeout(() => setScrolling(false), 700);
-        }}
-      >
+      <div className="agent-session-list">
         {rows.length ? (
           <>
             {(historyUnavailable || historyMessage) && (

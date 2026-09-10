@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
+import { useEffect, useState, type CSSProperties, type Dispatch, type FocusEventHandler, type MouseEventHandler, type RefObject, type SetStateAction } from "react";
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentRailPage } from "../features/agents/AgentRailPage";
 import { selectedAgentLaunchOptions } from "../features/agents/agentLaunchState";
@@ -148,7 +148,10 @@ export function AppNavigationRail({
       onConfirmCloseChange={onConfirmCloseChange}
       onDefaultAgentChange={agent.setDefaultAgentId}
       terminalContent={
-        <>
+        <div
+          className="workbench-rail-layout"
+          style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}
+        >
           <WorkspaceList
             workspaces={workspace.workspaces}
             launchPaths={workspace.launchPaths}
@@ -229,7 +232,7 @@ export function AppNavigationRail({
             onDeleteHistory={agent.deleteHistorySession}
             onRetryHistory={agent.retryHistory}
           />
-        </>
+        </div>
       }
       skillsContent={
         <SkillsRailPage

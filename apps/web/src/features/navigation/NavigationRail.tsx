@@ -167,10 +167,10 @@ export function NavigationRail({
               render={<Button variant="ghost" className="tw:h-10 tw:min-w-0 tw:w-full tw:justify-start tw:rounded-xl tw:border-0 tw:bg-transparent! tw:px-3 tw:py-2 tw:text-sm tw:font-semibold tw:text-[var(--color-text-subtle)] tw:transition-none tw:[@media(pointer:coarse)]:h-11 tw:hover:bg-transparent! tw:hover:text-[var(--color-text-subtle)]! tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-subtle)]! tw:data-popup-open:bg-transparent! tw:data-popup-open:text-[var(--color-text-subtle)]!" type="button" aria-hidden={!settingsAvailable} tabIndex={settingsAvailable ? undefined : -1} />}
             >
               <SlidersHorizontal className="tw:size-[19px] tw:text-current" />
-              <span>Terminal settings</span>
+              <span>Workbench settings</span>
             </PopoverTrigger>
           </div>
-          <PopoverContent id="canvas-terminal-settings" data-canvas-rail-popover="" side="top" align="start" sideOffset={8} initialFocus={false} className="canvas-terminal-settings tw:max-h-[var(--available-height)] tw:min-w-0 tw:w-[calc(var(--anchor-width)+48px)] tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-3 tw:shadow-[0_12px_32px_rgb(0_0_0/16%)] tw:ring-0 tw:backdrop-blur-xl tw:[@media(pointer:coarse)]:w-[calc(var(--anchor-width)+52px)]" aria-label="Terminal settings">
+          <PopoverContent id="canvas-terminal-settings" data-canvas-rail-popover="" side="top" align="start" sideOffset={8} initialFocus={false} className="canvas-terminal-settings tw:max-h-[var(--available-height)] tw:min-w-0 tw:w-[calc(var(--anchor-width)+48px)] tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-3 tw:shadow-[0_12px_32px_rgb(0_0_0/16%)] tw:ring-0 tw:backdrop-blur-xl tw:[@media(pointer:coarse)]:w-[calc(var(--anchor-width)+52px)]" aria-label="Workbench settings">
             <TerminalSettingsControls
               capacity={capacity}
               layoutCount={layoutCount}
@@ -209,7 +209,7 @@ function ModeButton({ mode, modeRefs, active, count, onNavigate }: {
   onNavigate: (page: RailPage, motion: "forward") => void;
 }) {
   const meta = {
-    terminal: { icon: SquareTerminal, label: "Terminal" },
+    terminal: { icon: SquareTerminal, label: "Workbench" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
   }[mode];
@@ -234,7 +234,7 @@ function DetailPage({ mode, className, railMotion, active, pageRefs, titleRefs, 
   children: React.ReactNode;
 }) {
   const meta = {
-    terminal: { icon: SquareTerminal, label: "Terminal" },
+    terminal: { icon: SquareTerminal, label: "Workbench" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
   }[mode];

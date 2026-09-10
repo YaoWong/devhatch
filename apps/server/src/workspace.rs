@@ -250,7 +250,7 @@ pub(crate) async fn attach_session(
             return Ok(None);
         }
         let position = sqlx::query_scalar::<_, i64>(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM workspace_members WHERE workspace_id = ?",
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM workspace_sessions WHERE workspace_id = ?",
         )
         .bind(workspace_id)
         .fetch_one(&mut *transaction)
@@ -283,7 +283,7 @@ pub(crate) async fn remove_member(
 ) -> Result<Option<Workspace>, sqlx::Error> {
     let mut transaction = pool.begin().await?;
     let row = sqlx::query_as::<_, (String, i64)>(
-        "SELECT workspace_id, position FROM workspace_members WHERE session_kind = ? AND session_id = ?",
+        "SELECT workspace_id, position FROM workspace_sessions WHERE session_kind = ? AND session_id = ?",
     )
     .bind(member.kind().as_str())
     .bind(member.session_id())
@@ -299,7 +299,7 @@ pub(crate) async fn remove_member(
     .bind(&workspace_id)
     .fetch_one(&mut *transaction)
     .await?;
-    sqlx::query("DELETE FROM workspace_members WHERE session_kind = ? AND session_id = ?")
+    sqlx::query("DELETE FROM workspace_sessions WHERE session_kind = ? AND session_id = ?")
         .bind(member.kind().as_str())
         .bind(member.session_id())
         .execute(&mut *transaction)
@@ -307,7 +307,7 @@ pub(crate) async fn remove_member(
     if active.0.as_deref() == Some(member.kind().as_str())
         && active.1.as_deref() == Some(member.session_id())
     {
-        let fallback = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_members WHERE workspace_id = ? ORDER BY CASE WHEN position > ? THEN 0 ELSE 1 END, position, session_kind, session_id LIMIT 1")
+        let fallback = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_sessions WHERE workspace_id = ? ORDER BY CASE WHEN position > ? THEN 0 ELSE 1 END, position, session_kind, session_id LIMIT 1")
             .bind(&workspace_id)
             .bind(position)
             .fetch_optional(&mut *transaction)
@@ -342,7 +342,7 @@ async fn create_workspace(
     let mut affected = HashSet::new();
     for member in members {
         if let Some(workspace_id) = sqlx::query_scalar::<_, String>(
-            "SELECT workspace_id FROM workspace_members WHERE session_kind = ? AND session_id = ?",
+            "SELECT workspace_id FROM workspace_sessions WHERE session_kind = ? AND session_id = ?",
         )
         .bind(member.kind().as_str())
         .bind(member.session_id())
@@ -351,7 +351,7 @@ async fn create_workspace(
         {
             affected.insert(workspace_id);
         }
-        sqlx::query("DELETE FROM workspace_members WHERE session_kind = ? AND session_id = ?")
+        sqlx::query("DELETE FROM workspace_sessions WHERE session_kind = ? AND session_id = ?")
             .bind(member.kind().as_str())
             .bind(member.session_id())
             .execute(&mut *transaction)
@@ -436,7 +436,7 @@ async fn delete_workspace(
 ) -> Result<Option<Vec<MemberIdentity>>, sqlx::Error> {
     let mut transaction = pool.begin().await?;
     let members = load_members(&mut transaction, id).await?;
-    sqlx::query("DELETE FROM workspace_members WHERE workspace_id = ?")
+    sqlx::query("DELETE FROM workspace_sessions WHERE workspace_id = ?")
         .bind(id)
         .execute(&mut *transaction)
         .await?;
@@ -468,7 +468,7 @@ async fn reconcile_transaction(
     exclude_unowned: Option<&MemberIdentity>,
 ) -> Result<(), sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT session_kind, session_id, workspace_id FROM workspace_members",
+        "SELECT session_kind, session_id, workspace_id FROM workspace_sessions",
     )
     .fetch_all(&mut **transaction)
     .await?;
@@ -479,7 +479,7 @@ async fn reconcile_transaction(
         if eligible.contains(&member) {
             owned.insert(member);
         } else {
-            sqlx::query("DELETE FROM workspace_members WHERE session_kind = ? AND session_id = ?")
+            sqlx::query("DELETE FROM workspace_sessions WHERE session_kind = ? AND session_id = ?")
                 .bind(member.kind().as_str())
                 .bind(member.session_id())
                 .execute(&mut **transaction)
@@ -519,7 +519,7 @@ async fn repair_workspace(
     };
     let active_valid = match (active_kind.as_deref(), active_id.as_deref()) {
         (Some(kind), Some(id)) => {
-            sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspace_members WHERE workspace_id = ? AND session_kind = ? AND session_id = ?)")
+            sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspace_sessions WHERE workspace_id = ? AND session_kind = ? AND session_id = ?)")
                 .bind(workspace_id)
                 .bind(kind)
                 .bind(id)
@@ -533,7 +533,7 @@ async fn repair_workspace(
     let fallback = if active_valid {
         None
     } else {
-        sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_members WHERE workspace_id = ? ORDER BY position, session_kind, session_id LIMIT 1")
+        sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_sessions WHERE workspace_id = ? ORDER BY position, session_kind, session_id LIMIT 1")
             .bind(workspace_id)
             .fetch_optional(&mut **transaction)
             .await?
@@ -580,7 +580,7 @@ async fn insert_member(
     member: &MemberIdentity,
     position: i64,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("INSERT INTO workspace_members (session_kind, session_id, workspace_id, position) VALUES (?, ?, ?, ?)")
+    sqlx::query("INSERT INTO workspace_sessions (session_kind, session_id, workspace_id, position) VALUES (?, ?, ?, ?)")
         .bind(member.kind().as_str())
         .bind(member.session_id())
         .bind(workspace_id)
@@ -604,7 +604,7 @@ async fn list_items_in_transaction(
     let rows = sqlx::query_as::<_, WorkspaceRow>("SELECT id, name, active_session_kind, active_session_id, created_at, updated_at FROM workspaces ORDER BY created_at, id")
         .fetch_all(&mut **transaction)
         .await?;
-    let member_rows = sqlx::query_as::<_, (String, String, String)>("SELECT workspace_id, session_kind, session_id FROM workspace_members ORDER BY workspace_id, position, session_kind, session_id")
+    let member_rows = sqlx::query_as::<_, (String, String, String)>("SELECT workspace_id, session_kind, session_id FROM workspace_sessions ORDER BY workspace_id, position, session_kind, session_id")
         .fetch_all(&mut **transaction)
         .await?;
     let mut members = HashMap::<String, Vec<MemberIdentity>>::new();
@@ -641,7 +641,7 @@ async fn find_in_transaction(
     let Some(row) = row else {
         return Ok(None);
     };
-    let rows = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_members WHERE workspace_id = ? ORDER BY position, session_kind, session_id")
+    let rows = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_sessions WHERE workspace_id = ? ORDER BY position, session_kind, session_id")
         .bind(id)
         .fetch_all(&mut **transaction)
         .await?;
@@ -656,7 +656,7 @@ async fn load_members(
     transaction: &mut Transaction<'_, Sqlite>,
     workspace_id: &str,
 ) -> Result<Vec<MemberIdentity>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_members WHERE workspace_id = ? ORDER BY position, session_kind, session_id")
+    let rows = sqlx::query_as::<_, (String, String)>("SELECT session_kind, session_id FROM workspace_sessions WHERE workspace_id = ? ORDER BY position, session_kind, session_id")
         .bind(workspace_id)
         .fetch_all(&mut **transaction)
         .await?;
@@ -690,7 +690,7 @@ async fn member_belongs(
     workspace_id: &str,
     member: &MemberIdentity,
 ) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspace_members WHERE workspace_id = ? AND session_kind = ? AND session_id = ?)")
+    sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM workspace_sessions WHERE workspace_id = ? AND session_kind = ? AND session_id = ?)")
         .bind(workspace_id)
         .bind(member.kind().as_str())
         .bind(member.session_id())
@@ -1085,7 +1085,7 @@ mod tests {
             .await
             .unwrap();
         let counts = sqlx::query_as::<_, (i64, i64)>(
-            "SELECT (SELECT COUNT(*) FROM workspace_members), (SELECT COUNT(*) FROM launch_paths)",
+            "SELECT (SELECT COUNT(*) FROM workspace_sessions), (SELECT COUNT(*) FROM launch_paths)",
         )
         .fetch_one(&pool)
         .await
@@ -1116,7 +1116,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_sessions")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1192,6 +1192,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn database_rejects_active_sessions_outside_the_workspace() {
+        let pool = pool().await;
+        let first = create_workspace(&pool, None, &[terminal("first")])
+            .await
+            .unwrap();
+        let second = create_workspace(&pool, None, &[agent("second")])
+            .await
+            .unwrap();
+
+        let mut transaction = pool.begin().await.unwrap();
+        sqlx::query("UPDATE workspaces SET active_session_kind = 'agent', active_session_id = 'second' WHERE id = ?")
+            .bind(&first.id)
+            .execute(&mut *transaction)
+            .await
+            .unwrap();
+        assert!(transaction.commit().await.is_err());
+
+        let first = find(&pool, &first.id).await.unwrap().unwrap();
+        assert_eq!(first.active_session, Some(terminal("first")));
+        assert_eq!(
+            find(&pool, &second.id).await.unwrap().unwrap().members,
+            [agent("second")]
+        );
+    }
+
+    #[tokio::test]
+    async fn baseline_has_only_the_unified_workspace_session_schema() {
+        let pool = pool().await;
+        let sessions: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspace_sessions'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let members: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspace_members'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((sessions, members), (1, 0));
+    }
+
+    #[tokio::test]
     async fn migration_namespaces_legacy_workspaces_without_losing_data() {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -1238,6 +1282,18 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("INSERT INTO workspaces (id, name, active_session_kind, active_session_id, created_at, updated_at) VALUES ('invalid-active', NULL, 'terminal', 'missing', 9, 10), ('cleared-active', NULL, NULL, NULL, 11, 12)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO workspace_members (session_kind, session_id, workspace_id, position) VALUES ('agent', 'fallback', 'invalid-active', 0), ('terminal', 'inactive', 'cleared-active', 0)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0006_workspace_integrity.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
         let workspaces = list_items(&pool).await.unwrap();
         let terminal_workspace = workspaces
             .iter()
@@ -1265,7 +1321,7 @@ mod tests {
                 .any(|workspace| { workspace.id == "agent:empty" && workspace.members.is_empty() })
         );
         let shared_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM workspace_members WHERE session_id = 'shared'",
+            "SELECT COUNT(*) FROM workspace_sessions WHERE session_id = 'shared'",
         )
         .fetch_one(&pool)
         .await
@@ -1333,6 +1389,31 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(height, 320);
+        let repaired = workspaces
+            .iter()
+            .find(|workspace| workspace.id == "invalid-active")
+            .unwrap();
+        assert_eq!(repaired.members, [agent("fallback")]);
+        assert_eq!(repaired.active_session, Some(agent("fallback")));
+        let cleared = workspaces
+            .iter()
+            .find(|workspace| workspace.id == "cleared-active")
+            .unwrap();
+        assert_eq!(cleared.members, [terminal("inactive")]);
+        assert_eq!(cleared.active_session, None);
+        let foreign_key_errors: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM pragma_foreign_key_check")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(foreign_key_errors, 0);
+        let redundant_index: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'workspace_members_workspace'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(redundant_index, 0);
         for table in [
             "terminal_workspace_members",
             "terminal_workspaces",

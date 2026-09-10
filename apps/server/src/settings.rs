@@ -399,7 +399,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(migrations, 5);
+        assert_eq!(migrations, 6);
         let launch_configs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_launch_configs")
             .fetch_one(&pool)
             .await
@@ -442,6 +442,7 @@ mod tests {
             include_str!("../migrations/0003_agent.sql"),
             include_str!("../migrations/0004_display_settings.sql"),
             include_str!("../migrations/0005_workspace.sql"),
+            include_str!("../migrations/0006_workspace_integrity.sql"),
         ] {
             sqlx::raw_sql(migration).execute(&pool).await.unwrap();
         }

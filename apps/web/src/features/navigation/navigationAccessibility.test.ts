@@ -4,7 +4,10 @@ import appSource from "../../app/App.tsx?raw";
 import settingsSource from "../settings/SettingsView.tsx?raw";
 import webAppsSource from "../web-apps/WebApps.tsx?raw";
 import terminalSettingsSource from "../terminals/TerminalSettingsControls.tsx?raw";
+import terminalLayoutSource from "../terminals/TerminalLayoutPresetControl.tsx?raw";
+import launchPathsSource from "../terminals/LaunchPaths.tsx?raw";
 import agentSessionListSource from "../agents/AgentSessionList.tsx?raw";
+import appNavigationRailSource from "../../app/AppNavigationRail.tsx?raw";
 import resizeHandleSource from "../../shared/ui/RailResizeHandle.tsx?raw";
 import floatingAlertSource from "../../shared/ui/FloatingAlert.tsx?raw";
 import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
@@ -92,8 +95,18 @@ describe("navigation rail accessibility", () => {
     expect(pixelRangeSource).not.toContain("Decrease ${label}");
   });
 
+  it("uses Workbench for the unified product surface", () => {
+    expect(navigationSource).toContain('terminal: { label: "Workbench", icon: SquareTerminal }');
+    expect(railSource.match(/label: "Workbench"/g)).toHaveLength(2);
+    expect(railSource).toContain("Workbench settings");
+    expect(railSource).not.toContain("Terminal settings");
+    expect(terminalLayoutSource).toContain('aria-label={`${count}-pane layout`}');
+  });
+
   it("reveals direct actions when their containers are wide enough", () => {
-    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{\s*@container navigation-rail \(min-width: 262px\) \{[\s\S]*?\.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
+    expect(launchPathsSource).toContain("launch-path-row");
+    expect(launchPathsSource).toContain("path-actions tw:flex tw:w-0");
+    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{\s*@container navigation-rail \(min-width: 262px\) \{[\s\S]*?\.launch-path-row:hover \.path-actions,[\s\S]*?\.launch-path-row:focus-within \.path-actions,[\s\S]*?\.launch-path-row:has\(\.path-actions \[data-popup-open\]\) \.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
     expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 280px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
   });
@@ -138,8 +151,22 @@ describe("navigation rail accessibility", () => {
     expect(webAppsSource).toContain('<FloatingAlert className="tw:absolute tw:left-1/2 tw:bottom-[18px]');
   });
 
-  it("keeps the agent page scrollable and resize targets large", () => {
-    expect(shellStyles).toMatch(/\.agent-detail\s*{[^}]*overflow-y:\s*auto/);
+  it("allocates remaining Workbench rail height to Agent History", () => {
+    expect(appNavigationRailSource).toContain('className="workbench-rail-layout"');
+    expect(appNavigationRailSource).toContain('style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}');
+    expect(agentSessionListSource).toContain(">Agent History</p>");
+    expect(shellStyles).toMatch(/\.agent-detail\s*{[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.workbench-rail-layout\s*{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.workspace-section\s*{[^}]*max-height:\s*min\(240px, 34%\)[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.paths-section\s*{[^}]*max-height:\s*var\(--launch-paths-max-height, 286px\)[^}]*flex:\s*0 1 auto[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.agent-rail-layout\s*{[^}]*min-height:\s*min\(220px, 40%\)[^}]*flex:\s*1 1 220px[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.agent-launch-section\s*{[^}]*max-height:\s*45%[^}]*overflow-y:\s*auto/);
+    expect(shellStyles).toMatch(/\.sessions-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow-y:\s*auto/);
+    expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*flex:\s*none[^}]*overflow:\s*visible/);
+  });
+
+  it("keeps the agent history internally scrollable and resize targets large", () => {
+    expect(shellStyles).toMatch(/\.agent-detail\s*{[^}]*overflow:\s*hidden/);
     expect(shellStyles).toMatch(/\.app > \.rail-resize-handle\s*{[^}]*width:\s*40px/);
     expect(shellStyles).toMatch(/@media \(pointer: coarse\)\s*{[\s\S]*?\.app > \.rail-resize-handle\s*{[^}]*width:\s*44px/);
     expect(shellStyles).toMatch(/\.rail-resize-handle > span\s*{[^}]*width:\s*3px/);

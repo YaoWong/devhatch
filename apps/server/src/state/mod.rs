@@ -318,16 +318,18 @@ mod tests {
         )
         .unwrap();
         let mut events = session.subscribe();
+        let mut transaction = state.pool().begin().await.unwrap();
         sqlx::query("INSERT INTO workspaces (id, name, active_session_kind, active_session_id, created_at, updated_at) VALUES ('workspace', NULL, 'agent', ?, 0, 0)")
             .bind(session.id())
-            .execute(state.pool())
+            .execute(&mut *transaction)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO workspace_members (session_kind, session_id, workspace_id, position) VALUES ('agent', ?, 'workspace', 0)")
+        sqlx::query("INSERT INTO workspace_sessions (session_kind, session_id, workspace_id, position) VALUES ('agent', ?, 'workspace', 0)")
             .bind(session.id())
-            .execute(state.pool())
+            .execute(&mut *transaction)
             .await
             .unwrap();
+        transaction.commit().await.unwrap();
         assert!(session.write_input("\n"));
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -340,7 +342,7 @@ mod tests {
         .unwrap();
         assert!(state.live_agent_ids_if_contains(&session).is_none());
         assert!(state.session(session.id(), SessionKind::Agent).is_some());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_sessions")
             .fetch_one(state.pool())
             .await
             .unwrap();
@@ -359,7 +361,7 @@ mod tests {
                 .is_err()
         );
         assert!(state.session(session.id(), SessionKind::Agent).is_none());
-        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_members")
+        let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workspace_sessions")
             .fetch_one(state.pool())
             .await
             .unwrap();

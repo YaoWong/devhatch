@@ -49,12 +49,12 @@ export function RailWorkspaceList<T extends RailWorkspace>({
   onConfirm: (action: ConfirmAction) => void;
 }) {
   return (
-    <div className={railMenuSectionClass}>
+    <div className={`${railMenuSectionClass} workspace-section`}>
       <div className="tw:mb-[7px] tw:flex tw:items-center tw:justify-between tw:gap-[5px]">
         <p className={`${railMenuLabelClass} tw:mb-0 tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap`}>Workspaces</p>
         <RailCreateButton label="New" disabled={launching} onClick={onCreate} />
       </div>
-      <div className="tw:grid tw:gap-2">
+      <div className="workspace-list tw:grid tw:min-h-0 tw:gap-2 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
         {workspaces.length ? workspaces.map((workspace, index) => {
           const selected = workspace.id === selectedWorkspaceId;
           const renaming = renamingId === workspace.id;

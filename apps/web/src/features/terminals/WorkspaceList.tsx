@@ -84,7 +84,6 @@ export function WorkspaceList({
           action: () => onDeletePath(path),
         })}
         emptyMessage="Choose a directory to add your first shared Launch Path."
-        className="tw:max-h-[min(52vh,480px)]"
       />
     </>
   );
