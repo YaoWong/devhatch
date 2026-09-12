@@ -101,8 +101,8 @@ describe("navigation rail accessibility", () => {
   });
 
   it("uses Workbench for the unified product surface", () => {
-    expect(navigationSource).toContain('terminal: { label: "Workbench", icon: SquareTerminal }');
-    expect(railSource.match(/label: "Workbench"/g)).toHaveLength(2);
+    expect(navigationSource).toContain('terminal: { label: "Workbench", icon: Hammer }');
+    expect(railSource.match(/terminal: \{ icon: Hammer, label: "Workbench" \}/g)).toHaveLength(2);
     expect(railSource).toContain("Workbench settings");
     expect(railSource).not.toContain("Terminal settings");
     expect(terminalLayoutSource).toContain('aria-label={`${count}-pane layout`}');

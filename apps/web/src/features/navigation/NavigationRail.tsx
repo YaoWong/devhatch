@@ -1,4 +1,4 @@
-import { ArrowLeft, Globe2, LoaderCircle, Pin, PinOff, SlidersHorizontal, Sparkles, Square, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Globe2, Hammer, LoaderCircle, Pin, PinOff, SlidersHorizontal, Sparkles, Square } from "lucide-react";
 import type { FocusEventHandler, MouseEventHandler, RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -217,7 +217,7 @@ function ModeButton({ mode, modeRefs, active, count, onNavigate }: {
   onNavigate: (page: RailPage, motion: "forward") => void;
 }) {
   const meta = {
-    terminal: { icon: SquareTerminal, label: "Workbench" },
+    terminal: { icon: Hammer, label: "Workbench" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
   }[mode];
@@ -242,7 +242,7 @@ function DetailPage({ mode, className, railMotion, active, pageRefs, titleRefs, 
   children: React.ReactNode;
 }) {
   const meta = {
-    terminal: { icon: SquareTerminal, label: "Workbench" },
+    terminal: { icon: Hammer, label: "Workbench" },
     skills: { icon: Sparkles, label: "Skills" },
     webapp: { icon: Globe2, label: "Web Apps" },
   }[mode];

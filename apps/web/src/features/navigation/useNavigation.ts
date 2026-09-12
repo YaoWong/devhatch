@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
+import { Globe2, Hammer, Settings, Sparkles } from "lucide-react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 
 type RailFocusRequest = {
@@ -48,7 +48,7 @@ export function useNavigation(bumpFocus: () => void) {
   });
   const modeMeta = useMemo(
     () => ({
-      terminal: { label: "Workbench", icon: SquareTerminal },
+      terminal: { label: "Workbench", icon: Hammer },
       skills: { label: "Skills", icon: Sparkles },
       webapp: { label: "Web Apps", icon: Globe2 },
       settings: { label: "Settings", icon: Settings },
