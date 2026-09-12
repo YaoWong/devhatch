@@ -5,6 +5,7 @@ export const DEFAULT_UI_SCALE_PERCENT = 100;
 export const MIN_UI_SCALE_PERCENT = 80;
 export const MAX_UI_SCALE_PERCENT = 125;
 export const DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX = 286;
+export const DEFAULT_WORKSPACE_MAX_HEIGHT_PX = 286;
 export const DEFAULT_NAVIGATION_RAIL_WIDTH_PX = 288;
 
 const FONT_SIZE_STORAGE_KEY = "devhatch-font-size-px";

@@ -18,6 +18,7 @@ type TitleRefs = RefObject<Record<DetailMode, HTMLSpanElement | null>>;
 export function NavigationRail({
   railPage,
   railMotion,
+  railWidthPx,
   workspaceMode,
   sessionCount,
   modesPageRef,
@@ -33,6 +34,7 @@ export function NavigationRail({
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
+  workspaceHeight,
   confirmClose,
   agents,
   defaultAgentId,
@@ -43,6 +45,7 @@ export function NavigationRail({
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
+  onWorkspaceHeightChange,
   onConfirmCloseChange,
   onDefaultAgentChange,
   terminalContent,
@@ -63,6 +66,7 @@ export function NavigationRail({
 }: {
   railPage: RailPage;
   railMotion: RailMotion;
+  railWidthPx: number | null;
   workspaceMode: WorkspaceMode;
   sessionCount: number;
   modesPageRef: RefObject<HTMLElement | null>;
@@ -78,6 +82,7 @@ export function NavigationRail({
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
+  workspaceHeight: number;
   confirmClose: boolean;
   agents: Agent[];
   defaultAgentId: string | null;
@@ -88,6 +93,7 @@ export function NavigationRail({
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
+  onWorkspaceHeightChange: (height: number) => void;
   onConfirmCloseChange: (enabled: boolean) => void;
   onDefaultAgentChange: (agentId: string) => void;
   terminalContent: React.ReactNode;
@@ -115,7 +121,7 @@ export function NavigationRail({
     <aside
       ref={railRef}
       id={railId}
-      className="rail"
+      className={`rail ${railWidthPx !== null && railWidthPx >= 320 ? "rail-width-320" : ""} ${railWidthPx !== null && railWidthPx >= 340 ? "rail-width-340" : ""} ${railWidthPx !== null && railWidthPx >= 420 ? "rail-width-420" : ""} ${railWidthPx !== null && railWidthPx >= 440 ? "rail-width-440" : ""}`}
       tabIndex={-1}
       inert={!railInteractive ? true : undefined}
       onMouseEnter={onCanvasEnter}
@@ -179,6 +185,7 @@ export function NavigationRail({
               thumbnailsAutoHide={thumbnailsAutoHide}
               thumbnailSide={thumbnailSide}
               launchPathsHeight={launchPathsHeight}
+              workspaceHeight={workspaceHeight}
               confirmClose={confirmClose}
               agents={agents}
               defaultAgentId={defaultAgentId}
@@ -188,6 +195,7 @@ export function NavigationRail({
               onToggleThumbnailAutoHide={onToggleThumbnailAutoHide}
               onThumbnailSideChange={onThumbnailSideChange}
               onLaunchPathsHeightChange={onLaunchPathsHeightChange}
+              onWorkspaceHeightChange={onWorkspaceHeightChange}
               onConfirmCloseChange={onConfirmCloseChange}
               onDefaultAgentChange={onDefaultAgentChange}
             />

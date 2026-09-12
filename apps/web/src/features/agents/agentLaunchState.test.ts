@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSession } from "../../types/agents";
 import { selectedLaunchPath, type LaunchPath } from "../../types/workspaces";
-import { launcherActiveSession, selectedAgentLaunchOptions } from "./agentLaunchState";
+import { launcherActiveSession } from "./agentLaunchState";
 
 const paths: LaunchPath[] = [
   { id: "shared", path: "/repo", alias: null, pinned: false, lastUsedAt: 1, createdAt: 1, updatedAt: 1 },
@@ -27,8 +27,6 @@ describe("agent launch state", () => {
   it("uses the shared selected launch path independently of the selected agent", () => {
     expect(["opencode", "pi"].map(() => selectedLaunchPath(paths, "shared")?.id)).toEqual(["shared", "shared"]);
     expect(selectedLaunchPath(paths, null)).toBeNull();
-    expect(selectedAgentLaunchOptions(paths[0])).toEqual({ cwd: "/repo" });
-    expect(selectedAgentLaunchOptions(null)).toBeNull();
   });
 
   it("uses an active or fallback session from the launcher-selected agent", () => {

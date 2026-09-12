@@ -30,13 +30,15 @@ const workspace: Workspace = {
 };
 
 describe("unified workspace state", () => {
-  it("preserves a launch path selected while a refresh is pending", () => {
+  it("keeps launch paths unselected until the user explicitly selects one", () => {
     const paths = [
       { id: "a", path: "/a", alias: null, pinned: false, lastUsedAt: 2, createdAt: 1, updatedAt: 2 },
       { id: "b", path: "/b", alias: null, pinned: false, lastUsedAt: 1, createdAt: 1, updatedAt: 1 },
     ];
+    expect(launchPathSelection(paths, null)).toBeNull();
     expect(launchPathSelection(paths, "b")).toBe("b");
-    expect(launchPathSelection(paths, "b", "a")).toBe("a");
+    expect(launchPathSelection(paths, "missing")).toBeNull();
+    expect(launchPathSelection([], "b")).toBeNull();
   });
 
   it("toggles and switches launch path selection", () => {

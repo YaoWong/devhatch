@@ -107,11 +107,21 @@ describe("navigation rail accessibility", () => {
     expect(terminalLayoutSource).toContain('aria-label={`${count}-pane layout`}');
   });
 
-  it("reveals direct actions when their containers are wide enough", () => {
+  it("uses width-based action layouts without hover geometry changes", () => {
     expect(launchPathsSource).toContain("launch-path-row");
-    expect(launchPathsSource).toContain("path-actions tw:flex tw:w-0");
-    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{\s*@container navigation-rail \(min-width: 262px\) \{[\s\S]*?\.launch-path-row:hover \.path-actions,[\s\S]*?\.launch-path-row:focus-within \.path-actions,[\s\S]*?\.launch-path-row:has\(\.path-actions \[data-popup-open\]\) \.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
-    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{\s*@container navigation-rail \(min-width: 280px\) \{\s*\.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.path-actions \.path-wide-action \{ display: inline-flex !important; \}[\s\S]*?\.path-actions \[data-slot="dropdown-menu-trigger"\] \{ display: none !important; \}/);
+    expect(launchPathsSource).toContain("path-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(launchPathsSource).toContain('pathOverflowMenu(item, false, "path-overflow-secondary")');
+    expect(launchPathsSource).toContain('pathOverflowMenu(item, true, "path-overflow-all")');
+    expect(launchPathsSource).not.toMatch(/group-(?:hover|focus-within)\/path:w/);
+    expect(workspaceListSource).toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(workspaceListSource).not.toMatch(/group-(?:hover|focus-within)\/workspace:w/);
+    expect(agentSessionListSource).not.toMatch(/group-(?:hover|focus-within)\/session-row:pr/);
+    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{[\s\S]*?\.rail-width-320 \.path-actions \{ width: max\(120px, calc\(120px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-320 \.workspace-actions \{ width: max\(80px, calc\(80px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-320 \.session-actions-history \{ width: max\(104px, calc\(104px \* var\(--app-ui-scale\)\)\); \}/);
+    expect(shellStyles).toMatch(/\.rail-width-420 \.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}/);
+    expect(shellStyles).not.toContain("@container navigation-rail");
+    expect(shellStyles).not.toContain("container-name: navigation-rail");
+    expect(railSource).toContain("rail-width-320");
+    expect(appSource).toContain("railWidthPx={mobileNavigation ? null : navigationRailWidthPx}");
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
   });
 
@@ -126,7 +136,8 @@ describe("navigation rail accessibility", () => {
     expect(shellStyles).toMatch(/\.app > \.rail\s*\{/);
     expect(shellStyles).toContain(".canvas-edge-hot-zone { display: none; }");
     expect(shellStyles).toMatch(/@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\.canvas-edge-hot-zone \{[^}]*inset: 0 auto 0 0;[^}]*z-index: 39;[^}]*width: 4px;[^}]*\}[\s\S]*?\.canvas-rail-open > \.canvas-edge-hot-zone \{ width: 12px; \}[\s\S]*?\.canvas-edge-trigger \{ pointer-events: none; \}/);
-    expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*container-name:\s*navigation-rail/);
+    expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/);
+    expect(shellStyles).not.toMatch(/\.app > \.rail\s*\{[^}]*container-type:/);
     expect(responsiveStyles).not.toMatch(/\[data-slot="sheet-content"\] > \.rail/);
     expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .skills-menu-label { display: none; }');
   });
@@ -164,35 +175,59 @@ describe("navigation rail accessibility", () => {
     expect(setupIndex).toBeGreaterThan(workspaceIndex);
     expect(pathsIndex).toBeGreaterThan(setupIndex);
     expect(historyIndex).toBeGreaterThan(pathsIndex);
-    expect(appNavigationRailSource).toMatch(/onLaunch=\{\(path\) => \{\s*workspace\.ensureLaunchPathSelected\(path\.id\);\s*void agent\.launch\(\{ cwd: path\.path \}\);/);
+    expect(appNavigationRailSource).not.toContain("selectedAgentLaunchOptions");
+    expect(agentRailSource).not.toContain("<Play />");
+    expect(agentRailSource).not.toContain("onClick={onLaunch}");
+    expect(appNavigationRailSource).not.toContain("ensureLaunchPathSelected");
+    expect(appNavigationRailSource).toMatch(/onLaunch=\{\(path\) => \{\s*void agent\.launch\(\{ cwd: path\.path \}\);/);
     expect(launchPathsSource).toContain('aria-label={`Launch ${launchTargetName ?? "session"} in ${item.path}`}');
   });
 
   it("allocates remaining Workbench rail height by launch target", () => {
     expect(appNavigationRailSource).toContain("workbench-rail-layout ${agent.selectedAgent ? \"has-agent-history\" : \"terminal-target\"}");
-    expect(appNavigationRailSource).toContain('style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}');
+    expect(appNavigationRailSource).toContain('style={{ "--launch-paths-max-height": `${launchPathsHeight}px`, "--workspace-list-max-height": `${workspaceHeight}px` } as CSSProperties}');
     expect(agentSessionListSource).toContain(">Agent History</p>");
-    expect(shellStyles).toMatch(/\.agent-detail\s*{[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.workbench-rail-layout\s*{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow:\s*hidden/);
-    expect(shellStyles).toMatch(/\.workspace-section\s*{[^}]*flex:\s*none[^}]*overflow:\s*visible/);
-    expect(workspaceListSource).toContain("const currentWorkspace = workspaces[currentIndex]");
-    expect(workspaceListSource).toContain("const otherWorkspaces = currentWorkspace ? workspaces.filter");
-    expect(workspaceListSource).toContain("aria-expanded={expanded}");
-    expect(workspaceListSource).toContain("aria-controls={otherWorkspacesId}");
-    expect(workspaceListSource).toContain('event.key !== "Escape"');
-    expect(workspaceListSource).toContain("tw:max-h-[min(168px,24vh)]");
-    expect(workspaceListSource).toContain("setExpanded(false);");
-    expect(workspaceListSource).toMatch(/otherWorkspaces\.map[\s\S]*?aria-pressed=\{false\}[\s\S]*?setExpanded\(false\);[\s\S]*?onSelect\(workspace\.id\)/);
+    expect(shellStyles).toMatch(/\.agent-detail\s*\{[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.workbench-rail-layout\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.workspace-section\s*\{[^}]*max-height:\s*var\(--workspace-list-max-height, 286px\)[^}]*flex:\s*none[^}]*overflow:\s*hidden/);
+    expect(workspaceListSource).toContain('className="workspace-list tw:grid tw:min-h-0');
+    expect(workspaceListSource).toContain("workspaces.map((workspace) => {");
+    expect(workspaceListSource).toContain("aria-pressed={selected}");
+    expect(workspaceListSource).toContain("if (!selected) onSelect(workspace.id);");
+    expect(workspaceListSource).not.toContain("ChevronsUpDown");
+    expect(workspaceListSource).not.toContain("Switch workspace");
     expect(workspaceControllerSource).toMatch(/const activateWorkspace[\s\S]*?closeSidebar\(\);[\s\S]*?bumpFocus\(\);/);
     expect(terminalWorkspaceSource).toContain("if (visible && !activeId) stageRef.current?.focus({ preventScroll: true });");
     expect(agentRailSource).toContain("disabled={busy || launching || configsLoading}");
-    expect(workspaceListSource.match(/aria-label="Rename workspace"/g)).toHaveLength(2);
-    expect(workspaceListSource.match(/aria-label="Delete workspace"/g)).toHaveLength(2);
+    expect(workspaceListSource).toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(workspaceListSource).toContain("workspace-overflow-action");
+    expect(workspaceListSource).toContain("portalOwner={portalOwnerId}");
+    expect(workspaceListSource).toContain("dispatchCustomSelectOpenChange(portalOwnerRef.current, open)");
+    expect(workspaceListSource.match(/aria-label="Rename workspace"/g)).toHaveLength(1);
+    expect(workspaceListSource.match(/aria-label="Delete workspace"/g)).toHaveLength(1);
     expect(shellStyles).toMatch(/\.paths-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow:\s*hidden/);
     expect(shellStyles).toMatch(/\.has-agent-history \.paths-section\s*{[^}]*max-height:\s*var\(--launch-paths-max-height, 286px\)[^}]*flex:\s*0 1 auto/);
     expect(shellStyles).toMatch(/\.agent-launch-section\s*{[^}]*max-height:\s*min\(420px, 48%\)[^}]*overflow-y:\s*auto/);
-    expect(shellStyles).toMatch(/\.sessions-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow-y:\s*auto/);
-    expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*flex:\s*none[^}]*overflow:\s*visible/);
+    expect(shellStyles).toMatch(/\.sessions-section\s*{[^}]*flex:\s*1 1 120px[^}]*overflow:\s*hidden/);
+    expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*flex:\s*1[^}]*overflow-y:\s*auto/);
+  });
+
+  it("keeps Workbench list chrome fixed and search focus rounded", () => {
+    expect(agentSessionListSource).not.toContain("onScroll={() => {");
+    expect(agentSessionListSource).toMatch(/<div ref=\{portalOwnerRef\} id=\{portalOwnerId\} className=\{`\$\{railMenuSectionClass\} sessions-section`\}>[\s\S]*?<div className="tw:mb-\[8px\][^"]*">[\s\S]*?<div className="agent-session-list[^"]*">/);
+    expect(agentSessionListSource).toContain("tw:has-[:focus-visible]:border-[var(--color-accent)]");
+    expect(agentSessionListSource).toContain("tw:has-[:focus-visible]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_16%,transparent)]");
+    expect(agentSessionListSource).not.toContain("tw:focus-visible:[outline:2px_solid_var(--color-accent)]");
+    expect(launchPathsSource).toMatch(/>Launch Paths<\/p>[\s\S]*?<div className="tw:grid tw:min-h-0 tw:flex-1[^"]*tw:overflow-y-auto/);
+    expect(workspaceListSource).toMatch(/>Workspace<\/p>[\s\S]*?<div className="workspace-list[^"]*tw:overflow-y-auto/);
+    expect(shellStyles).toMatch(/\.workspace-list\s*\{[^}]*scrollbar-gutter:\s*stable/);
+    expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*overflow-y:\s*auto/);
+    expect(shellStyles).not.toContain(".sessions-section.is-scrolling");
+    expect(shellStyles).toMatch(/\.app > \.rail\s*{[^}]*background:\s*transparent;/);
+    expect(shellStyles).toMatch(/\.app > \.rail::before\s*{[^}]*background:\s*color-mix\(in srgb, var\(--color-surface\) 92%, transparent\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(120%\);/);
+    expect(shellStyles).not.toMatch(/\.app > \.rail\s*{[^}]*backdrop-filter:/);
+    expect(shellStyles).not.toMatch(/\.rail\s*{[^}]*will-change:\s*width/);
+    expect(shellStyles).toContain(".rail-page.active { opacity: 1; visibility: visible; pointer-events: auto; transform: none;");
   });
 
   it("keeps the agent history internally scrollable and resize targets large", () => {

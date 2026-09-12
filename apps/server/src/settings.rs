@@ -12,6 +12,8 @@ use crate::{api::ApiError, clock::now, state::AppState};
 
 const MIN_LAUNCH_PATHS_MAX_HEIGHT_PX: i64 = 160;
 const MAX_LAUNCH_PATHS_MAX_HEIGHT_PX: i64 = 480;
+const MIN_WORKSPACE_MAX_HEIGHT_PX: i64 = 160;
+const MAX_WORKSPACE_MAX_HEIGHT_PX: i64 = 480;
 const MIN_NAVIGATION_RAIL_WIDTH_PX: i64 = 240;
 const MAX_NAVIGATION_RAIL_WIDTH_PX: i64 = 480;
 const MIN_FONT_SIZE_PX: i64 = 12;
@@ -61,6 +63,7 @@ impl TryFrom<String> for Theme {
 struct AppSettings {
     theme: Theme,
     launch_paths_max_height_px: i64,
+    workspace_max_height_px: i64,
     navigation_rail_width_px: i64,
     font_size_px: i64,
     ui_scale_percent: i64,
@@ -73,6 +76,7 @@ struct AppSettings {
 pub(crate) struct UpdateRequest {
     theme: Option<Theme>,
     launch_paths_max_height_px: Option<i64>,
+    workspace_max_height_px: Option<i64>,
     navigation_rail_width_px: Option<i64>,
     font_size_px: Option<i64>,
     ui_scale_percent: Option<i64>,
@@ -93,11 +97,12 @@ pub(crate) async fn update(
     if let Err(code) = validate_update(&request) {
         return error(StatusCode::BAD_REQUEST, code);
     }
-    match sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
-        "UPDATE app_settings SET theme = COALESCE(?, theme), launch_paths_max_height_px = COALESCE(?, launch_paths_max_height_px), navigation_rail_width_px = COALESCE(?, navigation_rail_width_px), font_size_px = COALESCE(?, font_size_px), ui_scale_percent = COALESCE(?, ui_scale_percent), updated_at = ? WHERE id = 1 RETURNING theme, launch_paths_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent, created_at, updated_at",
+    match sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64, i64)>(
+        "UPDATE app_settings SET theme = COALESCE(?, theme), launch_paths_max_height_px = COALESCE(?, launch_paths_max_height_px), workspace_max_height_px = COALESCE(?, workspace_max_height_px), navigation_rail_width_px = COALESCE(?, navigation_rail_width_px), font_size_px = COALESCE(?, font_size_px), ui_scale_percent = COALESCE(?, ui_scale_percent), updated_at = ? WHERE id = 1 RETURNING theme, launch_paths_max_height_px, workspace_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent, created_at, updated_at",
     )
     .bind(request.theme.map(Theme::as_str))
     .bind(request.launch_paths_max_height_px)
+    .bind(request.workspace_max_height_px)
     .bind(request.navigation_rail_width_px)
     .bind(request.font_size_px)
     .bind(request.ui_scale_percent)
@@ -119,8 +124,8 @@ async fn settings_response(state: &AppState) -> Response {
 }
 
 async fn find(state: &AppState) -> Result<AppSettings, sqlx::Error> {
-    let row = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64)>(
-        "SELECT theme, launch_paths_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent, created_at, updated_at FROM app_settings WHERE id = 1",
+    let row = sqlx::query_as::<_, (String, i64, i64, i64, i64, i64, i64, i64)>(
+        "SELECT theme, launch_paths_max_height_px, workspace_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent, created_at, updated_at FROM app_settings WHERE id = 1",
     )
     .fetch_one(state.pool())
     .await?;
@@ -131,17 +136,19 @@ fn app_settings(
     (
         theme,
         launch_paths_max_height_px,
+        workspace_max_height_px,
         navigation_rail_width_px,
         font_size_px,
         ui_scale_percent,
         created_at,
         updated_at,
-    ): (String, i64, i64, i64, i64, i64, i64),
+    ): (String, i64, i64, i64, i64, i64, i64, i64),
 ) -> Result<AppSettings, sqlx::Error> {
     let theme = Theme::try_from(theme).map_err(|_| sqlx::Error::RowNotFound)?;
     Ok(AppSettings {
         theme,
         launch_paths_max_height_px,
+        workspace_max_height_px,
         navigation_rail_width_px,
         font_size_px,
         ui_scale_percent,
@@ -153,6 +160,7 @@ fn app_settings(
 fn validate_update(request: &UpdateRequest) -> Result<(), &'static str> {
     if request.theme.is_none()
         && request.launch_paths_max_height_px.is_none()
+        && request.workspace_max_height_px.is_none()
         && request.navigation_rail_width_px.is_none()
         && request.font_size_px.is_none()
         && request.ui_scale_percent.is_none()
@@ -161,6 +169,8 @@ fn validate_update(request: &UpdateRequest) -> Result<(), &'static str> {
     }
     if request.launch_paths_max_height_px.is_some_and(|height| {
         !(MIN_LAUNCH_PATHS_MAX_HEIGHT_PX..=MAX_LAUNCH_PATHS_MAX_HEIGHT_PX).contains(&height)
+    }) || request.workspace_max_height_px.is_some_and(|height| {
+        !(MIN_WORKSPACE_MAX_HEIGHT_PX..=MAX_WORKSPACE_MAX_HEIGHT_PX).contains(&height)
     }) || request.navigation_rail_width_px.is_some_and(|width| {
         !(MIN_NAVIGATION_RAIL_WIDTH_PX..=MAX_NAVIGATION_RAIL_WIDTH_PX).contains(&width)
     }) || request
@@ -193,9 +203,9 @@ mod tests {
 
     use super::{
         MAX_FONT_SIZE_PX, MAX_LAUNCH_PATHS_MAX_HEIGHT_PX, MAX_NAVIGATION_RAIL_WIDTH_PX,
-        MAX_UI_SCALE_PERCENT, MIN_FONT_SIZE_PX, MIN_LAUNCH_PATHS_MAX_HEIGHT_PX,
-        MIN_NAVIGATION_RAIL_WIDTH_PX, MIN_UI_SCALE_PERCENT, Theme, UpdateRequest, get, update,
-        validate_update,
+        MAX_UI_SCALE_PERCENT, MAX_WORKSPACE_MAX_HEIGHT_PX, MIN_FONT_SIZE_PX,
+        MIN_LAUNCH_PATHS_MAX_HEIGHT_PX, MIN_NAVIGATION_RAIL_WIDTH_PX, MIN_UI_SCALE_PERCENT,
+        MIN_WORKSPACE_MAX_HEIGHT_PX, Theme, UpdateRequest, get, update, validate_update,
     };
     use crate::state::{AppState, OpenCodeHistoryPool};
 
@@ -250,10 +260,21 @@ mod tests {
             assert_eq!(request.launch_paths_max_height_px, Some(height));
             assert_eq!(validate_update(&request), Ok(()));
         }
-        let request: UpdateRequest =
-            serde_json::from_str(r#"{"theme":"frappe","launchPathsMaxHeightPx":320}"#).unwrap();
+        for height in [MIN_WORKSPACE_MAX_HEIGHT_PX, MAX_WORKSPACE_MAX_HEIGHT_PX] {
+            let request: UpdateRequest = serde_json::from_value(serde_json::json!({
+                "workspaceMaxHeightPx": height
+            }))
+            .unwrap();
+            assert_eq!(request.workspace_max_height_px, Some(height));
+            assert_eq!(validate_update(&request), Ok(()));
+        }
+        let request: UpdateRequest = serde_json::from_str(
+            r#"{"theme":"frappe","launchPathsMaxHeightPx":320,"workspaceMaxHeightPx":336}"#,
+        )
+        .unwrap();
         assert_eq!(request.theme, Some(Theme::Frappe));
         assert_eq!(request.launch_paths_max_height_px, Some(320));
+        assert_eq!(request.workspace_max_height_px, Some(336));
     }
 
     #[test]
@@ -267,6 +288,17 @@ mod tests {
             }))
             .unwrap();
             assert_eq!(request.launch_paths_max_height_px, Some(height));
+            assert_eq!(validate_update(&request), Err("INVALID_REQUEST"));
+        }
+        for height in [
+            MIN_WORKSPACE_MAX_HEIGHT_PX - 1,
+            MAX_WORKSPACE_MAX_HEIGHT_PX + 1,
+        ] {
+            let request: UpdateRequest = serde_json::from_value(serde_json::json!({
+                "workspaceMaxHeightPx": height
+            }))
+            .unwrap();
+            assert_eq!(request.workspace_max_height_px, Some(height));
             assert_eq!(validate_update(&request), Err("INVALID_REQUEST"));
         }
     }
@@ -343,13 +375,14 @@ mod tests {
     async fn patches_and_gets_all_settings_fields() {
         let (_root, state) = test_state().await;
         let request: UpdateRequest = serde_json::from_str(
-            r#"{"theme":"frappe","launchPathsMaxHeightPx":320,"navigationRailWidthPx":336,"fontSizePx":18,"uiScalePercent":120}"#,
+            r#"{"theme":"frappe","launchPathsMaxHeightPx":320,"workspaceMaxHeightPx":352,"navigationRailWidthPx":336,"fontSizePx":18,"uiScalePercent":120}"#,
         )
         .unwrap();
         let patched = response_json(update(State(state.clone()), Ok(Json(request))).await).await;
         let settings = &patched["settings"];
         assert_eq!(settings["theme"], "frappe");
         assert_eq!(settings["launchPathsMaxHeightPx"], 320);
+        assert_eq!(settings["workspaceMaxHeightPx"], 352);
         assert_eq!(settings["navigationRailWidthPx"], 336);
         assert_eq!(settings["fontSizePx"], 18);
         assert_eq!(settings["uiScalePercent"], 120);
@@ -388,18 +421,27 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(obsolete_column_count, 0);
-        let settings: (String, i64, i64, i64, i64) = sqlx::query_as(
-            "SELECT theme, launch_paths_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent FROM app_settings WHERE id = 1",
+        let settings: (String, i64, i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT theme, launch_paths_max_height_px, workspace_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent FROM app_settings WHERE id = 1",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(settings, ("default".to_owned(), 286, 288, 13, 100));
-        let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(migrations, 7);
+        assert_eq!(settings, ("default".to_owned(), 286, 286, 288, 13, 100));
+        let migrations: Vec<(i64, String)> =
+            sqlx::query_as("SELECT version, description FROM _sqlx_migrations ORDER BY version")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            migrations,
+            [
+                (1, "auth".to_owned()),
+                (2, "settings".to_owned()),
+                (3, "launch".to_owned()),
+                (4, "workspaces".to_owned()),
+            ]
+        );
         let launch_configs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM agent_launch_configs")
             .fetch_one(&pool)
             .await
@@ -422,10 +464,45 @@ mod tests {
                 String::new(),
             )
         );
+        let default_agents: Vec<String> = sqlx::query_scalar(
+            "SELECT agent_id FROM agent_launch_configs WHERE is_default = 1 ORDER BY agent_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            default_agents,
+            ["codex", "opencode", "pi", "terminal", "traecli"]
+        );
+        let required_agent_configs: Vec<(String, String, String, String)> = sqlx::query_as(
+            "SELECT id, pre_launch_script, provider_script, tui_script FROM agent_launch_configs WHERE agent_id IN ('opencode', 'pi') ORDER BY agent_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            required_agent_configs,
+            [
+                (
+                    "opencode-default".to_owned(),
+                    String::new(),
+                    String::new(),
+                    String::new()
+                ),
+                (
+                    "pi-default".to_owned(),
+                    String::new(),
+                    String::new(),
+                    String::new()
+                ),
+            ]
+        );
         for statement in [
             "UPDATE app_settings SET theme = 'dark' WHERE id = 1",
             "UPDATE app_settings SET launch_paths_max_height_px = 159 WHERE id = 1",
             "UPDATE app_settings SET launch_paths_max_height_px = 481 WHERE id = 1",
+            "UPDATE app_settings SET workspace_max_height_px = 159 WHERE id = 1",
+            "UPDATE app_settings SET workspace_max_height_px = 481 WHERE id = 1",
             "UPDATE app_settings SET navigation_rail_width_px = 239 WHERE id = 1",
             "UPDATE app_settings SET navigation_rail_width_px = 481 WHERE id = 1",
             "UPDATE app_settings SET font_size_px = 11 WHERE id = 1",
@@ -438,41 +515,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn upgrades_existing_settings_with_display_defaults() {
-        let pool = SqlitePoolOptions::new()
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        sqlx::raw_sql(include_str!("../migrations/0001_global.sql"))
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query(
-            "UPDATE app_settings SET theme = 'mocha', agent_launch_paths_max_height_px = 320, navigation_rail_width_px = 352, created_at = 10, updated_at = 20 WHERE id = 1",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        for migration in [
-            include_str!("../migrations/0002_terminal.sql"),
-            include_str!("../migrations/0003_agent.sql"),
-            include_str!("../migrations/0004_display_settings.sql"),
-            include_str!("../migrations/0005_workspace.sql"),
-            include_str!("../migrations/0006_workspace_integrity.sql"),
-            include_str!("../migrations/0007_terminal_launch_config.sql"),
-        ] {
-            sqlx::raw_sql(migration).execute(&pool).await.unwrap();
-        }
-        let settings: (String, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
-            "SELECT theme, launch_paths_max_height_px, navigation_rail_width_px, font_size_px, ui_scale_percent, created_at, updated_at FROM app_settings WHERE id = 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(settings, ("mocha".to_owned(), 320, 352, 13, 100, 10, 20));
-    }
-
     #[test]
     fn rejects_unknown_fields() {
         assert!(
@@ -480,6 +522,9 @@ mod tests {
         );
         assert!(
             serde_json::from_str::<UpdateRequest>(r#"{"launch_paths_max_height_px":286}"#).is_err()
+        );
+        assert!(
+            serde_json::from_str::<UpdateRequest>(r#"{"workspace_max_height_px":286}"#).is_err()
         );
     }
 }

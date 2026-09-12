@@ -44,15 +44,8 @@ function normalizeLaunchPath(path: LaunchPath, paths: HomePaths) {
   return { ...path, path: logicalPath(path.path, paths?.home, paths?.resolvedHome) };
 }
 
-export function launchPathSelection(
-  paths: LaunchPath[],
-  current: string | null,
-  preferred?: string | null,
-) {
-  if (preferred === null) return null;
-  const candidate = preferred === undefined ? current : preferred;
-  if (candidate && paths.some((path) => path.id === candidate)) return candidate;
-  return preferred === undefined && current === null ? null : (paths[0]?.id ?? null);
+export function launchPathSelection(paths: LaunchPath[], current: string | null) {
+  return current && paths.some((path) => path.id === current) ? current : null;
 }
 
 export function toggleLaunchPathSelection(current: string | null, id: string) {
@@ -136,7 +129,6 @@ export function useWorkspaceController({
   const homePathsRef = useRef(homePaths);
   const selectedWorkspaceIdRef = useRef<string | null>(null);
   const workspaceSelectionRevisionRef = useRef(0);
-  const launchPathsInitializedRef = useRef(false);
   const queueRef = useRef(new WorkspaceMutationQueue());
   const workspaceRefreshRef = useRef<Promise<void> | null>(null);
   const launchPathRefreshRef = useRef<Promise<void> | null>(null);
@@ -159,11 +151,11 @@ export function useWorkspaceController({
     });
   }, []);
 
-  const applyLaunchPaths = useCallback((next: LaunchPath[], paths: HomePaths, preferred?: string | null) => {
+  const applyLaunchPaths = useCallback((next: LaunchPath[], paths: HomePaths) => {
     const normalized = next.map((path) => normalizeLaunchPath(path, paths));
     launchPathsRef.current = normalized;
     setLaunchPaths(normalized);
-    setSelectedPathId((current) => launchPathSelection(normalized, current, preferred));
+    setSelectedPathId((current) => launchPathSelection(normalized, current));
   }, []);
 
   const applySessions = useCallback((next: WorkspaceSession[], paths: HomePaths) => {
@@ -194,11 +186,7 @@ export function useWorkspaceController({
   const refreshLaunchPaths = useCallback(() => {
     if (launchPathRefreshRef.current) return launchPathRefreshRef.current;
     const request = queueRef.current.readAndApplyLatest(LAUNCH_PATHS_KEY, listLaunchPaths, (data) => {
-      const initialPreferred = launchPathsInitializedRef.current || launchPathsRef.current.length
-        ? undefined
-        : (data.launchPaths[0]?.id ?? null);
-      launchPathsInitializedRef.current = true;
-      applyLaunchPaths(data.launchPaths, homePathsRef.current, initialPreferred);
+      applyLaunchPaths(data.launchPaths, homePathsRef.current);
     }).finally(() => {
       if (launchPathRefreshRef.current === request) launchPathRefreshRef.current = null;
     });
@@ -481,7 +469,6 @@ export function useWorkspaceController({
       const next = [normalized, ...launchPathsRef.current.filter((item) => item.id !== normalized.id)];
       launchPathsRef.current = next;
       setLaunchPaths(next);
-      setSelectedPathId(normalized.id);
       closeSidebar();
       return true;
     } catch (reason) {
@@ -493,11 +480,6 @@ export function useWorkspaceController({
   const selectLaunchPath = useCallback((id: string) => {
     if (!launchPathsRef.current.some((path) => path.id === id)) return;
     setSelectedPathId((current) => toggleLaunchPathSelection(current, id));
-  }, []);
-
-  const ensureLaunchPathSelected = useCallback((id: string) => {
-    if (!launchPathsRef.current.some((path) => path.id === id)) return;
-    setSelectedPathId(id);
   }, []);
 
   const pinLaunchPath = useCallback((path: LaunchPath) => {
@@ -575,7 +557,6 @@ export function useWorkspaceController({
     updateUpstreamSession,
     chooseLaunchPath,
     selectLaunchPath,
-    ensureLaunchPathSelected,
     pinLaunchPath,
     renameLaunchPath,
     removeLaunchPath,

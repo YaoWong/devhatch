@@ -72,6 +72,61 @@ export function LaunchPaths({
   const openMenuRef = useRef(false);
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   const visiblePaths = paths.length > 24 ? paths.slice((page - 1) * 10, page * 10) : paths;
+  const pathOverflowMenu = (item: LaunchPath, includePrimary: boolean, triggerClassName: string) => (
+    <DropdownMenu
+      modal={false}
+      onOpenChange={(open) => {
+        openMenuRef.current = open;
+        dispatchCustomSelectOpenChange(portalOwnerRef.current, open);
+      }}
+    >
+      <DropdownMenuTrigger
+        onFocus={(event) => { menuTriggerRef.current = event.currentTarget; }}
+        onClick={(event) => { menuTriggerRef.current = event.currentTarget; }}
+        aria-label={`Path actions for ${item.alias || workspaceName(item.path)}`}
+        render={<Button type="button" variant="ghost" size="icon" className={`${triggerClassName} ${pathActionClass}`} />}
+      >
+        <Ellipsis />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent portalOwner={portalOwnerId} align="end" side="bottom" sideOffset={6} className="tw:w-44">
+        {includePrimary && (
+          <>
+            <DropdownMenuItem onClick={() => {
+              menuTriggerRef.current?.focus();
+              queueMicrotask(() => onPin(item));
+            }}>
+              <Pin />
+              {item.pinned ? "Unpin path" : "Pin path"}
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!available || launching} onClick={() => {
+              menuTriggerRef.current?.focus();
+              queueMicrotask(() => onLaunch(item));
+            }}>
+              <Play />
+              Launch {launchTargetName ?? "session"}
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuItem onClick={() => {
+          menuTriggerRef.current?.focus();
+          queueMicrotask(() => onRename(item));
+        }}>
+          <Pencil />
+          Rename alias
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => {
+            menuTriggerRef.current?.focus();
+            queueMicrotask(() => onDelete(item));
+          }}
+        >
+          <Trash2 />
+          Delete path
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   useLayoutEffect(() => {
     const owner = portalOwnerRef.current;
     return () => {
@@ -84,7 +139,7 @@ export function LaunchPaths({
         <p className={`${railMenuLabelClass} tw:mb-0 tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap`}>Launch Paths</p>
         <RailCreateButton label="Add" disabled={!canAdd} onClick={onChoose} />
       </div>
-      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
+      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
         {visiblePaths.length ? (
           visiblePaths.map((item) => {
             const renaming = renamingId === item.id;
@@ -123,12 +178,12 @@ export function LaunchPaths({
                     </span>
                   </div>
                 )}
-                <span className={`path-actions tw:flex tw:w-0 tw:flex-none tw:overflow-hidden tw:transition-[width] tw:group-hover/path:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:group-focus-within/path:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:has-[[data-popup-open]]:w-[max(120px,calc(120px*var(--app-ui-scale)))] tw:[@media(pointer:coarse)]:w-[max(132px,calc(132px*var(--app-ui-scale)))] ${renaming ? "tw:hidden" : ""}`}>
+                <span className={`path-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))] tw:flex-none tw:overflow-hidden tw:[@media(pointer:coarse)]:w-[max(44px,calc(44px*var(--app-ui-scale)))] ${renaming ? "tw:hidden" : ""}`}>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={`${pathActionClass} ${item.pinned ? "tw:pointer-events-auto tw:bg-[var(--color-accent-soft)] tw:text-[var(--color-warning-fg)] tw:opacity-100 tw:shadow-[inset_0_0_0_1px_var(--color-border-strong)] tw:hover:text-[var(--color-warning-fg)]! tw:[&_svg]:-rotate-12 tw:[&_svg]:fill-current tw:[&_svg]:fill-opacity-20" : ""}`}
+                    className={`path-primary-action ${pathActionClass} ${item.pinned ? "tw:pointer-events-auto tw:bg-[var(--color-accent-soft)] tw:text-[var(--color-warning-fg)] tw:opacity-100 tw:shadow-[inset_0_0_0_1px_var(--color-border-strong)] tw:hover:text-[var(--color-warning-fg)]! tw:[&_svg]:-rotate-12 tw:[&_svg]:fill-current tw:[&_svg]:fill-opacity-20" : ""}`}
                     aria-label={item.pinned ? "Unpin path" : "Pin path"}
                     aria-pressed={item.pinned}
                     title={item.pinned ? "Pinned" : "Pin path"}
@@ -143,7 +198,7 @@ export function LaunchPaths({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={pathActionClass}
+                    className={`path-primary-action ${pathActionClass}`}
                     aria-label={`Launch ${launchTargetName ?? "session"} in ${item.path}`}
                     disabled={!available || launching}
                     onClick={(event) => {
@@ -175,41 +230,8 @@ export function LaunchPaths({
                    >
                      <Trash2 />
                    </Button>
-                   <DropdownMenu
-                     modal={false}
-                    onOpenChange={(open) => {
-                      openMenuRef.current = open;
-                      dispatchCustomSelectOpenChange(portalOwnerRef.current, open);
-                    }}
-                  >
-                    <DropdownMenuTrigger
-                      onFocus={(event) => { menuTriggerRef.current = event.currentTarget; }}
-                      onClick={(event) => { menuTriggerRef.current = event.currentTarget; }}
-                      aria-label={`Path actions for ${item.alias || workspaceName(item.path)}`}
-                      render={<Button type="button" variant="ghost" size="icon" className={pathActionClass} />}
-                    >
-                      <Ellipsis />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent portalOwner={portalOwnerId} align="end" side="bottom" sideOffset={6} className="tw:w-44">
-                       <DropdownMenuItem onClick={() => {
-                         menuTriggerRef.current?.focus();
-                         queueMicrotask(() => onRename(item));
-                       }}>
-                        <Pencil />
-                        Rename alias
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => {
-                          menuTriggerRef.current?.focus();
-                          queueMicrotask(() => onDelete(item));
-                        }}
-                      >
-                        <Trash2 />
-                        Delete path
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                   {pathOverflowMenu(item, false, "path-overflow-secondary")}
+                   {pathOverflowMenu(item, true, "path-overflow-all")}
                 </span>
               </div>
             );

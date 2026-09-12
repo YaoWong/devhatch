@@ -2,6 +2,7 @@ export type ThemeId = "default" | "latte" | "frappe" | "macchiato" | "mocha";
 export type AppSettings = {
   theme: ThemeId;
   launchPathsMaxHeightPx: number;
+  workspaceMaxHeightPx: number;
   navigationRailWidthPx: number;
   fontSizePx: number;
   uiScalePercent: number;

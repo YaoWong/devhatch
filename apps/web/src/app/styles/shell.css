@@ -19,11 +19,14 @@
 
 .app > .shell { transition: margin-left 220ms cubic-bezier(.23, 1, .32, 1); }
 .canvas-rail-pinned:is(.mode-terminal, .mode-skills, .mode-settings) > .rail ~ .shell { margin-left: calc(12px + var(--navigation-rail-width, 288px) + 8px); background: var(--color-canvas); }
-.canvas-rail-pinned:is(.mode-terminal, .mode-skills, .mode-settings) > .rail { inset: 12px auto 12px 12px; background: var(--color-surface); }
-.app > .rail { position: fixed; inset: 12px auto 12px 12px; z-index: 40; width: var(--navigation-rail-width, 288px); container-type: inline-size; container-name: navigation-rail; background: color-mix(in srgb, var(--color-surface) 92%, transparent); backdrop-filter: blur(18px) saturate(120%); }
-[data-slot="sheet-content"] > .rail { position: relative; inset: auto; z-index: auto; width: 100%; height: 100%; padding: 12px; border: 0; border-radius: inherit; container-type: inline-size; container-name: navigation-rail; opacity: 1; pointer-events: auto; transform: none; transition: none; box-shadow: none; backdrop-filter: none; }
+.canvas-rail-pinned:is(.mode-terminal, .mode-skills, .mode-settings) > .rail { inset: 12px auto 12px 12px; }
+.app > .rail { position: fixed; isolation: isolate; inset: 12px auto 12px 12px; z-index: 40; width: var(--navigation-rail-width, 288px); background: transparent; }
+.app > .rail::before { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: color-mix(in srgb, var(--color-surface) 92%, transparent); backdrop-filter: blur(18px) saturate(120%); content: ""; pointer-events: none; }
+.canvas-rail-pinned:is(.mode-terminal, .mode-skills, .mode-settings) > .rail::before { background: var(--color-surface); backdrop-filter: none; }
+[data-slot="sheet-content"] > .rail { position: relative; inset: auto; z-index: auto; width: 100%; height: 100%; padding: 12px; border: 0; border-radius: inherit; opacity: 1; pointer-events: auto; transform: none; transition: none; box-shadow: none; backdrop-filter: none; }
+[data-slot="sheet-content"] > .rail::before { display: none; }
 .canvas-rail-auto > .rail { transform: translateX(calc(-100% - 20px)); opacity: 0; pointer-events: none; transition: transform 220ms cubic-bezier(.23, 1, .32, 1), opacity 160ms ease, width 360ms cubic-bezier(.28, 0, .22, 1); }
-.canvas-rail-auto.canvas-rail-open > .rail { transform: translateX(0); opacity: 1; pointer-events: auto; }
+.canvas-rail-auto.canvas-rail-open > .rail { transform: none; opacity: 1; pointer-events: auto; }
 .canvas-edge-hot-zone { display: none; }
 @media (hover: hover) and (pointer: fine) {
   .canvas-edge-hot-zone { position: fixed; inset: 0 auto 0 0; z-index: 39; display: block; width: 4px; }
@@ -53,7 +56,6 @@
   min-height: 0;
   padding: 12px;
   overflow: hidden;
-  will-change: width;
   transition: width 360ms cubic-bezier(.28, 0, .22, 1), padding 360ms cubic-bezier(.28, 0, .22, 1), border-width 360ms cubic-bezier(.28, 0, .22, 1), opacity 150ms cubic-bezier(.28, 0, .22, 1), box-shadow 220ms cubic-bezier(.28, 0, .22, 1);
 }
 
@@ -67,7 +69,7 @@
 .rail-pages { position: relative; min-width: 0; min-height: 0; flex: 1; overflow: hidden; border-top: 1px solid var(--color-border); }
 .modes-page { overflow-y: auto; overscroll-behavior: contain; }
 .rail-page { position: absolute; inset: 0; min-width: 0; display: flex; min-height: 0; flex-direction: column; opacity: 0; visibility: hidden; pointer-events: none; transform: translateX(16px); transition: opacity 180ms ease, transform 420ms cubic-bezier(.22, 1, .36, 1), visibility 0s linear 420ms; }
-.rail-page.active { opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(0); transition-delay: 0s; }
+.rail-page.active { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
 .rail-page.forward-exit { opacity: 0; transform: translateX(-16px); }
 .rail-page.forward-enter { animation: detail-enter 420ms cubic-bezier(.22, 1, .36, 1) both; }
 .rail-page.return-enter { animation: modes-return 420ms cubic-bezier(.22, 1, .36, 1) both; }
@@ -91,39 +93,60 @@
 .agent-detail { flex: 1; gap: 16px; overflow: hidden; }
 .workbench-rail-layout { min-width: 0; min-height: 0; display: flex; flex: 1; flex-direction: column; gap: 16px; overflow: hidden; }
 .workbench-rail-layout > * { min-width: 0; min-height: 0; }
-.workspace-section { display: flex; flex: none; flex-direction: column; overflow: visible; }
-.workspace-list { min-height: 0; }
+.workspace-section { max-height: var(--workspace-list-max-height, 286px); display: flex; flex: none; flex-direction: column; overflow: hidden; }
+.workspace-list { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.workspace-list:hover { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
+.workspace-list::-webkit-scrollbar { width: 6px; height: 0; }
+.workspace-list::-webkit-scrollbar-track { background: transparent; }
+.workspace-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; }
+.workspace-list:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
 .agent-launch-section { max-height: min(420px, 48%); flex: 0 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 3px; margin: -3px; }
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .paths-section { flex: 1 1 120px; overflow: hidden; }
 .has-agent-history .paths-section { max-height: var(--launch-paths-max-height, 286px); flex: 0 1 auto; }
-.sessions-section { flex: 1 1 120px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: none; overflow: visible; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.sessions-section, .workspace-list { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.sessions-section.is-scrolling { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
-.sessions-section::-webkit-scrollbar, .workspace-list::-webkit-scrollbar { width: 6px; height: 0; }
-.sessions-section::-webkit-scrollbar-track, .workspace-list::-webkit-scrollbar-track { background: transparent; }
-.sessions-section::-webkit-scrollbar-thumb, .workspace-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; transition: background-color 180ms ease; }
-.sessions-section.is-scrolling::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
-.path-wide-action { display: none !important; }
+.sessions-section { flex: 1 1 120px; overflow: hidden; }
+.agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.agent-session-list:hover { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
+.agent-session-list::-webkit-scrollbar { width: 6px; height: 0; }
+.agent-session-list::-webkit-scrollbar-track { background: transparent; }
+.agent-session-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; }
+.agent-session-list:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
+.path-primary-action, .path-wide-action, .path-overflow-secondary, .workspace-wide-action, .session-direct-action { display: none !important; }
+.session-main { padding-right: max(40px, calc(40px * var(--app-ui-scale))); }
 @media (pointer: coarse) {
-  .path-actions { width: max(132px, calc(132px * var(--app-ui-scale))) !important; }
+  .session-main { padding-right: max(44px, calc(44px * var(--app-ui-scale))); }
 }
 @media (pointer: fine) {
-  @container navigation-rail (min-width: 262px) {
-    .launch-path-row:hover .path-actions,
-    .launch-path-row:focus-within .path-actions,
-    .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }
-    .path-actions > [data-slot="button"] { pointer-events: auto; opacity: 1; }
-    .path-actions .path-wide-action { display: inline-flex !important; }
-    .path-actions [data-slot="dropdown-menu-trigger"] { display: none !important; }
-  }
+  .rail-width-320 .path-actions { width: max(120px, calc(120px * var(--app-ui-scale))) !important; }
+  .rail-width-320 .path-actions .path-primary-action, .rail-width-320 .path-actions .path-overflow-secondary { display: inline-flex !important; }
+  .rail-width-320 .path-actions .path-overflow-all { display: none !important; }
+  .rail-width-320 .workspace-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }
+  .rail-width-320 .workspace-actions .workspace-wide-action { display: inline-flex !important; }
+  .rail-width-320 .workspace-actions .workspace-overflow-action { display: none !important; }
+  .rail-width-320 .session-main-live { padding-right: max(40px, calc(40px * var(--app-ui-scale))); }
+  .rail-width-320 .session-main-history { padding-right: max(104px, calc(104px * var(--app-ui-scale))); }
+  .rail-width-320 .session-actions-live { width: max(40px, calc(40px * var(--app-ui-scale))); }
+  .rail-width-320 .session-actions-history { width: max(104px, calc(104px * var(--app-ui-scale))); }
+  .rail-width-320 .session-actions .session-direct-action { display: inline-flex !important; }
+  .rail-width-320 .session-actions .session-overflow-action { display: none !important; }
+  .rail-width-420 .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }
+  .rail-width-420 .path-actions .path-wide-action { display: inline-flex !important; }
+  .rail-width-420 .path-actions .path-overflow-secondary { display: none !important; }
 }
 @media (pointer: coarse) {
-  @container navigation-rail (min-width: 280px) {
-    .path-actions { width: max(176px, calc(176px * var(--app-ui-scale))) !important; }
-    .path-actions > [data-slot="button"] { pointer-events: auto; opacity: 1; }
-    .path-actions .path-wide-action { display: inline-flex !important; }
-    .path-actions [data-slot="dropdown-menu-trigger"] { display: none !important; }
-  }
+  .rail-width-340 .path-actions { width: max(132px, calc(132px * var(--app-ui-scale))) !important; }
+  .rail-width-340 .path-actions .path-primary-action, .rail-width-340 .path-actions .path-overflow-secondary { display: inline-flex !important; }
+  .rail-width-340 .path-actions .path-overflow-all { display: none !important; }
+  .rail-width-340 .workspace-actions { width: max(88px, calc(88px * var(--app-ui-scale))) !important; }
+  .rail-width-340 .workspace-actions .workspace-wide-action { display: inline-flex !important; }
+  .rail-width-340 .workspace-actions .workspace-overflow-action { display: none !important; }
+  .rail-width-340 .session-main-live { padding-right: max(44px, calc(44px * var(--app-ui-scale))); }
+  .rail-width-340 .session-main-history { padding-right: max(108px, calc(108px * var(--app-ui-scale))); }
+  .rail-width-340 .session-actions-live { width: max(44px, calc(44px * var(--app-ui-scale))); }
+  .rail-width-340 .session-actions-history { width: max(108px, calc(108px * var(--app-ui-scale))); }
+  .rail-width-340 .session-actions .session-direct-action { display: inline-flex !important; }
+  .rail-width-340 .session-actions .session-overflow-action { display: none !important; }
+  .rail-width-440 .path-actions { width: max(176px, calc(176px * var(--app-ui-scale))) !important; }
+  .rail-width-440 .path-actions .path-wide-action { display: inline-flex !important; }
+  .rail-width-440 .path-actions .path-overflow-secondary { display: none !important; }
 }

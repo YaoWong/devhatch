@@ -4,6 +4,7 @@ import type { ThemeId } from "../../types/settings";
 export const ThemeContext = createContext<{
   themeId: ThemeId;
   launchPathsMaxHeightPx: number;
+  workspaceMaxHeightPx: number;
   navigationRailWidthPx: number;
   fontSizePx: number;
   uiScalePercent: number;
@@ -14,6 +15,7 @@ export const ThemeContext = createContext<{
   resetAppearance: () => void;
   selectTheme: (themeId: ThemeId) => void;
   setLaunchPathsMaxHeightPx: (value: number) => void;
+  setWorkspaceMaxHeightPx: (value: number) => void;
   setNavigationRailWidthPx: (value: number) => void;
   setFontSizePx: (value: number) => void;
   setUiScalePercent: (value: number) => void;

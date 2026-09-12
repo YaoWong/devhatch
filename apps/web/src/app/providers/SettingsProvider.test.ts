@@ -389,6 +389,7 @@ describe("appearanceDefaults", () => {
     expect(appearanceDefaults(true)).toEqual({
       theme: "default",
       launchPathsMaxHeightPx: 286,
+      workspaceMaxHeightPx: 286,
       navigationRailWidthPx: 288,
       fontSizePx: 13,
       uiScalePercent: 100,
@@ -399,6 +400,7 @@ describe("appearanceDefaults", () => {
     expect(appearanceDefaults(false)).toEqual({
       theme: "default",
       launchPathsMaxHeightPx: 286,
+      workspaceMaxHeightPx: 286,
       navigationRailWidthPx: 288,
     });
   });

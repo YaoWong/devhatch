@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Code2, Layers3, LoaderCircle, Play, SquareTerminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Code2, Layers3, LoaderCircle, SquareTerminal } from "lucide-react";
 import { useLayoutEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,7 +9,6 @@ import { railMenuLabelClass, railMenuSectionClass, selectCopyClass } from "../..
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { Agent, LaunchConfig, LaunchConfigInput } from "../../types/agents";
 import type { ConfirmAction } from "../../types/app";
-import type { LaunchPath } from "../../types/workspaces";
 import type { SkillProfile } from "../../types/skills";
 import { TERMINAL_LAUNCH_TARGET_ID } from "./launchSetupPreference";
 import { AgentConfigDialog } from "./AgentConfigDialog";
@@ -47,8 +46,6 @@ export function AgentRailPage({
   selectedConfigId,
   profiles,
   selectedProfileId,
-  paths,
-  selectedPathId,
   installState,
   activeInstallAgent,
   installAnnouncement,
@@ -60,7 +57,6 @@ export function AgentRailPage({
   onUpdateConfig,
   onDeleteConfig,
   onInstallAgent,
-  onLaunch,
   onConfirm,
 }: {
   busy: boolean;
@@ -73,8 +69,6 @@ export function AgentRailPage({
   selectedConfigId: string | null;
   profiles: SkillProfile[];
   selectedProfileId: string | null;
-  paths: LaunchPath[];
-  selectedPathId: string | null;
   installState?: { installing: boolean; installed: boolean; error: string | null };
   activeInstallAgent: Agent | null;
   installAnnouncement: string;
@@ -86,7 +80,6 @@ export function AgentRailPage({
   onUpdateConfig: (id: string, input: LaunchConfigInput) => Promise<boolean>;
   onDeleteConfig: (id: string) => Promise<boolean>;
   onInstallAgent: (id: string) => Promise<boolean>;
-  onLaunch: () => void;
   onConfirm: (action: ConfirmAction) => void;
 }) {
   const [configOpen, setConfigOpen] = useState(false);
@@ -104,9 +97,6 @@ export function AgentRailPage({
     setLaunchSetupCollapsed(readLaunchSetupCollapsed(launchSetupStorageKey));
   }, [launchSetupStorageKey]);
   const selectedConfig = configs.find((config) => config.id === selectedConfigId) ?? null;
-  const selectedPath = paths.find((path) => path.id === selectedPathId) ?? null;
-  const launchAvailable = selectedTargetId === TERMINAL_LAUNCH_TARGET_ID || Boolean(selectedAgent?.available);
-  const launchDisabled = busy || launching || configsLoading || !selectedConfig || !selectedPath || !launchAvailable;
   const loadingAnnouncement = showAgentLoading ? "Loading launch targets…" : busy ? "" : "Launch targets loaded.";
 
   return (
@@ -199,22 +189,6 @@ export function AgentRailPage({
               <span><small>Launch config</small><strong>{configsLoading ? "Loading…" : (selectedConfig?.name ?? "None")}</strong></span>
               <ChevronRight />
             </Button>
-            <Button
-              className="tw:mt-1 tw:w-full"
-              type="button"
-              disabled={launchDisabled}
-              aria-label={selectedPath ? `Launch ${targetName} in ${selectedPath.path}` : `Launch ${targetName}`}
-              title={selectedPath ? `Launch in ${selectedPath.path}` : "Select a shared Launch Path first"}
-              onClick={onLaunch}
-            >
-              <Play />
-              {launching ? "Launching…" : `Launch ${targetName}`}
-            </Button>
-            {!selectedPath && (
-              <p className="tw:m-0 tw:px-1 tw:pb-1 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.4] tw:text-muted-foreground">
-                Select a shared Launch Path to start {targetName}.
-              </p>
-            )}
           </div>
         )}
       </Card>

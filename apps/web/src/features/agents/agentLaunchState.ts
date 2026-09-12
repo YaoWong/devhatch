@@ -1,9 +1,4 @@
 import type { AgentSession } from "../../types/agents";
-import type { LaunchPath } from "../../types/workspaces";
-
-export function selectedAgentLaunchOptions(path: LaunchPath | null) {
-  return path ? { cwd: path.path } : null;
-}
 
 export function launcherActiveSession(
   sessions: AgentSession[],

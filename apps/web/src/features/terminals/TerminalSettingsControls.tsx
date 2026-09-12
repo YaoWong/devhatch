@@ -16,10 +16,12 @@ export function TerminalSettingsControls({
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
+  workspaceHeight,
   confirmClose,
   agents,
   defaultAgentId,
   showLaunchPathsHeight = true,
+  showWorkspaceHeight = true,
   showConfirmClose = true,
   onCapacityChange,
   onLayoutPresetChange,
@@ -27,6 +29,7 @@ export function TerminalSettingsControls({
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
+  onWorkspaceHeightChange,
   onConfirmCloseChange,
   onDefaultAgentChange,
 }: {
@@ -37,10 +40,12 @@ export function TerminalSettingsControls({
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
+  workspaceHeight: number;
   confirmClose: boolean;
   agents?: Agent[];
   defaultAgentId?: string | null;
   showLaunchPathsHeight?: boolean;
+  showWorkspaceHeight?: boolean;
   showConfirmClose?: boolean;
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
@@ -48,6 +53,7 @@ export function TerminalSettingsControls({
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
+  onWorkspaceHeightChange: (height: number) => void;
   onConfirmCloseChange: (enabled: boolean) => void;
   onDefaultAgentChange?: (agentId: string) => void;
 }) {
@@ -91,7 +97,11 @@ export function TerminalSettingsControls({
     </div>
     {showLaunchPathsHeight && <div className={settingRangeClass}>
       <span>Launch paths height</span>
-       <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
+      <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
+    </div>}
+    {showWorkspaceHeight && <div className={settingRangeClass}>
+      <span>Workspace height</span>
+      <PixelRangeControl label="Workspace height" min={160} max={480} step={8} value={workspaceHeight} onChange={onWorkspaceHeightChange} />
     </div>}
     {showConfirmClose && <label className={`${settingRowClass} tw:cursor-pointer`}>
       <span>Confirm close</span>

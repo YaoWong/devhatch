@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { AgentSession } from "../../../types/agents";
 import { selectedLaunchPath, type LaunchPath, type WorkspaceSession } from "../../../types/workspaces";
 import { launcherActiveSession } from "../agentLaunchState";
-import { readLaunchTargetId, TERMINAL_LAUNCH_TARGET_ID, writeLaunchTargetId } from "../launchSetupPreference";
+import { readDefaultAgentId } from "../defaultAgentPreference";
+import { readStoredLaunchTargetId, resolveInitialLaunchTargetId, TERMINAL_LAUNCH_TARGET_ID, writeLaunchTargetId } from "../launchSetupPreference";
 import { mergeAgentSessions, replaceAgentSessions, substituteHistoryTitles } from "../selectors";
 import { useAgentCatalog } from "./useAgentCatalog";
 import { useAgentConfigs } from "./useAgentConfigs";
@@ -44,7 +45,7 @@ export function useAgentWorkspace({
     skillProfileId?: string;
   }) => Promise<AgentSession | null>;
   activateSession: (id: string) => void;
-  refreshLaunchPaths: (preferred?: string | null) => Promise<void>;
+  refreshLaunchPaths: () => Promise<void>;
 }) {
   const [selectedTargetId, setSelectedTargetIdState] = useState(TERMINAL_LAUNCH_TARGET_ID);
   const [selectedSkillProfileId, setSelectedSkillProfileId] = useState<string | null>(null);
@@ -119,12 +120,7 @@ export function useAgentWorkspace({
 
   const initializeAgents = useCallback((data: Parameters<typeof initializeAgentCatalog>[0]) => {
     initializeAgentCatalog(data);
-    const storedTargetId = readLaunchTargetId();
-    const storedAgent = data.agents.find((agent) => agent.id === storedTargetId);
-    const targetId = storedTargetId === TERMINAL_LAUNCH_TARGET_ID
-      || (storedAgent?.enabled && storedAgent.availability !== "coming-soon")
-      ? storedTargetId
-      : TERMINAL_LAUNCH_TARGET_ID;
+    const targetId = resolveInitialLaunchTargetId(data.agents, readStoredLaunchTargetId(), readDefaultAgentId());
     setSelectedTargetIdState(targetId);
     if (targetId !== TERMINAL_LAUNCH_TARGET_ID) setCatalogSelectedAgentId(targetId);
   }, [initializeAgentCatalog, setCatalogSelectedAgentId]);

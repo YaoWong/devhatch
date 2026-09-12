@@ -25,7 +25,9 @@ import {
 } from "../features/terminals/terminalWorkspaceLayout";
 import {
   clampTerminalWorkspaceCapacity,
+  readTerminalThumbnailsAutoHide,
   TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY,
+  writeTerminalThumbnailsAutoHide,
   type TerminalWorkspaceCapacity,
 } from "../features/terminals/terminalWorkspaceDock";
 import { useWebApps } from "../features/web-apps/useWebApps";
@@ -154,10 +156,12 @@ function initialCapacity(): TerminalWorkspaceCapacity {
 function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<void>; logoutBusy: boolean; logoutError: string | null }) {
   const {
     launchPathsMaxHeightPx,
+    workspaceMaxHeightPx,
     navigationRailWidthPx,
     error: settingsError,
     dismissError: dismissSettingsError,
     setLaunchPathsMaxHeightPx,
+    setWorkspaceMaxHeightPx,
     setNavigationRailWidthPx,
   } = useTheme();
   const [canvasPinned, setCanvasPinned] = useState(readCanvasSidebarPinned);
@@ -194,13 +198,17 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialCapacity);
   const [terminalPathDisplay, setTerminalPathDisplayState] = useState<LaunchPathDisplay>(initialPathDisplay);
-  const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(false);
+  const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(readTerminalThumbnailsAutoHide);
   const [terminalThumbnailSide, setTerminalThumbnailSideState] = useState<TerminalThumbnailSide>(initialThumbnailSide);
   const [terminalLayoutCount, setTerminalLayoutCount] = useState<TerminalLayoutCount | null>(null);
   const [terminalWorkspaceLayouts, setTerminalWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(readWorkspaceLayouts);
   const setTerminalPathDisplay = useCallback((mode: LaunchPathDisplay) => {
     setTerminalPathDisplayState(mode);
     try { localStorage.setItem(TERMINAL_PATH_DISPLAY_STORAGE_KEY, mode); } catch { return; }
+  }, []);
+  const setTerminalThumbnailAutoHide = useCallback((enabled: boolean) => {
+    setTerminalThumbnailsAutoHide(enabled);
+    writeTerminalThumbnailsAutoHide(enabled);
   }, []);
   const setTerminalThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
     setTerminalThumbnailSideState(side);
@@ -558,6 +566,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       style={
         {
           "--launch-paths-max-height": `${launchPathsMaxHeightPx}px`,
+          "--workspace-list-max-height": `${workspaceMaxHeightPx}px`,
           "--navigation-rail-width": `${navigationRailWidthPx}px`,
         } as CSSProperties
       }
@@ -620,6 +629,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       >
         <AppNavigationRail
         navigation={navigation}
+        railWidthPx={mobileNavigation ? null : navigationRailWidthPx}
         workspace={workspace}
         agent={agent}
         skills={skills}
@@ -639,13 +649,15 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         thumbnailsAutoHide={terminalThumbnailsAutoHide}
         thumbnailSide={terminalThumbnailSide}
         launchPathsHeight={launchPathsMaxHeightPx}
+        workspaceHeight={workspaceMaxHeightPx}
         confirmClose={confirmDelete}
         onCapacityChange={setTerminalCapacity}
         onLayoutPresetChange={setTerminalLayoutPreset}
         onPathDisplayChange={setTerminalPathDisplay}
-        onToggleThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
+        onToggleThumbnailAutoHide={() => setTerminalThumbnailAutoHide(!terminalThumbnailsAutoHide)}
         onThumbnailSideChange={setTerminalThumbnailSide}
         onLaunchPathsHeightChange={setLaunchPathsMaxHeightPx}
+        onWorkspaceHeightChange={setWorkspaceMaxHeightPx}
         onConfirmCloseChange={(enabled) => {
           setConfirmDelete(enabled);
           localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");

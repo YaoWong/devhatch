@@ -2,7 +2,6 @@ import { useEffect, useState, type CSSProperties, type Dispatch, type FocusEvent
 import type { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { AgentRailPage } from "../features/agents/AgentRailPage";
 import { AgentSessionList } from "../features/agents/AgentSessionList";
-import { selectedAgentLaunchOptions } from "../features/agents/agentLaunchState";
 import { NavigationRail } from "../features/navigation/NavigationRail";
 import type { useNavigation } from "../features/navigation/useNavigation";
 import { SkillsRailPage, type SkillsSection } from "../features/skills/SkillsRailPage";
@@ -18,6 +17,7 @@ import type { ConfirmAction, LaunchPathDisplay } from "../types/app";
 
 type AppNavigationRailProps = {
   navigation: ReturnType<typeof useNavigation>;
+  railWidthPx: number | null;
   workspace: ReturnType<typeof useWorkspaceController>;
   agent: ReturnType<typeof useAgentWorkspace>;
   skills: ReturnType<typeof useSkillsWorkspace>;
@@ -37,6 +37,7 @@ type AppNavigationRailProps = {
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
+  workspaceHeight: number;
   confirmClose: boolean;
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
@@ -44,6 +45,7 @@ type AppNavigationRailProps = {
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
+  onWorkspaceHeightChange: (height: number) => void;
   onConfirmCloseChange: (enabled: boolean) => void;
   onConfirm: Dispatch<SetStateAction<ConfirmAction | null>>;
   canvasPinned: boolean;
@@ -61,6 +63,7 @@ type AppNavigationRailProps = {
 
 export function AppNavigationRail({
   navigation,
+  railWidthPx,
   workspace,
   agent,
   skills,
@@ -80,6 +83,7 @@ export function AppNavigationRail({
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
+  workspaceHeight,
   confirmClose,
   onCapacityChange,
   onLayoutPresetChange,
@@ -87,6 +91,7 @@ export function AppNavigationRail({
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
+  onWorkspaceHeightChange,
   onConfirmCloseChange,
   onConfirm,
   canvasPinned,
@@ -118,6 +123,7 @@ export function AppNavigationRail({
     <NavigationRail
       railPage={navigation.railPage}
       railMotion={navigation.railMotion}
+      railWidthPx={railWidthPx}
       workspaceMode={navigation.workspaceMode}
       sessionCount={workspace.sessions.length}
       modesPageRef={navigation.modesPageRef}
@@ -133,6 +139,7 @@ export function AppNavigationRail({
       thumbnailsAutoHide={thumbnailsAutoHide}
       thumbnailSide={thumbnailSide}
       launchPathsHeight={launchPathsHeight}
+      workspaceHeight={workspaceHeight}
       confirmClose={confirmClose}
       agents={agent.agents}
       defaultAgentId={agent.defaultAgentId}
@@ -146,12 +153,13 @@ export function AppNavigationRail({
       onToggleThumbnailAutoHide={onToggleThumbnailAutoHide}
       onThumbnailSideChange={onThumbnailSideChange}
       onLaunchPathsHeightChange={onLaunchPathsHeightChange}
+      onWorkspaceHeightChange={onWorkspaceHeightChange}
       onConfirmCloseChange={onConfirmCloseChange}
       onDefaultAgentChange={agent.setDefaultAgentId}
       terminalContent={
         <div
           className={`workbench-rail-layout ${agent.selectedAgent ? "has-agent-history" : "terminal-target"}`}
-          style={{ "--launch-paths-max-height": `${launchPathsHeight}px` } as CSSProperties}
+          style={{ "--launch-paths-max-height": `${launchPathsHeight}px`, "--workspace-list-max-height": `${workspaceHeight}px` } as CSSProperties}
         >
           <WorkspaceList
             workspaces={workspace.workspaces}
@@ -177,8 +185,6 @@ export function AppNavigationRail({
             selectedConfigId={agent.selectedConfigId}
             profiles={skills.profiles}
             selectedProfileId={agent.selectedSkillProfileId}
-            paths={agent.paths}
-            selectedPathId={agent.selectedPathId}
             installState={agent.selectedAgentId ? agent.installStates[agent.selectedAgentId] : undefined}
             activeInstallAgent={agent.agents.find((item) => item.id === agent.installingAgentId) ?? null}
             installAnnouncement={agent.installAnnouncement}
@@ -190,10 +196,6 @@ export function AppNavigationRail({
             onUpdateConfig={agent.updateConfig}
             onDeleteConfig={agent.deleteConfig}
             onInstallAgent={agent.installAgent}
-            onLaunch={() => {
-              const options = selectedAgentLaunchOptions(agent.selectedPath);
-              if (options) void agent.launch(options);
-            }}
             onConfirm={onConfirm}
           />
           <WorkspaceLaunchPaths
@@ -206,7 +208,6 @@ export function AppNavigationRail({
             pathDisplay={pathDisplay}
             onSelectPath={workspace.selectLaunchPath}
             onLaunch={(path) => {
-              workspace.ensureLaunchPathSelected(path.id);
               void agent.launch({ cwd: path.path });
             }}
             onPinPath={(path) => void workspace.pinLaunchPath(path)}

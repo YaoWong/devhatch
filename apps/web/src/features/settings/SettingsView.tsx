@@ -10,6 +10,7 @@ import {
   DEFAULT_FONT_SIZE_PX,
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_UI_SCALE_PERCENT,
+  DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
 } from "../../shared/theme/displaySettings";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { DEFAULT_THEME_ID, themes } from "../../shared/theme/themes";
@@ -38,6 +39,7 @@ export function SettingsView({
   const {
     themeId,
     launchPathsMaxHeightPx,
+    workspaceMaxHeightPx,
     navigationRailWidthPx,
     fontSizePx,
     uiScalePercent,
@@ -47,6 +49,8 @@ export function SettingsView({
     dismissError,
     resetAppearance,
     selectTheme,
+    setLaunchPathsMaxHeightPx,
+    setWorkspaceMaxHeightPx,
     setNavigationRailWidthPx,
     setFontSizePx,
     setUiScalePercent,
@@ -55,6 +59,7 @@ export function SettingsView({
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
   const appearanceDirty = themeId !== DEFAULT_THEME_ID ||
     launchPathsMaxHeightPx !== DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
+    workspaceMaxHeightPx !== DEFAULT_WORKSPACE_MAX_HEIGHT_PX ||
     navigationRailWidthPx !== DEFAULT_NAVIGATION_RAIL_WIDTH_PX ||
     (supportsDisplaySettings && (fontSizePx !== DEFAULT_FONT_SIZE_PX || uiScalePercent !== DEFAULT_UI_SCALE_PERCENT));
 
@@ -170,6 +175,26 @@ export function SettingsView({
                 </span>
                 <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
                   <PixelRangeControl label="UI scale" min={80} max={125} step={5} unit="percent" value={uiScalePercent} disabled={saving || !supportsDisplaySettings} onChange={setUiScalePercent} />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <PanelLeft className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Launch paths height</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the maximum height of the Launch Paths list.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsMaxHeightPx} disabled={saving} onChange={setLaunchPathsMaxHeightPx} />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <PanelLeft className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Workspace height</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the maximum height of the Workspace list.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="Workspace height" min={160} max={480} step={8} value={workspaceMaxHeightPx} disabled={saving} onChange={setWorkspaceMaxHeightPx} />
                 </div>
               </div>
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
