@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Bot, Globe2, Settings, Sparkles, SquareTerminal } from "lucide-react";
+import { Globe2, Hammer, Settings, Sparkles } from "lucide-react";
 import type { DetailMode, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 
 type RailFocusRequest = {
@@ -29,14 +29,12 @@ export function useNavigation(bumpFocus: () => void) {
   const modesPageRef = useRef<HTMLElement | null>(null);
   const pageRefs = useRef<Record<DetailMode, HTMLElement | null>>({
     terminal: null,
-    agent: null,
     skills: null,
     webapp: null,
     settings: null,
   });
   const modeRefs = useRef<Record<DetailMode, HTMLButtonElement | null>>({
     terminal: null,
-    agent: null,
     skills: null,
     webapp: null,
     settings: null,
@@ -44,15 +42,13 @@ export function useNavigation(bumpFocus: () => void) {
   const focusRequestRef = useRef<RailFocusRequest | null>(null);
   const titleRefs = useRef<Record<DetailMode, HTMLSpanElement | null>>({
     terminal: null,
-    agent: null,
     skills: null,
     webapp: null,
     settings: null,
   });
   const modeMeta = useMemo(
     () => ({
-      terminal: { label: "Terminal", icon: SquareTerminal },
-      agent: { label: "Agent CLI", icon: Bot },
+      terminal: { label: "Workbench", icon: Hammer },
       skills: { label: "Skills", icon: Sparkles },
       webapp: { label: "Web Apps", icon: Globe2 },
       settings: { label: "Settings", icon: Settings },
@@ -88,7 +84,7 @@ export function useNavigation(bumpFocus: () => void) {
         setRailPage(page);
         if (motion === "forward" && page !== "modes") {
           setWorkspaceMode(page);
-          if (page === "terminal" || page === "agent") bumpFocus();
+          if (page === "terminal") bumpFocus();
         } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
           setWorkspaceMode("settings");
         }
@@ -156,7 +152,7 @@ export function useNavigation(bumpFocus: () => void) {
       setRailPage(page);
       if (motion === "forward" && page !== "modes") {
         setWorkspaceMode(page);
-        if (page === "terminal" || page === "agent") bumpFocus();
+        if (page === "terminal") bumpFocus();
       } else if (motion === "return" && page === "modes" && showSettingsOnReturn) {
         setWorkspaceMode("settings");
       }
@@ -206,7 +202,7 @@ export function useNavigation(bumpFocus: () => void) {
     setRailPage(mode);
     setRailMotion(null);
     setSidebarOpen(false);
-    if (mode === "terminal" || mode === "agent") bumpFocus();
+    if (mode === "terminal") bumpFocus();
   }, [bumpFocus]);
 
   const showGlobalSettings = useCallback(() => {

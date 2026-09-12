@@ -8,11 +8,14 @@ import {
   cachedDisplaySettings,
   clampFontSize,
   clampUiScale,
-  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX,
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
+  DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
   MAX_FONT_SIZE_PX,
+  MAX_NAVIGATION_RAIL_WIDTH_PX,
   MAX_UI_SCALE_PERCENT,
   MIN_FONT_SIZE_PX,
+  MIN_NAVIGATION_RAIL_WIDTH_PX,
   MIN_UI_SCALE_PERCENT,
 } from "../../shared/theme/displaySettings";
 import { applyTheme, cachedTheme, DEFAULT_THEME_ID, isThemeId } from "../../shared/theme/themes";
@@ -71,8 +74,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const reportError = useCallback((reason: unknown) => {
     if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason));
   }, []);
-  const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("agentLaunchPathsMaxHeightPx", DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX, 160, 480, reportError);
-  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, 240, 480, reportError);
+  const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("launchPathsMaxHeightPx", DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX, 160, 480, reportError);
+  const { value: workspaceHeightValue, setValue: setWorkspaceHeightValue, loadValue: loadWorkspaceHeightValue } = usePersistedNumberSetting("workspaceMaxHeightPx", DEFAULT_WORKSPACE_MAX_HEIGHT_PX, 160, 480, reportError);
+  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, MIN_NAVIGATION_RAIL_WIDTH_PX, MAX_NAVIGATION_RAIL_WIDTH_PX, reportError);
   const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError, supportsDisplaySettings);
   const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError, supportsDisplaySettings, 5);
 
@@ -120,7 +124,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         const next = isThemeId(settings.theme) ? settings.theme : DEFAULT_THEME_ID;
         confirmedRef.current = next;
         desiredRef.current = next;
-        loadHeightValue(settings.agentLaunchPathsMaxHeightPx);
+        loadHeightValue(settings.launchPathsMaxHeightPx);
+        loadWorkspaceHeightValue(settings.workspaceMaxHeightPx);
         loadWidthValue(settings.navigationRailWidthPx);
         const displaySettingsSupported = hasDisplaySettings(settings);
         setSupportsDisplaySettings(displaySettingsSupported);
@@ -134,7 +139,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         confirmedRef.current = initialTheme;
         desiredRef.current = initialTheme;
         setSupportsDisplaySettings(false);
-        loadHeightValue(DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX);
+        loadHeightValue(DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX);
+        loadWorkspaceHeightValue(DEFAULT_WORKSPACE_MAX_HEIGHT_PX);
         loadWidthValue(DEFAULT_NAVIGATION_RAIL_WIDTH_PX);
         loadFontSizeValue(initialDisplaySettings.fontSizePx);
         loadUiScaleValue(initialDisplaySettings.uiScalePercent);
@@ -149,7 +155,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       const cached = cachedDisplaySettings();
       applyDisplaySettings(cached.fontSizePx, cached.uiScalePercent);
     };
-  }, [initialDisplaySettings.fontSizePx, initialDisplaySettings.uiScalePercent, initialTheme, loadFontSizeValue, loadHeightValue, loadUiScaleValue, loadWidthValue, reportError]);
+  }, [initialDisplaySettings.fontSizePx, initialDisplaySettings.uiScalePercent, initialTheme, loadFontSizeValue, loadHeightValue, loadUiScaleValue, loadWidthValue, loadWorkspaceHeightValue, reportError]);
 
   const dismissError = useCallback(() => setError(null), []);
   const selectTheme = useCallback((next: ThemeId) => {
@@ -160,10 +166,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setError(null);
     if (changed || next !== confirmedRef.current) void flush();
   }, [flush]);
-  const setAgentLaunchPathsMaxHeightPx = useCallback((value: number) => {
+  const setLaunchPathsMaxHeightPx = useCallback((value: number) => {
     setError(null);
     setHeightValue(value);
   }, [setHeightValue]);
+  const setWorkspaceMaxHeightPx = useCallback((value: number) => {
+    setError(null);
+    setWorkspaceHeightValue(value);
+  }, [setWorkspaceHeightValue]);
   const setNavigationRailWidthPx = useCallback((value: number) => {
     setError(null);
     setWidthValue(value);
@@ -179,13 +189,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const resetAppearance = useCallback(() => {
     const defaults = appearanceDefaults(supportsDisplaySettings);
     selectTheme(defaults.theme);
-    setAgentLaunchPathsMaxHeightPx(defaults.agentLaunchPathsMaxHeightPx);
+    setLaunchPathsMaxHeightPx(defaults.launchPathsMaxHeightPx);
+    setWorkspaceMaxHeightPx(defaults.workspaceMaxHeightPx);
     setNavigationRailWidthPx(defaults.navigationRailWidthPx);
     if (defaults.fontSizePx !== undefined && defaults.uiScalePercent !== undefined) {
       setFontSizePx(defaults.fontSizePx);
       setUiScalePercent(defaults.uiScalePercent);
     }
-  }, [selectTheme, setAgentLaunchPathsMaxHeightPx, setFontSizePx, setNavigationRailWidthPx, setUiScalePercent, supportsDisplaySettings]);
+  }, [selectTheme, setLaunchPathsMaxHeightPx, setFontSizePx, setNavigationRailWidthPx, setUiScalePercent, setWorkspaceMaxHeightPx, supportsDisplaySettings]);
 
   if (themeId === null) {
     return showInitialLoading ? <main className="tw:flex tw:h-dvh tw:w-full tw:items-center tw:justify-center tw:overflow-y-auto tw:overscroll-contain tw:bg-[radial-gradient(circle_at_50%_0%,var(--color-surface)_0,var(--color-canvas)_55%)] tw:pt-[max(16px,env(safe-area-inset-top))] tw:pr-[max(16px,env(safe-area-inset-right))] tw:pb-[max(16px,env(safe-area-inset-bottom))] tw:pl-[max(16px,env(safe-area-inset-left))]" aria-busy="true"><section className="tw:my-auto tw:grid tw:w-[min(420px,100%)] tw:flex-none tw:gap-[18px] tw:rounded-[24px] tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] tw:p-[32px] tw:shadow-[0_24px_70px_rgb(0_0_0/10%)]"><h1 className="tw:m-0 tw:text-[calc(24px*var(--app-font-scale))] tw:tracking-[-0.04em]">DevHatch</h1><p className="tw:m-0 tw:text-sm tw:leading-[1.5] tw:text-muted-foreground" role="status">Loading settings…</p></section></main> : null;
@@ -194,7 +205,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     <ThemeContext
       value={{
         themeId,
-        agentLaunchPathsMaxHeightPx: heightValue,
+        launchPathsMaxHeightPx: heightValue,
+        workspaceMaxHeightPx: workspaceHeightValue,
         navigationRailWidthPx: widthValue,
         fontSizePx: fontSizeValue,
         uiScalePercent: uiScaleValue,
@@ -204,7 +216,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         dismissError,
         resetAppearance,
         selectTheme,
-        setAgentLaunchPathsMaxHeightPx,
+        setLaunchPathsMaxHeightPx,
+        setWorkspaceMaxHeightPx,
         setNavigationRailWidthPx,
         setFontSizePx,
         setUiScalePercent,

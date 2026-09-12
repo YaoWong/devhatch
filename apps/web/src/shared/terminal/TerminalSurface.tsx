@@ -6,8 +6,9 @@ import { Terminal } from "@xterm/xterm";
 import { verifyAuth } from "../../api/auth";
 import { notifyUnauthorized } from "../../api/client";
 import { useTheme } from "../theme/ThemeContext";
-import type { ConnectionPhase, TerminalInfo } from "../../types/terminals";
-import { SocketConnection } from "./socketConnection";
+import type { ConnectionPhase } from "../../types/terminals";
+import type { WorkspaceSession } from "../../types/workspaces";
+import { SocketConnection, terminalSocketPath } from "./socketConnection";
 import { loadTerminalFonts } from "./terminalFonts";
 import { registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
@@ -18,6 +19,7 @@ const socketProtocol = () => window.location.protocol === "https:" ? "wss:" : "w
 
 export function TerminalSurface({
   session,
+  phaseKey = session.id,
   visible,
   rendered = visible,
   focused,
@@ -36,7 +38,8 @@ export function TerminalSurface({
   onOpenLink,
   onError,
 }: {
-  session: TerminalInfo;
+  session: WorkspaceSession;
+  phaseKey?: string;
   visible: boolean;
   rendered?: boolean;
   focused: boolean;
@@ -182,7 +185,7 @@ export function TerminalSurface({
         terminal.refresh(0, terminal.rows - 1);
       }
     } catch (reason) {
-      onPhaseChange(session.id, "disconnected");
+      onPhaseChange(phaseKey, "disconnected");
       onError(reason instanceof Error ? reason.message : String(reason));
       return;
     }
@@ -243,7 +246,7 @@ export function TerminalSurface({
       }
       return captureThumbnail();
     };
-    onTransitionPrepareAvailableRef.current?.(session.id, prepareTransition);
+    onTransitionPrepareAvailableRef.current?.(phaseKey, prepareTransition);
     const emitThumbnail = () => {
       thumbnailTimer = null;
       const callback = onThumbnailRef.current;
@@ -252,7 +255,7 @@ export function TerminalSurface({
       void captureThumbnail()
         .then((blob) => {
           if (!blob || disposed || !thumbnailEnabledRef.current || generation !== thumbnailGenerationRef.current) return;
-          onThumbnailRef.current?.(session.id, blob);
+          onThumbnailRef.current?.(phaseKey, blob);
         })
         .finally(() => {
           if (thumbnailCapture.finish()) scheduleThumbnail();
@@ -305,8 +308,8 @@ export function TerminalSurface({
       expectedClose = false;
       lastResize = "";
       terminalWriter.begin(generation);
-      onPhaseChange(session.id, phase);
-      const socket = new WebSocket(`${socketProtocol()}//${window.location.host}${socketBase}/${session.id}/socket`);
+      onPhaseChange(phaseKey, phase);
+      const socket = new WebSocket(`${socketProtocol()}//${window.location.host}${terminalSocketPath(socketBase, session.id)}`);
       socketRef.current = socket;
       socket.addEventListener("message", (event) => {
         if (disposed || socketRef.current !== socket) return;
@@ -350,7 +353,7 @@ export function TerminalSurface({
                 || !connection.isCurrent(generation)
               ) return;
               protocolReady = true;
-              onPhaseChange(session.id, "connected");
+              onPhaseChange(phaseKey, "connected");
               sendResize();
               scheduleThumbnail();
               if (inputBuffer) {
@@ -375,7 +378,7 @@ export function TerminalSurface({
             });
           }
           if (message.type === "exit" || message.type === "processExited") {
-            onPhaseChange(session.id, "exited");
+            onPhaseChange(phaseKey, "exited");
             expectedClose = true;
             connection.stop();
             if (!onRemovedRef.current) socket.close(1000, "process exited");
@@ -397,7 +400,7 @@ export function TerminalSurface({
         socketRef.current = null;
         if (expectedClose) return;
         const action = connection.close(generation, event.code, connect);
-        if (action !== "ignored") onPhaseChange(session.id, "disconnected");
+        if (action !== "ignored") onPhaseChange(phaseKey, "disconnected");
       });
     };
     const input = terminal.onData((data) => {
@@ -474,9 +477,9 @@ export function TerminalSurface({
       terminalRef.current = null;
       activateRef.current = null;
       requestThumbnailRef.current = null;
-      onTransitionPrepareAvailableRef.current?.(session.id, () => Promise.resolve(null));
+      onTransitionPrepareAvailableRef.current?.(phaseKey, () => Promise.resolve(null));
     };
-  }, [session.id, socketBase, onPhaseChange, onOpenLink, onError]);
+  }, [session.id, phaseKey, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
       className={`terminal-surface ${rendered ? "active" : ""} ${className ?? ""}`}

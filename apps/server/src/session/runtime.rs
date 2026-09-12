@@ -76,6 +76,31 @@ impl Session {
     where
         F: FnOnce(&Arc<Self>),
     {
+        Self::spawn_inner(sessions, spawn, started, Uuid::new_v4().to_string())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn spawn_with_id<F>(
+        sessions: Arc<SessionRegistry>,
+        spawn: SessionSpawn,
+        started: F,
+        id: impl Into<String>,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce(&Arc<Self>),
+    {
+        Self::spawn_inner(sessions, spawn, started, id.into())
+    }
+
+    fn spawn_inner<F>(
+        sessions: Arc<SessionRegistry>,
+        spawn: SessionSpawn,
+        started: F,
+        id: String,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>>
+    where
+        F: FnOnce(&Arc<Self>),
+    {
         let cleanup_path = spawn.cleanup_path.clone();
         let exit_cleanup = spawn.exit_cleanup;
         let pair = NativePtySystem::default().openpty(PtySize {
@@ -96,7 +121,7 @@ impl Session {
         let timestamp = now();
         let (events, _) = tokio::sync::broadcast::channel(1024);
         let session = Arc::new(Self {
-            id: Uuid::new_v4().to_string(),
+            id,
             shell: spawn.shell,
             kind: spawn.kind,
             identity: std::sync::Mutex::new(super::model::SessionIdentity {
@@ -134,11 +159,11 @@ impl Session {
             return Err("server is shutting down".into());
         }
         if let Err(error) = Self::start_reader(&session, reader) {
-            sessions.remove_if_same(session.id(), &session);
+            sessions.remove_if_same(&session);
             return Err(error.into());
         }
         if let Err(error) = Self::start_writer(&session, writer, input_receiver) {
-            sessions.remove_if_same(session.id(), &session);
+            sessions.remove_if_same(&session);
             return Err(error.into());
         }
         let waiter = match Self::start_waiter(
@@ -150,14 +175,14 @@ impl Session {
         ) {
             Ok(waiter) => waiter,
             Err(error) => {
-                sessions.remove_if_same(session.id(), &session);
+                sessions.remove_if_same(&session);
                 session.input.lock().expect("input lock poisoned").take();
                 return Err(error.into());
             }
         };
         started(&session);
         if waiter.send(()).is_err() {
-            sessions.remove_if_same(session.id(), &session);
+            sessions.remove_if_same(&session);
             session.input.lock().expect("input lock poisoned").take();
             return Err("session waiter stopped before startup completed".into());
         }
@@ -335,7 +360,6 @@ impl Session {
     ) -> std::io::Result<std::sync::mpsc::Sender<()>> {
         let weak = Arc::downgrade(session);
         let completion = session.completion.clone();
-        let id = session.id.clone();
         let kind = session.kind;
         let (commit, committed) = std::sync::mpsc::channel();
         std::thread::Builder::new()
@@ -361,7 +385,7 @@ impl Session {
                             cleanup(session.clone(), code);
                         } else {
                             session.finish_exit(code);
-                            sessions.remove_if_same(&id, &session);
+                            sessions.remove_if_same(&session);
                             session.publish_removed(code);
                         }
                     } else {

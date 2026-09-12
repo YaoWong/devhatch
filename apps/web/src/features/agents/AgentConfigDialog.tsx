@@ -13,12 +13,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { AgentLaunchConfig, AgentLaunchConfigInput } from "../../types/agents";
+import type { LaunchConfig, LaunchConfigInput } from "../../types/agents";
 import type { ConfirmAction } from "../../types/app";
 import { captureDialogReturnFocus, resolveDialogFinalFocus } from "../../shared/ui/dialogFocus";
 
-type ScriptParts = Pick<AgentLaunchConfigInput, "preLaunchScript" | "providerScript" | "tuiScript">;
-type Draft = Pick<AgentLaunchConfigInput, "agentId" | "name" | "isDefault"> & ScriptParts & {
+type ScriptParts = Pick<LaunchConfigInput, "preLaunchScript" | "providerScript" | "tuiScript">;
+type Draft = Pick<LaunchConfigInput, "agentId" | "name" | "isDefault"> & ScriptParts & {
   id: string | null;
   launchScript: string;
 };
@@ -43,7 +43,7 @@ const emptyDraft = (agentId: string): Draft => ({
   launchScript: "",
 });
 
-const configDraft = (config: AgentLaunchConfig): Draft => ({
+const configDraft = (config: LaunchConfig): Draft => ({
   id: config.id,
   agentId: config.agentId,
   name: config.name,
@@ -66,13 +66,13 @@ export function AgentConfigDialog({
   onConfirm,
   onClose,
 }: {
-  configs: AgentLaunchConfig[];
+  configs: LaunchConfig[];
   agentId: string;
   agentName: string;
   selectedConfigId: string | null;
   onSelect: (id: string) => void;
-  onCreate: (input: AgentLaunchConfigInput) => Promise<boolean>;
-  onUpdate: (id: string, input: AgentLaunchConfigInput) => Promise<boolean>;
+  onCreate: (input: LaunchConfigInput) => Promise<boolean>;
+  onUpdate: (id: string, input: LaunchConfigInput) => Promise<boolean>;
   onDelete: (id: string) => Promise<boolean>;
   onConfirm: (action: ConfirmAction) => void;
   onClose: () => void;
@@ -85,7 +85,7 @@ export function AgentConfigDialog({
   const nameRef = useRef<HTMLInputElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(captureDialogReturnFocus());
   const resolveFinalFocus = () => resolveDialogFinalFocus(returnFocusRef.current);
-  const select = (config: AgentLaunchConfig) => {
+  const select = (config: LaunchConfig) => {
     if (saving) return;
     setScriptError(null);
     setDraft(configDraft(config));
@@ -108,7 +108,7 @@ export function AgentConfigDialog({
     }
     setScriptError(null);
     setSaving(true);
-    const input: AgentLaunchConfigInput = {
+    const input: LaunchConfigInput = {
       agentId: draft.agentId,
       name: draft.name.trim(),
       isDefault: draft.isDefault,

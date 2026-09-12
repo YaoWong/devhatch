@@ -6,7 +6,7 @@ export function getSettings() {
     .then(({ settings }) => settings);
 }
 
-export type UpdateSettingsPatch = Partial<Pick<AppSettings, "theme" | "agentLaunchPathsMaxHeightPx" | "navigationRailWidthPx" | "fontSizePx" | "uiScalePercent">>;
+export type UpdateSettingsPatch = Partial<Pick<AppSettings, "theme" | "launchPathsMaxHeightPx" | "workspaceMaxHeightPx" | "navigationRailWidthPx" | "fontSizePx" | "uiScalePercent">>;
 
 export function updateSettings(
   patch: UpdateSettingsPatch,

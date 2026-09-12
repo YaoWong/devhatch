@@ -16,14 +16,38 @@ pub(crate) struct SessionRegistry {
     sessions: RwLock<RegistryState>,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct SessionKey {
+    kind: SessionKind,
+    id: String,
+}
+
+impl SessionKey {
+    fn new(kind: SessionKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    fn borrowed(kind: SessionKind, id: &str) -> Self {
+        Self::new(kind, id)
+    }
+
+    fn for_session(session: &Session) -> Self {
+        Self::new(session.kind(), session.id())
+    }
+}
+
 #[derive(Default)]
 struct RegistryState {
-    sessions: IndexMap<String, Arc<Session>>,
+    sessions: IndexMap<SessionKey, Arc<Session>>,
+    terminating_agents: IndexMap<SessionKey, Arc<Session>>,
     shutting_down: bool,
 }
 
 impl Deref for RegistryState {
-    type Target = IndexMap<String, Arc<Session>>;
+    type Target = IndexMap<SessionKey, Arc<Session>>;
 
     fn deref(&self) -> &Self::Target {
         &self.sessions
@@ -40,7 +64,12 @@ impl SessionRegistry {
     fn begin_shutdown(&self) -> Vec<Arc<Session>> {
         let mut state = self.sessions.write().expect("sessions lock poisoned");
         state.shutting_down = true;
-        state.sessions.values().cloned().collect()
+        state
+            .sessions
+            .values()
+            .chain(state.terminating_agents.values())
+            .cloned()
+            .collect()
     }
 
     pub(crate) async fn shutdown_all(&self, timeout: Duration) -> bool {
@@ -62,20 +91,22 @@ impl SessionRegistry {
 
     #[allow(dead_code)]
     pub(crate) fn active_upstream_session_ids(&self) -> HashSet<String> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .filter(|session| session.kind() == SessionKind::Agent)
             .filter_map(|session| session.upstream_session_id())
             .collect()
     }
 
     pub(crate) fn active_upstream_session_ids_for(&self, agent_id: &str) -> HashSet<String> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .filter(|session| {
                 session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
             })
@@ -84,10 +115,11 @@ impl SessionRegistry {
     }
 
     pub(crate) fn pending_upstream_session_ids_for(&self, agent_id: &str) -> HashSet<String> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .filter(|session| {
                 session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
             })
@@ -96,10 +128,11 @@ impl SessionRegistry {
     }
 
     pub(crate) fn active_upstream_session_files_for(&self, agent_id: &str) -> HashSet<PathBuf> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .filter(|session| {
                 session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
             })
@@ -108,10 +141,11 @@ impl SessionRegistry {
     }
 
     pub(crate) fn active_agent_cwds_for(&self, agent_id: &str) -> HashSet<PathBuf> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .filter(|session| {
                 session.kind() == SessionKind::Agent && session.agent_id() == Some(agent_id)
             })
@@ -120,10 +154,11 @@ impl SessionRegistry {
     }
 
     pub(crate) fn owned_process_ids(&self) -> HashSet<u32> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
             .values()
+            .chain(state.terminating_agents.values())
             .map(|session| session.process_id())
             .collect()
     }
@@ -133,7 +168,8 @@ impl SessionRegistry {
         if state.shutting_down {
             return false;
         }
-        state.insert(session.id().to_string(), session);
+        let key = SessionKey::for_session(&session);
+        state.sessions.insert(key, session);
         true
     }
 
@@ -141,8 +177,8 @@ impl SessionRegistry {
         self.sessions
             .read()
             .expect("sessions lock poisoned")
-            .get(id)
-            .filter(|session| session.kind() == kind)
+            .sessions
+            .get(&SessionKey::borrowed(kind, id))
             .cloned()
     }
 
@@ -150,8 +186,9 @@ impl SessionRegistry {
         self.sessions
             .read()
             .expect("sessions lock poisoned")
-            .values()
-            .filter(|session| session.kind() == kind)
+            .sessions
+            .keys()
+            .filter(|key| key.kind == kind)
             .count()
     }
 
@@ -159,22 +196,14 @@ impl SessionRegistry {
         self.sessions
             .read()
             .expect("sessions lock poisoned")
-            .values()
-            .filter(|session| session.kind() == kind)
-            .map(|session| session.view())
+            .sessions
+            .iter()
+            .filter(|(key, _)| key.kind == kind)
+            .map(|(_, session)| session.view())
             .collect()
     }
 
-    pub(crate) fn ids(&self, kind: SessionKind) -> HashSet<String> {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
-            .values()
-            .filter(|session| session.kind() == kind)
-            .map(|session| session.id().to_string())
-            .collect()
-    }
-
+    #[cfg(test)]
     pub(crate) fn live_snapshot(&self, kind: SessionKind) -> (HashSet<String>, Vec<SessionView>) {
         let sessions = self.sessions.read().expect("sessions lock poisoned");
         let views = sessions
@@ -184,6 +213,28 @@ impl SessionRegistry {
             .collect::<Vec<_>>();
         let ids = views.iter().map(|view| view.id().to_string()).collect();
         (ids, views)
+    }
+
+    pub(crate) fn workspace_snapshot(
+        &self,
+    ) -> (HashSet<crate::workspace::MemberIdentity>, Vec<SessionView>) {
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
+        let mut eligible = HashSet::new();
+        let mut views = Vec::new();
+        for session in sessions.values() {
+            let included = match session.kind() {
+                SessionKind::Terminal => !session.is_deleting(),
+                SessionKind::Agent => session.is_live(),
+            };
+            if included {
+                eligible.insert(crate::workspace::MemberIdentity::new(
+                    session.id(),
+                    session.kind(),
+                ));
+                views.push(session.view());
+            }
+        }
+        (eligible, views)
     }
 
     #[cfg(test)]
@@ -201,7 +252,8 @@ impl SessionRegistry {
         self.sessions
             .read()
             .expect("sessions lock poisoned")
-            .get(session.id())
+            .sessions
+            .get(&SessionKey::for_session(session))
             .is_some_and(|current| Arc::ptr_eq(current, session))
     }
 
@@ -211,34 +263,50 @@ impl SessionRegistry {
         kind: SessionKind,
     ) -> Option<HashSet<String>> {
         let sessions = self.sessions.read().expect("sessions lock poisoned");
-        let current = sessions.get(session.id())?;
-        if current.kind() != kind || !Arc::ptr_eq(current, session) || !current.is_live() {
+        let key = SessionKey::borrowed(kind, session.id());
+        let current = sessions.sessions.get(&key)?;
+        if !Arc::ptr_eq(current, session) || !current.is_live() {
             return None;
         }
         Some(
             sessions
-                .values()
-                .filter(|session| session.kind() == kind && session.is_live())
-                .map(|session| session.id().to_string())
+                .sessions
+                .iter()
+                .filter(|(key, session)| key.kind == kind && session.is_live())
+                .map(|(key, _)| key.id.clone())
                 .collect(),
         )
     }
 
     pub(crate) fn remove(&self, id: &str, kind: SessionKind) -> Option<Arc<Session>> {
-        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
-        sessions
-            .get(id)
-            .is_some_and(|session| session.kind() == kind)
-            .then(|| sessions.shift_remove(id).expect("session must exist"))
+        let mut state = self.sessions.write().expect("sessions lock poisoned");
+        let key = SessionKey::borrowed(kind, id);
+        let removed = state.sessions.shift_remove(&key);
+        if let Some(session) = &removed
+            && kind == SessionKind::Agent
+            && session.is_live()
+        {
+            state.terminating_agents.insert(key, session.clone());
+        }
+        removed
     }
 
-    pub(crate) fn remove_if_same(&self, id: &str, session: &Arc<Session>) {
-        let mut sessions = self.sessions.write().expect("sessions lock poisoned");
-        if sessions
-            .get(id)
+    pub(crate) fn remove_if_same(&self, session: &Arc<Session>) {
+        let mut state = self.sessions.write().expect("sessions lock poisoned");
+        let key = SessionKey::for_session(session);
+        if state
+            .sessions
+            .get(&key)
             .is_some_and(|current| Arc::ptr_eq(current, session))
         {
-            sessions.shift_remove(id);
+            state.sessions.shift_remove(&key);
+        }
+        if state
+            .terminating_agents
+            .get(&key)
+            .is_some_and(|current| Arc::ptr_eq(current, session))
+        {
+            state.terminating_agents.shift_remove(&key);
         }
     }
 }
@@ -405,7 +473,7 @@ mod tests {
                 .live_ids_if_contains(&session, SessionKind::Agent)
                 .is_none()
         );
-        registry.remove_if_same(session.id(), &session);
+        registry.remove_if_same(&session);
         session.terminate();
         session.wait_for_completion().await;
 
@@ -439,9 +507,159 @@ mod tests {
                 .live_ids_if_contains(&exited, SessionKind::Agent)
                 .is_none()
         );
-        registry.remove_if_same(exited.id(), &exited);
+        registry.remove_if_same(&exited);
         exited.terminate();
         exited.wait_for_completion().await;
+    }
+
+    #[tokio::test]
+    async fn naturally_exited_terminal_remains_workspace_eligible() {
+        let registry = Arc::new(SessionRegistry::default());
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "exit 0"]);
+        let session = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Terminal,
+                upstream_session_id: None,
+                pending_upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: None,
+                agent_name: None,
+                cleanup_path: None,
+                runtime_endpoint: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
+        let (eligible, views) = registry.workspace_snapshot();
+        assert!(eligible.contains(&crate::workspace::MemberIdentity::new(
+            session.id(),
+            SessionKind::Terminal,
+        )));
+        assert_eq!(views.len(), 1);
+        assert!(
+            registry
+                .session(session.id(), SessionKind::Terminal)
+                .is_some()
+        );
+        registry.remove(session.id(), SessionKind::Terminal);
+    }
+
+    #[tokio::test]
+    async fn terminating_agent_owns_upstream_history_until_process_exit() {
+        let registry = Arc::new(SessionRegistry::default());
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        let session = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: Some("history".to_string()),
+                pending_upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                runtime_endpoint: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        let removed = registry.remove(session.id(), SessionKind::Agent).unwrap();
+        removed.mark_deleting();
+        assert_eq!(
+            registry.active_upstream_session_ids_for("test"),
+            HashSet::from(["history".to_string()])
+        );
+        removed.terminate();
+        tokio::time::timeout(Duration::from_secs(5), removed.wait_for_completion())
+            .await
+            .unwrap();
+        assert!(registry.active_upstream_session_ids_for("test").is_empty());
+    }
+
+    #[tokio::test]
+    async fn same_raw_id_across_kinds_is_stored_and_removed_independently() {
+        let registry = Arc::new(SessionRegistry::default());
+        let spawn = |kind, name: &str| {
+            let mut command = CommandBuilder::new("/bin/sh");
+            command.args(["-c", "sleep 30"]);
+            Session::spawn_with_id(
+                registry.clone(),
+                SessionSpawn {
+                    command,
+                    shell: "/bin/sh".to_string(),
+                    kind,
+                    upstream_session_id: None,
+                    pending_upstream_session_id: None,
+                    cwd: std::env::temp_dir(),
+                    name: name.to_string(),
+                    cols: 80,
+                    rows: 24,
+                    agent_id: (kind == SessionKind::Agent).then_some("test"),
+                    agent_name: (kind == SessionKind::Agent).then_some("Test"),
+                    cleanup_path: None,
+                    runtime_endpoint: None,
+                    exit_cleanup: None,
+                },
+                |_| {},
+                "shared",
+            )
+            .unwrap()
+        };
+        let terminal = spawn(SessionKind::Terminal, "terminal");
+        let agent = spawn(SessionKind::Agent, "agent");
+
+        assert!(Arc::ptr_eq(
+            &registry.session("shared", SessionKind::Terminal).unwrap(),
+            &terminal
+        ));
+        assert!(Arc::ptr_eq(
+            &registry.session("shared", SessionKind::Agent).unwrap(),
+            &agent
+        ));
+        assert_eq!(registry.count(SessionKind::Terminal), 1);
+        assert_eq!(registry.count(SessionKind::Agent), 1);
+
+        assert!(Arc::ptr_eq(
+            &registry.remove("shared", SessionKind::Terminal).unwrap(),
+            &terminal
+        ));
+        assert!(registry.session("shared", SessionKind::Terminal).is_none());
+        assert!(Arc::ptr_eq(
+            &registry.session("shared", SessionKind::Agent).unwrap(),
+            &agent
+        ));
+        assert!(Arc::ptr_eq(
+            &registry.remove("shared", SessionKind::Agent).unwrap(),
+            &agent
+        ));
+        terminal.mark_deleting();
+        terminal.terminate();
+        agent.mark_deleting();
+        agent.terminate();
+        tokio::time::timeout(Duration::from_secs(5), terminal.wait_for_completion())
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), agent.wait_for_completion())
+            .await
+            .unwrap();
     }
 
     #[test]

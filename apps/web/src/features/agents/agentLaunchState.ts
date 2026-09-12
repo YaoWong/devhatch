@@ -1,12 +1,4 @@
-import type { AgentLaunchPath, AgentSession } from "../../types/agents";
-
-export function findAgentLaunchPath(paths: AgentLaunchPath[], path: string) {
-  return paths.find((entry) => entry.path === path) ?? null;
-}
-
-export function selectedAgentLaunchPath(paths: AgentLaunchPath[], selectedPathId: string | null) {
-  return paths.find((path) => path.id === selectedPathId) ?? null;
-}
+import type { AgentSession } from "../../types/agents";
 
 export function launcherActiveSession(
   sessions: AgentSession[],

@@ -88,7 +88,9 @@ export function DeleteSessionDialog({
               Close {target.kind}?
             </AlertDialogTitle>
             <AlertDialogDescription className="tw:mt-1.5 tw:text-sm tw:leading-[1.55]">
-              This will stop the running process and close <strong className="tw:text-[var(--color-text-subtle)]">{target.name}</strong>. OpenCode history will be preserved.
+              {target.kind === "agent"
+                ? <>This will stop the live Agent process and close <strong className="tw:text-[var(--color-text-subtle)]">{target.name}</strong>. Agent CLI history will be preserved.</>
+                : <>This will stop the Terminal process and close <strong className="tw:text-[var(--color-text-subtle)]">{target.name}</strong>.</>}
             </AlertDialogDescription>
             <span className="tw:mt-[9px] tw:block tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap tw:rounded-lg tw:bg-background tw:px-2.5 tw:py-2 tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.3] tw:text-muted-foreground">
               {target.cwd}

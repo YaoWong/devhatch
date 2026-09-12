@@ -13,10 +13,11 @@ import { readCanvasSidebarPinned, writeCanvasSidebarPinned } from "../features/n
 import { useTheme } from "../shared/theme/ThemeContext";
 import type { SkillsSection } from "../features/skills/SkillsRailPage";
 import { useSkillsWorkspace } from "../features/skills/useSkillsWorkspace";
-import { useTerminalWorkspace } from "../features/terminals/useTerminalWorkspace";
+import { useWorkspaceController } from "../features/terminals/useWorkspaceController";
 import {
   defaultTerminalLayoutPreset,
-  readTerminalWorkspaceLayouts,
+  readWorkspaceLayouts,
+  WORKSPACE_LAYOUT_STORAGE_KEY,
   writeTerminalWorkspaceLayouts,
   type TerminalLayoutCount,
   type TerminalLayoutPreset,
@@ -24,7 +25,9 @@ import {
 } from "../features/terminals/terminalWorkspaceLayout";
 import {
   clampTerminalWorkspaceCapacity,
+  readTerminalThumbnailsAutoHide,
   TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY,
+  writeTerminalThumbnailsAutoHide,
   type TerminalWorkspaceCapacity,
 } from "../features/terminals/terminalWorkspaceDock";
 import { useWebApps } from "../features/web-apps/useWebApps";
@@ -35,7 +38,8 @@ import {
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
 import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
-import type { ConnectionPhase, TerminalInfo } from "../types/terminals";
+import type { ConnectionPhase } from "../types/terminals";
+import { sessionKey, type WorkspaceSession } from "../types/workspaces";
 
 const TERMINAL_ROWS_STORAGE_KEY = "devhatch-terminal-workspace-rows";
 const CANVAS_RAIL_ID = "canvas-navigation-rail";
@@ -45,23 +49,21 @@ const CANVAS_RAIL_DIALOG_SELECTOR = "[data-canvas-rail-dialog]";
 const TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-terminal-thumbnail-side";
 const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity";
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
-const AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v2";
-const LEGACY_AGENT_WORKSPACE_LAYOUT_STORAGE_KEY = "devhatch-agent-workspace-layouts-v1";
 const TERMINAL_PATH_DISPLAY_STORAGE_KEY = "devhatch-terminal-path-display";
 const AGENT_PATH_DISPLAY_STORAGE_KEY = "devhatch-agent-path-display";
 type TerminalThumbnailSide = "left" | "right";
 
-function initialPathDisplay(storageKey: string): LaunchPathDisplay {
+function initialPathDisplay(): LaunchPathDisplay {
   try {
-    return localStorage.getItem(storageKey) === "full" ? "full" : "folder";
+    return (localStorage.getItem(TERMINAL_PATH_DISPLAY_STORAGE_KEY) ?? localStorage.getItem(AGENT_PATH_DISPLAY_STORAGE_KEY)) === "full" ? "full" : "folder";
   } catch {
     return "folder";
   }
 }
 
-function initialThumbnailSide(storageKey = TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY): TerminalThumbnailSide {
+function initialThumbnailSide(): TerminalThumbnailSide {
   try {
-    return localStorage.getItem(storageKey) === "right" ? "right" : "left";
+    return (localStorage.getItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY) ?? localStorage.getItem(AGENT_THUMBNAIL_SIDE_STORAGE_KEY)) === "right" ? "right" : "left";
   } catch {
     return "left";
   }
@@ -137,31 +139,29 @@ function MobileNavigationSheet({
   );
 }
 
-function initialCapacity(storageKey = TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY): TerminalWorkspaceCapacity {
+function initialCapacity(): TerminalWorkspaceCapacity {
   try {
-    const legacy = storageKey === TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY ? localStorage.getItem(TERMINAL_ROWS_STORAGE_KEY) : null;
-    const stored = localStorage.getItem(storageKey) ?? legacy ?? "1";
+    const stored = localStorage.getItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY)
+      ?? localStorage.getItem(TERMINAL_ROWS_STORAGE_KEY)
+      ?? localStorage.getItem(AGENT_WORKSPACE_CAPACITY_STORAGE_KEY)
+      ?? "1";
     const capacity = clampTerminalWorkspaceCapacity(Number(stored));
-    localStorage.setItem(storageKey, String(capacity));
-    if (storageKey === TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY) localStorage.removeItem(TERMINAL_ROWS_STORAGE_KEY);
+    localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(capacity));
     return capacity;
   } catch {
     return 1;
   }
 }
 
-function initialAgentWorkspaceLayouts() {
-  try { localStorage.removeItem(LEGACY_AGENT_WORKSPACE_LAYOUT_STORAGE_KEY); } catch { return {}; }
-  return readTerminalWorkspaceLayouts(AGENT_WORKSPACE_LAYOUT_STORAGE_KEY);
-}
-
 function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<void>; logoutBusy: boolean; logoutError: string | null }) {
   const {
-    agentLaunchPathsMaxHeightPx,
+    launchPathsMaxHeightPx,
+    workspaceMaxHeightPx,
     navigationRailWidthPx,
     error: settingsError,
     dismissError: dismissSettingsError,
-    setAgentLaunchPathsMaxHeightPx,
+    setLaunchPathsMaxHeightPx,
+    setWorkspaceMaxHeightPx,
     setNavigationRailWidthPx,
   } = useTheme();
   const [canvasPinned, setCanvasPinned] = useState(readCanvasSidebarPinned);
@@ -187,7 +187,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pickerPurpose, setPickerPurpose] = useState<"add-launch-path" | "agent" | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(
     () => localStorage.getItem("devhatch-confirm-terminal-delete") === "1",
   );
@@ -197,87 +197,61 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [actionBusy, setActionBusy] = useState(false);
   const [skillsSection, setSkillsSection] = useState<SkillsSection>("repositories");
   const [terminalCapacity, setTerminalCapacityState] = useState<TerminalWorkspaceCapacity>(initialCapacity);
-  const [terminalPathDisplay, setTerminalPathDisplayState] = useState<LaunchPathDisplay>(() => initialPathDisplay(TERMINAL_PATH_DISPLAY_STORAGE_KEY));
-  const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(false);
+  const [terminalPathDisplay, setTerminalPathDisplayState] = useState<LaunchPathDisplay>(initialPathDisplay);
+  const [terminalThumbnailsAutoHide, setTerminalThumbnailsAutoHide] = useState(readTerminalThumbnailsAutoHide);
   const [terminalThumbnailSide, setTerminalThumbnailSideState] = useState<TerminalThumbnailSide>(initialThumbnailSide);
   const [terminalLayoutCount, setTerminalLayoutCount] = useState<TerminalLayoutCount | null>(null);
-  const [terminalWorkspaceLayouts, setTerminalWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(readTerminalWorkspaceLayouts);
-  const [agentCapacity, setAgentCapacityState] = useState<TerminalWorkspaceCapacity>(() => initialCapacity(AGENT_WORKSPACE_CAPACITY_STORAGE_KEY));
-  const [agentPathDisplay, setAgentPathDisplayState] = useState<LaunchPathDisplay>(() => initialPathDisplay(AGENT_PATH_DISPLAY_STORAGE_KEY));
-  const [agentThumbnailsAutoHide, setAgentThumbnailsAutoHide] = useState(false);
-  const [agentThumbnailSide, setAgentThumbnailSideState] = useState<TerminalThumbnailSide>(() => initialThumbnailSide(AGENT_THUMBNAIL_SIDE_STORAGE_KEY));
-  const [agentLayoutCount, setAgentLayoutCount] = useState<TerminalLayoutCount | null>(null);
-  const [agentWorkspaceLayouts, setAgentWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(initialAgentWorkspaceLayouts);
-  const setPathDisplay = useCallback((mode: LaunchPathDisplay, storageKey: string, setValue: (mode: LaunchPathDisplay) => void) => {
-    setValue(mode);
-    try { localStorage.setItem(storageKey, mode); } catch { return; }
-  }, []);
+  const [terminalWorkspaceLayouts, setTerminalWorkspaceLayouts] = useState<Record<string, TerminalWorkspaceLayoutPreferences>>(readWorkspaceLayouts);
   const setTerminalPathDisplay = useCallback((mode: LaunchPathDisplay) => {
-    setPathDisplay(mode, TERMINAL_PATH_DISPLAY_STORAGE_KEY, setTerminalPathDisplayState);
-  }, [setPathDisplay]);
-  const setAgentPathDisplay = useCallback((mode: LaunchPathDisplay) => {
-    setPathDisplay(mode, AGENT_PATH_DISPLAY_STORAGE_KEY, setAgentPathDisplayState);
-  }, [setPathDisplay]);
+    setTerminalPathDisplayState(mode);
+    try { localStorage.setItem(TERMINAL_PATH_DISPLAY_STORAGE_KEY, mode); } catch { return; }
+  }, []);
+  const setTerminalThumbnailAutoHide = useCallback((enabled: boolean) => {
+    setTerminalThumbnailsAutoHide(enabled);
+    writeTerminalThumbnailsAutoHide(enabled);
+  }, []);
   const setTerminalThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
     setTerminalThumbnailSideState(side);
     try { localStorage.setItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
   }, []);
-  const setAgentThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
-    setAgentThumbnailSideState(side);
-    try { localStorage.setItem(AGENT_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
-  }, []);
   const updateTerminalWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
     setTerminalWorkspaceLayouts((current) => {
       const next = { ...current, [workspaceId]: update(current[workspaceId] ?? { presets: {}, ratios: {} }) };
-      writeTerminalWorkspaceLayouts(next);
-      return next;
-    });
-  }, []);
-  const updateAgentWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
-    setAgentWorkspaceLayouts((current) => {
-      const next = { ...current, [workspaceId]: update(current[workspaceId] ?? { presets: {}, ratios: {} }) };
-      writeTerminalWorkspaceLayouts(next, AGENT_WORKSPACE_LAYOUT_STORAGE_KEY);
+      writeTerminalWorkspaceLayouts(next, WORKSPACE_LAYOUT_STORAGE_KEY);
       return next;
     });
   }, []);
   const terminalCapacityTransitionRef = useRef<ViewTransition | null>(null);
-  const agentCapacityTransitionRef = useRef<ViewTransition | null>(null);
-  const setWorkspaceCapacity = useCallback((value: TerminalWorkspaceCapacity, setValue: (value: TerminalWorkspaceCapacity) => void, transitionRef: { current: ViewTransition | null }, storageKey: string, transitionClass: string) => {
-    const update = () => setValue(value);
-    const activeTransition = transitionRef.current;
+  const setTerminalCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
+    const update = () => setTerminalCapacityState(value);
+    const activeTransition = terminalCapacityTransitionRef.current;
     const compositeOpen = document.querySelector('[data-slot="sheet-content"][data-open], [data-slot="popover-content"][data-open]') !== null;
     if (activeTransition) {
       try { activeTransition.skipTransition(); } catch { void activeTransition.finished.catch(() => undefined); }
-      transitionRef.current = null;
-      document.documentElement.classList.remove(transitionClass);
+      terminalCapacityTransitionRef.current = null;
+      document.documentElement.classList.remove("terminal-stage-transition");
       flushSync(update);
     } else {
       const startViewTransition = document.startViewTransition?.bind(document);
       if (!startViewTransition || compositeOpen || matchMedia("(prefers-reduced-motion: reduce)").matches) update();
       else {
-        document.documentElement.classList.add(transitionClass);
+        document.documentElement.classList.add("terminal-stage-transition");
         try {
           const transition = startViewTransition(() => flushSync(update));
-          transitionRef.current = transition;
+          terminalCapacityTransitionRef.current = transition;
           void transition.finished.catch(() => undefined).finally(() => {
-            if (transitionRef.current !== transition) return;
-            transitionRef.current = null;
-            document.documentElement.classList.remove(transitionClass);
+            if (terminalCapacityTransitionRef.current !== transition) return;
+            terminalCapacityTransitionRef.current = null;
+            document.documentElement.classList.remove("terminal-stage-transition");
           });
         } catch {
-          document.documentElement.classList.remove(transitionClass);
+          document.documentElement.classList.remove("terminal-stage-transition");
           update();
         }
       }
     }
-    try { localStorage.setItem(storageKey, String(value)); } catch { return; }
+    try { localStorage.setItem(TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, String(value)); } catch { return; }
   }, []);
-  const setTerminalCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
-    setWorkspaceCapacity(value, setTerminalCapacityState, terminalCapacityTransitionRef, TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY, "terminal-stage-transition");
-  }, [setWorkspaceCapacity]);
-  const setAgentCapacity = useCallback((value: TerminalWorkspaceCapacity) => {
-    setWorkspaceCapacity(value, setAgentCapacityState, agentCapacityTransitionRef, AGENT_WORKSPACE_CAPACITY_STORAGE_KEY, "agent-stage-transition");
-  }, [setWorkspaceCapacity]);
   useEffect(() => {
     confirmedRailWidthRef.current = navigationRailWidthPx;
     appRef.current?.style.setProperty("--navigation-rail-width", `${navigationRailWidthPx}px`);
@@ -308,12 +282,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [cancelRailResize]);
   const bumpFocus = useCallback(() => setFocusVersion((value) => value + 1), []);
   const reportError = useCallback((message: string) => setError(message), []);
-  const closePicker = useCallback(() => setPickerPurpose(null), []);
+  const closePicker = useCallback(() => setPickerOpen(false), []);
   const navigation = useNavigation(bumpFocus);
   const { selectMode, showGlobalSettings, closeSidebar, sidebarOpen } = navigation;
   const navigationSheetOpen = mobileNavigation && sidebarOpen;
   const { anyDialogOpen, requiresMobileNavigationClose } = resolveDialogNavigationState({
-    pickerOpen: pickerPurpose !== null,
+    pickerOpen,
     confirmAction,
     sessionDeleteOpen: deleteCandidate !== null,
   });
@@ -417,7 +391,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [cancelCanvasClose, navigation.railMotion, railResizing, scheduleCanvasClose]);
   useEffect(() => () => cancelCanvasClose(), [cancelCanvasClose]);
   useEffect(() => {
-    const modes = ["terminal", "agent", "skills", "webapp", "settings"] as const;
+    const modes = ["terminal", "skills", "webapp", "settings"] as const;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (event.key === "Escape") {
@@ -447,97 +421,87 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [anyDialogOpen, canvasOpen, canvasPinned, closeCanvasRail, closeSidebar, selectMode, showGlobalSettings, sidebarOpen]);
-  const terminal = useTerminalWorkspace(homePaths, setHomePaths, reportError, navigation.closeSidebar, bumpFocus);
-  const terminalLayoutPreset = terminal.selectedWorkspaceId && terminalLayoutCount
-    ? terminalWorkspaceLayouts[terminal.selectedWorkspaceId]?.presets[terminalLayoutCount] ?? defaultTerminalLayoutPreset(terminalLayoutCount)
-    : null;
-  const setTerminalLayoutPreset = useCallback((preset: TerminalLayoutPreset) => {
-    if (!terminal.selectedWorkspaceId || !terminalLayoutCount) return;
-    const workspaceId = terminal.selectedWorkspaceId;
-    const count = terminalLayoutCount;
-    updateTerminalWorkspaceLayout(workspaceId, (current) => ({ ...current, presets: { ...current.presets, [count]: preset } }));
-  }, [terminal.selectedWorkspaceId, terminalLayoutCount, updateTerminalWorkspaceLayout]);
-  const agent = useAgentWorkspace({
+  const workspace = useWorkspaceController({
     homePaths,
-    active: navigation.workspaceMode === "agent",
+    setHomePaths,
+    active: navigation.workspaceMode === "terminal",
     reportError,
     closeSidebar: navigation.closeSidebar,
     bumpFocus,
-    onLaunched: closePicker,
   });
-  const agentLayoutPreset = agent.selectedAgentWorkspaceId && agentLayoutCount
-    ? agentWorkspaceLayouts[agent.selectedAgentWorkspaceId]?.presets[agentLayoutCount] ?? defaultTerminalLayoutPreset(agentLayoutCount)
+  const terminalLayoutPreset = workspace.selectedWorkspaceId && terminalLayoutCount
+    ? terminalWorkspaceLayouts[workspace.selectedWorkspaceId]?.presets[terminalLayoutCount] ?? defaultTerminalLayoutPreset(terminalLayoutCount)
     : null;
-  const setAgentLayoutPreset = useCallback((preset: TerminalLayoutPreset) => {
-    if (!agent.selectedAgentWorkspaceId || !agentLayoutCount) return;
-    const workspaceId = agent.selectedAgentWorkspaceId;
-    const count = agentLayoutCount;
-    updateAgentWorkspaceLayout(workspaceId, (current) => ({ ...current, presets: { ...current.presets, [count]: preset } }));
-  }, [agent.selectedAgentWorkspaceId, agentLayoutCount, updateAgentWorkspaceLayout]);
+  const setTerminalLayoutPreset = useCallback((preset: TerminalLayoutPreset) => {
+    if (!workspace.selectedWorkspaceId || !terminalLayoutCount) return;
+    const workspaceId = workspace.selectedWorkspaceId;
+    const count = terminalLayoutCount;
+    updateTerminalWorkspaceLayout(workspaceId, (current) => ({ ...current, presets: { ...current.presets, [count]: preset } }));
+  }, [workspace.selectedWorkspaceId, terminalLayoutCount, updateTerminalWorkspaceLayout]);
+  const agent = useAgentWorkspace({
+    homePaths,
+    active: navigation.workspaceMode === "terminal",
+    sessions: workspace.agentSessions,
+    activeSession: workspace.activeSession,
+    paths: workspace.launchPaths,
+    selectedPathId: workspace.selectedPathId,
+    selectPath: workspace.selectLaunchPath,
+    choosePath: workspace.chooseLaunchPath,
+    reportError,
+    onLaunched: closePicker,
+    launchTerminal: workspace.addTerminal,
+    launchAgent: workspace.addAgent,
+    activateSession: (id) => workspace.activateSession({ sessionId: id, kind: "agent" }),
+    refreshLaunchPaths: workspace.refreshLaunchPaths,
+  });
   const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
   const skills = useSkillsWorkspace(
-    navigation.workspaceMode === "skills" || navigation.workspaceMode === "agent",
+    navigation.workspaceMode === "skills" || navigation.workspaceMode === "terminal",
     reportError,
     navigation.workspaceMode === "skills",
   );
 
-  const {
-    initializeAgents,
-    initializePaths,
-    initializeWorkspaces: initializeAgentWorkspaces,
-    deleteSession: deleteAgentSession,
-  } = agent;
-  const {
-    initialize: initializeTerminals,
-    initializeLaunchPaths: initializeTerminalLaunchPaths,
-    initializeWorkspaces: initializeTerminalWorkspaces,
-    deleteSession: deleteTerminalSession,
-  } = terminal;
+  const { initializeAgents } = agent;
+  const { initialize: initializeWorkspace, initializeLaunchPaths } = workspace;
 
   const markReady = useCallback(() => setBusy(false), []);
   useInitialWorkspaceData({
-    initializeTerminals,
-    initializeTerminalLaunchPaths,
-    initializeTerminalWorkspaces,
+    initializeWorkspace,
+    initializeLaunchPaths,
     initializeAgents,
-    initializeAgentWorkspaces,
-    initializePaths,
     onError: reportError,
     onReady: markReady,
   });
 
-  const setPhase = useCallback((id: string, phase: ConnectionPhase) => {
-    setPhases((current) => (current[id] === phase ? current : { ...current, [id]: phase }));
+  const setPhase = useCallback((key: string, phase: ConnectionPhase) => {
+    setPhases((current) => (current[key] === phase ? current : { ...current, [key]: phase }));
   }, []);
 
-  const deleteSession = useCallback(
-    async (target: DeleteTarget) => {
-      setDeleting(true);
-      try {
-        if (target.kind === "agent session") await deleteAgentSession(target);
-        else await deleteTerminalSession(target);
-        setPhases((current) => {
-          const next = { ...current };
-          delete next[target.id];
-          return next;
-        });
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : String(reason));
-      } finally {
-        setDeleting(false);
-        setDeleteCandidate(null);
-      }
-    },
-    [deleteAgentSession, deleteTerminalSession],
-  );
+  const deleteSession = useCallback(async (target: DeleteTarget) => {
+    setDeleting(true);
+    try {
+      await workspace.deleteSession(target);
+      if (target.kind === "agent") void agent.refreshHistory();
+      setPhases((current) => {
+        const next = { ...current };
+        delete next[sessionKey({ sessionId: target.id, kind: target.kind })];
+        return next;
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setDeleting(false);
+      setDeleteCandidate(null);
+    }
+  }, [agent, workspace]);
 
   const requestClose = useCallback(
-    (session: TerminalInfo, isAgent: boolean, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => {
+    (session: WorkspaceSession, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => {
       const target: DeleteTarget = {
         id: session.id,
         name: session.name,
         cwd: session.cwd,
-        kind: isAgent ? "agent session" : "terminal",
+        kind: session.kind,
         returnFocus,
         fallbackFocus,
       };
@@ -601,7 +565,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       ref={appRef}
       style={
         {
-          "--agent-launch-paths-max-height": `${agentLaunchPathsMaxHeightPx}px`,
+          "--launch-paths-max-height": `${launchPathsMaxHeightPx}px`,
+          "--workspace-list-max-height": `${workspaceMaxHeightPx}px`,
           "--navigation-rail-width": `${navigationRailWidthPx}px`,
         } as CSSProperties
       }
@@ -612,23 +577,13 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       }
     >
       <AppDialogs
-        pickerPurpose={pickerPurpose}
-        pickerInitialPath={
-          pickerPurpose === "agent"
-            ? (agent.launcherActiveSession?.cwd ?? terminal.activeSession?.cwd ?? undefined)
-            : (terminal.activeSession?.cwd ?? undefined)
-        }
+        pickerOpen={pickerOpen}
+        pickerInitialPath={workspace.activeSession?.cwd ?? undefined}
         onClosePicker={closePicker}
         onSelectPath={(path) => {
-          if (pickerPurpose === "agent") {
-            void agent.choosePath(path).then((added) => {
-              if (added) closePicker();
-            });
-          } else {
-             void terminal.chooseLaunchPath(path).then((added) => {
-               if (added) setPickerPurpose(null);
-             });
-          }
+          void workspace.chooseLaunchPath(path).then((added) => {
+            if (added) closePicker();
+          });
         }}
         confirmAction={confirmAction}
         actionBusy={actionBusy}
@@ -674,7 +629,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       >
         <AppNavigationRail
         navigation={navigation}
-        terminal={terminal}
+        railWidthPx={mobileNavigation ? null : navigationRailWidthPx}
+        workspace={workspace}
         agent={agent}
         skills={skills}
         webApps={webApps}
@@ -682,41 +638,31 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         busy={busy}
         skillsSection={skillsSection}
         onSelectSkillsSection={setSkillsSection}
-        onPickWorkspace={() => setPickerPurpose("add-launch-path")}
-        onNewWorkspace={() => void terminal.createWorkspace()}
-        onPickAgentPath={() => setPickerPurpose("agent")}
-        onCloseAgentSession={(session) => requestClose(session, true)}
+        onPickLaunchPath={() => setPickerOpen(true)}
+        onNewWorkspace={() => void workspace.createWorkspace()}
+        onCloseAgentSession={(session) => requestClose(session)}
         onSessionSelected={onSessionSelected}
-        terminalCapacity={terminalCapacity}
-        terminalLayoutCount={terminalLayoutCount}
-         terminalLayoutPreset={terminalLayoutPreset}
-         terminalPathDisplay={terminalPathDisplay}
-          terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
-         terminalThumbnailSide={terminalThumbnailSide}
-         terminalLaunchPathsHeight={agentLaunchPathsMaxHeightPx}
-         confirmTerminalClose={confirmDelete}
-         agentCapacity={agentCapacity}
-         agentLayoutCount={agentLayoutCount}
-         agentLayoutPreset={agentLayoutPreset}
-         agentPathDisplay={agentPathDisplay}
-          agentThumbnailsAutoHide={agentThumbnailsAutoHide}
-         agentThumbnailSide={agentThumbnailSide}
-         onTerminalCapacityChange={setTerminalCapacity}
-        onTerminalLayoutPresetChange={setTerminalLayoutPreset}
-        onTerminalPathDisplayChange={setTerminalPathDisplay}
-         onToggleTerminalThumbnailAutoHide={() => setTerminalThumbnailsAutoHide((autoHide) => !autoHide)}
-         onTerminalThumbnailSideChange={setTerminalThumbnailSide}
-         onTerminalLaunchPathsHeightChange={setAgentLaunchPathsMaxHeightPx}
-         onConfirmTerminalCloseChange={(enabled) => {
-           setConfirmDelete(enabled);
-           localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
-         }}
-         onAgentCapacityChange={setAgentCapacity}
-         onAgentLayoutPresetChange={setAgentLayoutPreset}
-         onAgentPathDisplayChange={setAgentPathDisplay}
-         onToggleAgentThumbnailAutoHide={() => setAgentThumbnailsAutoHide((autoHide) => !autoHide)}
-         onAgentThumbnailSideChange={setAgentThumbnailSide}
-         onConfirm={setConfirmAction}
+        capacity={terminalCapacity}
+        layoutCount={terminalLayoutCount}
+        layoutPreset={terminalLayoutPreset}
+        pathDisplay={terminalPathDisplay}
+        thumbnailsAutoHide={terminalThumbnailsAutoHide}
+        thumbnailSide={terminalThumbnailSide}
+        launchPathsHeight={launchPathsMaxHeightPx}
+        workspaceHeight={workspaceMaxHeightPx}
+        confirmClose={confirmDelete}
+        onCapacityChange={setTerminalCapacity}
+        onLayoutPresetChange={setTerminalLayoutPreset}
+        onPathDisplayChange={setTerminalPathDisplay}
+        onToggleThumbnailAutoHide={() => setTerminalThumbnailAutoHide(!terminalThumbnailsAutoHide)}
+        onThumbnailSideChange={setTerminalThumbnailSide}
+        onLaunchPathsHeightChange={setLaunchPathsMaxHeightPx}
+        onWorkspaceHeightChange={setWorkspaceMaxHeightPx}
+        onConfirmCloseChange={(enabled) => {
+          setConfirmDelete(enabled);
+          localStorage.setItem("devhatch-confirm-terminal-delete", enabled ? "1" : "0");
+        }}
+        onConfirm={setConfirmAction}
          canvasPinned={canvasPinned}
          railInteractive={mobileNavigation ? navigation.sidebarOpen : canvasPinned || canvasOpen}
         railId={CANVAS_RAIL_ID}
@@ -801,30 +747,23 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       <section className="shell tw:min-w-0 tw:flex-1 tw:grid tw:grid-rows-[minmax(0,1fr)] tw:overflow-hidden">
         <AppWorkspaceContent
           mode={navigation.workspaceMode}
-          terminal={terminal}
+          workspace={workspace}
           agent={agent}
           skills={skills}
           webApps={webApps}
           busy={busy}
           phases={phases}
           focusVersion={focusVersion}
-          terminalCapacity={terminalCapacity}
-          terminalThumbnailsAutoHide={terminalThumbnailsAutoHide}
-           terminalThumbnailSide={terminalThumbnailSide}
-           terminalWorkspaceLayouts={terminalWorkspaceLayouts}
-           agentCapacity={agentCapacity}
-           agentThumbnailsAutoHide={agentThumbnailsAutoHide}
-           agentThumbnailSide={agentThumbnailSide}
-           agentWorkspaceLayouts={agentWorkspaceLayouts}
-           error={navigation.workspaceMode !== "settings" && !navigationSheetOpen && settingsError ? settingsError : error}
-            skillsSection={skillsSection}
-            onCloseSession={requestClose}
-          onPickAgentPath={() => setPickerPurpose("agent")}
+          capacity={terminalCapacity}
+          thumbnailsAutoHide={terminalThumbnailsAutoHide}
+          thumbnailSide={terminalThumbnailSide}
+          workspaceLayouts={terminalWorkspaceLayouts}
+          error={navigation.workspaceMode !== "settings" && !navigationSheetOpen && settingsError ? settingsError : error}
+          skillsSection={skillsSection}
+          onCloseSession={requestClose}
           onPhaseChange={setPhase}
-           onTerminalLayoutCountChange={setTerminalLayoutCount}
-           onTerminalWorkspaceLayoutChange={updateTerminalWorkspaceLayout}
-           onAgentLayoutCountChange={setAgentLayoutCount}
-           onAgentWorkspaceLayoutChange={updateAgentWorkspaceLayout}
+          onLayoutCountChange={setTerminalLayoutCount}
+          onWorkspaceLayoutChange={updateTerminalWorkspaceLayout}
            onError={reportError}
             onDismissError={() => {
               if (navigation.workspaceMode !== "settings" && !navigationSheetOpen && settingsError) dismissSettingsError();

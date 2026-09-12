@@ -8,7 +8,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ConnectionPhase, TerminalInfo, TerminalWorkspace as TerminalWorkspaceInfo } from "../../types/terminals";
+import type { ConnectionPhase } from "../../types/terminals";
+import { isAgentSession, sessionKey, sessionRef, type Workspace, type WorkspaceSession, type WorkspaceSessionRef } from "../../types/workspaces";
 import { FloatingAlert } from "../../shared/ui/FloatingAlert";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
@@ -23,6 +24,7 @@ import {
   type TerminalWorkspaceCapacity,
   type TerminalWorkspaceDockState,
 } from "./terminalWorkspaceDock";
+import { workspaceSessionTransport } from "./workspaceTransport";
 import {
   createTerminalLayoutDrag,
   defaultTerminalLayoutPreset,
@@ -111,21 +113,17 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
 }
 
 export function TerminalWorkspace({
-  visible, busy, launching, visibleSessions, workspace, workspaceKey, activeSessionId, workspaceLabel = "terminal workspace", sessionLabel = "terminal", sessionIdentity, stageId = "terminal", socketBase = "/api/terminals", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  visible, busy, launching, visibleSessions, workspace, workspaceLabel = "workspace", sessionLabel = "session", stageId = "terminal", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
   onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, runtimeImagePaste, onOpenLink, onError, onDismissError,
 }: {
   visible: boolean;
   busy: boolean;
   launching: boolean;
-  visibleSessions: TerminalInfo[];
-  workspace?: TerminalWorkspaceInfo | null;
-  workspaceKey?: string | null;
-  activeSessionId?: string | null;
+  visibleSessions: WorkspaceSession[];
+  workspace: Workspace | null;
   workspaceLabel?: string;
   sessionLabel?: string;
-  sessionIdentity?: (session: TerminalInfo) => string;
   stageId?: string;
-  socketBase?: string;
   emptyIcon?: React.ReactNode;
   phases: Record<string, ConnectionPhase>;
   focusVersion: number;
@@ -134,17 +132,17 @@ export function TerminalWorkspace({
   thumbnailSide: "left" | "right";
   workspaceLayouts: Record<string, TerminalWorkspaceLayoutPreferences>;
   error: string | null;
-  onActivate: (id: string) => void;
-  onRename: (session: TerminalInfo, name: string) => Promise<boolean>;
-  onClose: (session: TerminalInfo, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
+  onActivate: (ref: WorkspaceSessionRef) => void;
+  onRename: (session: WorkspaceSession, name: string) => Promise<boolean>;
+  onClose: (session: WorkspaceSession, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
   onCreate?: (cwd?: string) => void;
   onChoosePath?: () => void;
-  onPhaseChange: (id: string, phase: ConnectionPhase) => void;
+  onPhaseChange: (key: string, phase: ConnectionPhase) => void;
   onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
-  onRemoved?: (id: string) => void;
-  onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
-  runtimeImagePaste?: (session: TerminalInfo) => ((image: Blob, signal?: AbortSignal) => Promise<void>) | undefined;
+  onRemoved?: (ref: WorkspaceSessionRef) => void;
+  onUpstreamSessionChange?: (ref: WorkspaceSessionRef, upstreamSessionId: string, cwd?: string) => void;
+  runtimeImagePaste?: (session: WorkspaceSession) => ((image: Blob, signal?: AbortSignal) => Promise<void>) | undefined;
   onOpenLink: (url: string) => void;
   onError: (message: string) => void;
   onDismissError: () => void;
@@ -165,7 +163,7 @@ export function TerminalWorkspace({
   const [layoutRatioPreview, setLayoutRatioPreview] = useState<{ workspaceId: string; key: string; ratios: number[] } | null>(null);
   const [, forceGridSizeUpdate] = useState(0);
   const [openActionSessionId, setOpenActionSessionId] = useState<string | null>(null);
-  const [renamingSession, setRenamingSession] = useState<TerminalInfo | null>(null);
+  const [renamingSession, setRenamingSession] = useState<WorkspaceSession | null>(null);
   const showInitialLoading = useDelayedLoading(busy);
   const stageTransitionRef = useRef<{ transition: ViewTransition; generation: number; applyUpdate: () => void; clearCaption: () => void } | null>(null);
   const stageTransitionGenerationRef = useRef(0);
@@ -174,9 +172,9 @@ export function TerminalWorkspace({
   const effectiveCapacity = isMobile ? 1 : capacity;
   const [workspaceStates, setWorkspaceStates] = useState<Map<string, TerminalWorkspaceDockState>>(() => new Map());
   const retainedSurfacesRef = useRef<RetainedTerminalSurfaces>({ workspaceId: null, ids: [] });
-  const workspaceId = workspaceKey === undefined ? workspace?.id ?? null : workspaceKey;
-  const activeId = activeSessionId === undefined ? workspace?.activeTerminalId ?? null : activeSessionId;
-  const memberIds = useMemo(() => visibleSessions.map((session) => session.id), [visibleSessions]);
+  const workspaceId = workspace?.id ?? null;
+  const activeId = workspace?.activeSession ? sessionKey(workspace.activeSession) : null;
+  const memberIds = useMemo(() => visibleSessions.map(sessionKey), [visibleSessions]);
   const memberIdSet = useMemo(() => new Set(memberIds), [memberIds]);
   const thumbnailMemberIdsRef = useRef(memberIdSet);
   thumbnailMemberIdsRef.current = memberIdSet;
@@ -218,15 +216,15 @@ export function TerminalWorkspace({
   const layoutRatios = workspaceId && layoutKey && layoutRatioPreview?.workspaceId === workspaceId && layoutRatioPreview.key === layoutKey ? layoutRatioPreview.ratios : storedLayoutRatios;
   const layoutClassName = layoutCount && layoutPreset ? `layout-${layoutCount}-${layoutPreset}` : "";
   const layoutStyle = terminalGridStyle(layoutCount, layoutPreset, layoutRatios);
-  const thumbnailSessions = visibleSessions.filter((session) => !staged.has(session.id));
+  const thumbnailSessions = visibleSessions.filter((session) => !staged.has(sessionKey(session)));
   const hasThumbnailDock = thumbnailSessions.length > 0;
   const thumbnailDockOpen = hasThumbnailDock && (!thumbnailsAutoHide || thumbnailDockExpanded);
   const thumbnailsReserveSpace = hasThumbnailDock && !thumbnailsAutoHide;
-  const sessionById = new Map(visibleSessions.map((session) => [session.id, session]));
+  const sessionById = new Map(visibleSessions.map((session) => [sessionKey(session), session]));
   const orderedSurfaceIds = terminalSurfaceIds(visible, retainedSurfacesRef.current, workspaceId, currentState, memberIds);
   const orderedSessions = orderedSurfaceIds
     .map((id) => sessionById.get(id))
-    .filter((session): session is TerminalInfo => Boolean(session));
+    .filter((session): session is WorkspaceSession => Boolean(session));
 
   useEffect(() => () => {
     if (thumbnailCollapseTimerRef.current !== null) window.clearTimeout(thumbnailCollapseTimerRef.current);
@@ -247,6 +245,9 @@ export function TerminalWorkspace({
       memberIds,
     );
   });
+  useEffect(() => {
+    if (visible && !activeId) stageRef.current?.focus({ preventScroll: true });
+  }, [activeId, focusVersion, visible]);
   useEffect(() => {
     if (!visible) setOpenActionSessionId(null);
   }, [visible]);
@@ -428,7 +429,7 @@ export function TerminalWorkspace({
       } catch {
         void activeTransition.transition.finished.catch(() => undefined);
       }
-      document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
+      document.documentElement.classList.remove("terminal-stage-transition");
       flushSync(update);
       return;
     }
@@ -470,20 +471,24 @@ export function TerminalWorkspace({
       void transition.finished.catch(() => undefined).finally(() => {
         if (stageTransitionRef.current?.generation !== generation) return;
         stageTransitionRef.current = null;
-        document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
+        document.documentElement.classList.remove("terminal-stage-transition");
       });
     } catch {
       clearCaption();
       if (stageTransitionGenerationRef.current === generation) {
         stageTransitionRef.current = null;
-        document.documentElement.classList.remove("terminal-stage-transition", "agent-stage-transition");
+        document.documentElement.classList.remove("terminal-stage-transition");
       }
       applyUpdate();
     }
   };
+  const activateSessionKey = (id: string) => {
+    const session = sessionById.get(id);
+    if (session) onActivate(sessionRef(session));
+  };
   const activateAndStage = (id: string) => {
     if (latestContextRef.current.currentState.stagedIds.includes(id)) {
-      onActivate(id);
+      activateSessionKey(id);
       return;
     }
     void runStageTransition(id, () => {
@@ -491,7 +496,7 @@ export function TerminalWorkspace({
         const { activeId, effectiveCapacity } = latestContextRef.current;
         return stageTerminal(state, id, activeId, effectiveCapacity);
       });
-      onActivate(id);
+      activateSessionKey(id);
     });
   };
   const focusStageTarget = (id: string, focusId?: string | null) => {
@@ -515,13 +520,13 @@ export function TerminalWorkspace({
     stageRef.current?.focus();
   };
   const minimize = (id: string) => {
-    if (renamingSession?.id === id) setRenamingSession(null);
+    if (renamingSession && sessionKey(renamingSession) === id) setRenamingSession(null);
     void runStageTransition(id, () => {
       const { activeId, currentState } = latestContextRef.current;
       const remaining = currentState.stagedIds.filter((item) => item !== id);
       const focusId = id === activeId || !activeId || !remaining.includes(activeId) ? remaining.at(-1) : activeId;
       updateCurrent((state) => minimizeTerminal(state, id));
-      if (id === activeId && focusId) onActivate(focusId);
+      if (id === activeId && focusId) activateSessionKey(focusId);
       requestAnimationFrame(() => focusStageTarget(id, focusId));
     }, true);
   };
@@ -573,10 +578,10 @@ export function TerminalWorkspace({
     else return;
     event.preventDefault();
     const session = thumbnailSessions[next];
-    if (session) thumbnailRefs.current.get(session.id)?.focus();
+    if (session) thumbnailRefs.current.get(sessionKey(session))?.focus();
   };
 
-  const sessionDisplayName = (session: TerminalInfo) => sessionIdentity ? `${sessionIdentity(session)} · ${session.name}` : session.name;
+  const sessionDisplayName = (session: WorkspaceSession) => isAgentSession(session) ? `${session.agentName} · ${session.name}` : session.name;
   const layoutDescriptors = !isMobile && layoutCount && layoutPreset ? terminalLayoutDescriptors(layoutCount, layoutPreset) : [];
   const emptyStateClass = "tw:grid tw:h-full tw:place-content-center tw:justify-items-center tw:gap-[14px] tw:text-center tw:font-sans tw:text-[calc(13px*var(--app-font-scale))] tw:font-normal tw:leading-[1.5] tw:text-[var(--color-text-faint)] tw:[&_strong]:text-[calc(16px*var(--app-font-scale))] tw:[&_strong]:font-[650] tw:[&_strong]:leading-[1.3] tw:[&_strong]:text-[var(--color-text-subtle)] tw:[&>svg]:size-[30px] tw:[&>svg]:text-[var(--color-border-strong)]";
   const emptyActionClass = "tw:h-10 tw:rounded-full tw:bg-foreground tw:px-4 tw:text-xs tw:text-[var(--color-on-solid)] tw:hover:bg-foreground! tw:[@media(pointer:coarse)]:h-11";
@@ -617,25 +622,28 @@ export function TerminalWorkspace({
             </Button>
           )}
           <nav id={`${stageId}-thumbnail-list`} className="terminal-thumbnail-stack" aria-label={`${sessionLabel} thumbnails`} aria-hidden={!thumbnailDockOpen} inert={!thumbnailDockOpen ? true : undefined}>
-            {thumbnailSessions.map((session, index) => (
-              <Button
-                key={session.id}
-                ref={(node) => { if (node) thumbnailRefs.current.set(session.id, node); else thumbnailRefs.current.delete(session.id); }}
-                type="button"
-                variant="outline"
-                aria-label={`${sessionDisplayName(session)}, ${phases[session.id] ?? "connecting"}`}
-                className="terminal-thumbnail tw:h-auto tw:w-full tw:shrink-0 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-0 tw:pt-6 tw:pb-0 tw:text-foreground tw:shadow-[0_4px_10px_rgb(var(--overlay-color)/12%)] tw:hover:border-input tw:hover:bg-card! tw:max-[640px]:h-[75px] tw:max-[640px]:w-[120px] tw:max-[640px]:min-w-[120px]"
-                style={{ viewTransitionName: `${stageId}-${terminalViewTransitionName(session.id)}` }}
-                onClick={() => activateAndStage(session.id)}
-                onKeyDown={(event) => activateThumbnailByKey(event, index)}
-              >
-                <img className="tw:block tw:h-full tw:w-full tw:object-cover tw:[&:not([src])]:invisible" ref={thumbnailImageRef(session.id)} alt="" aria-hidden="true" />
-                <span className="terminal-thumbnail-caption">
-                  <span className={`tab-dot ${phases[session.id] ?? "connecting"}`} aria-hidden="true" />
-                  {sessionDisplayName(session)}
-                </span>
-              </Button>
-            ))}
+             {thumbnailSessions.map((session, index) => {
+               const key = sessionKey(session);
+               return (
+               <Button
+                 key={key}
+                 ref={(node) => { if (node) thumbnailRefs.current.set(key, node); else thumbnailRefs.current.delete(key); }}
+                 type="button"
+                 variant="outline"
+                 aria-label={`${sessionDisplayName(session)}, ${phases[key] ?? "connecting"}`}
+                 className="terminal-thumbnail tw:h-auto tw:w-full tw:shrink-0 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-0 tw:pt-6 tw:pb-0 tw:text-foreground tw:shadow-[0_4px_10px_rgb(var(--overlay-color)/12%)] tw:hover:border-input tw:hover:bg-card! tw:max-[640px]:h-[75px] tw:max-[640px]:w-[120px] tw:max-[640px]:min-w-[120px]"
+                 style={{ viewTransitionName: `${stageId}-${terminalViewTransitionName(key)}` }}
+                 onClick={() => activateAndStage(key)}
+                 onKeyDown={(event) => activateThumbnailByKey(event, index)}
+               >
+                 <img className="tw:block tw:h-full tw:w-full tw:object-cover tw:[&:not([src])]:invisible" ref={thumbnailImageRef(key)} alt="" aria-hidden="true" />
+                 <span className="terminal-thumbnail-caption">
+                   <span className={`tab-dot ${phases[key] ?? "connecting"}`} aria-hidden="true" />
+                   {sessionDisplayName(session)}
+                 </span>
+               </Button>
+               );
+             })}
           </nav>
         </div>}
         {showInitialLoading && <div className={emptyStateClass} role="status">Starting DevHatch…</div>}
@@ -658,18 +666,20 @@ export function TerminalWorkspace({
         {!busy && !!visibleSessions.length && !currentState.stagedIds.length && <div className={`${emptyStateClass} tw:absolute tw:inset-0`}>Select a {sessionLabel} thumbnail</div>}
         <div ref={gridRef} className={`terminal-card-grid count-${currentState.stagedIds.length} ${layoutClassName} ${thumbnailsReserveSpace ? `with-thumbnails thumbnails-${thumbnailSide}` : ""}`} style={layoutStyle} role="list" aria-label={`Staged ${sessionLabel}s`}>
           {orderedSessions.map((session) => {
-            const shown = visible && workspaceId !== null && staged.has(session.id) && memberIds.includes(session.id);
-            const thumbnailSource = visible && workspaceId !== null && !staged.has(session.id) && memberIds.includes(session.id);
-            const focused = shown && session.id === activeId;
-            const index = currentState.stagedIds.indexOf(session.id);
-            const phase = phases[session.id] ?? "connecting";
+            const key = sessionKey(session);
+            const transport = workspaceSessionTransport(session);
+            const shown = visible && workspaceId !== null && staged.has(key) && memberIds.includes(key);
+            const thumbnailSource = visible && workspaceId !== null && !staged.has(key) && memberIds.includes(key);
+            const focused = shown && key === activeId;
+            const index = currentState.stagedIds.indexOf(key);
+            const phase = phases[key] ?? "connecting";
             return (
               <section
-                key={session.id}
+                key={key}
                 className={`terminal-window ${shown ? "shown" : ""} ${thumbnailSource ? "thumbnail-source" : ""} ${focused ? "focused" : ""}`}
                 data-pane-index={shown ? index : undefined}
-                data-pane-id={session.id}
-                style={shown ? { order: index, viewTransitionName: `${stageId}-${terminalViewTransitionName(session.id)}` } : { viewTransitionName: "none" }}
+                data-pane-id={key}
+                style={shown ? { order: index, viewTransitionName: `${stageId}-${terminalViewTransitionName(key)}` } : { viewTransitionName: "none" }}
                 role={shown ? "listitem" : undefined}
                 inert={!shown ? true : undefined}
                 aria-hidden={!shown}
@@ -678,13 +688,13 @@ export function TerminalWorkspace({
               >
                 <header className="terminal-window-titlebar">
                   <Button
-                    ref={(node) => { if (node) titleActionRefs.current.set(session.id, node); else titleActionRefs.current.delete(session.id); }}
+                    ref={(node) => { if (node) titleActionRefs.current.set(key, node); else titleActionRefs.current.delete(key); }}
                     type="button"
                     variant="ghost"
                     className="tw:h-10 tw:min-w-0 tw:flex-1 tw:justify-start tw:gap-2 tw:rounded-lg tw:px-1 tw:text-left tw:font-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[&>span:not(.tab-dot)]:min-w-0 tw:[&>span:not(.tab-dot)]:flex-1 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:max-[640px]:[&_small]:hidden tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:font-mono tw:[&_strong]:text-sm tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
                     aria-label={`Activate ${sessionDisplayName(session)} ${sessionLabel}, ${phase}`}
                     aria-pressed={focused}
-                    onClick={() => activateAndStage(session.id)}
+                    onClick={() => activateAndStage(key)}
                   >
                     <span className={`tab-dot ${phase}`} aria-hidden="true" />
                     <span>
@@ -694,7 +704,7 @@ export function TerminalWorkspace({
                   </Button>
                   <div className="terminal-pane-actions">
                     <Button type="button" variant="ghost" size="icon" className={paneActionClass} aria-label={`Rename ${sessionDisplayName(session)}`} title="Rename" onClick={() => setRenamingSession(session)}><Pencil /></Button>
-                    <Button type="button" variant="ghost" size="icon" className={paneActionClass} aria-label={`Minimize ${sessionDisplayName(session)}`} title="Minimize" onClick={() => minimize(session.id)}><Minus /></Button>
+                    <Button type="button" variant="ghost" size="icon" className={paneActionClass} aria-label={`Minimize ${sessionDisplayName(session)}`} title="Minimize" onClick={() => minimize(key)}><Minus /></Button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -702,13 +712,13 @@ export function TerminalWorkspace({
                       className={`${paneActionClass} tw:hover:text-destructive!`}
                       aria-label={`Close ${sessionDisplayName(session)}`}
                       title="Close"
-                      onClick={(event) => onClose(session, event.currentTarget, closeFallback(session.id))}
+                      onClick={(event) => onClose(session, event.currentTarget, closeFallback(key))}
                     ><X /></Button>
                   </div>
                   <DropdownMenu
                     modal={false}
-                    open={visible && openActionSessionId === session.id}
-                    onOpenChange={(open) => setOpenActionSessionId(open ? session.id : null)}
+                    open={visible && openActionSessionId === key}
+                    onOpenChange={(open) => setOpenActionSessionId(open ? key : null)}
                   >
                     <DropdownMenuTrigger
                       aria-label={`Actions for ${sessionDisplayName(session)}`}
@@ -718,22 +728,22 @@ export function TerminalWorkspace({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="tw:w-44">
                       <DropdownMenuItem onClick={() => {
-                        titleActionRefs.current.get(session.id)?.focus();
+                        titleActionRefs.current.get(key)?.focus();
                         queueMicrotask(() => setRenamingSession(session));
                       }}><Pencil />Rename</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => minimize(session.id)}><Minus />Minimize</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => minimize(key)}><Minus />Minimize</DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={() => {
-                          const trigger = titleActionRefs.current.get(session.id);
-                          queueMicrotask(() => onClose(session, trigger, closeFallback(session.id)));
+                          const trigger = titleActionRefs.current.get(key);
+                          queueMicrotask(() => onClose(session, trigger, closeFallback(key)));
                         }}
                       ><X />Close</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </header>
                 <Suspense fallback={<div className={`terminal-surface ${shown || thumbnailSource ? "active" : ""}`} />}>
-                  <TerminalSurface session={session} socketBase={socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource && thumbnailDockOpen} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(session.id); }} onPhaseChange={onPhaseChange} onRemoved={onRemoved} onUpstreamSessionChange={onUpstreamSessionChange} onPasteImage={runtimeImagePaste?.(session)} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
+                  <TerminalSurface session={session} phaseKey={key} socketBase={transport.socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource && thumbnailDockOpen} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(key); }} onPhaseChange={onPhaseChange} onRemoved={transport.supportsRuntimeEvents && onRemoved ? () => onRemoved(sessionRef(session)) : undefined} onUpstreamSessionChange={transport.supportsRuntimeEvents && onUpstreamSessionChange ? (_id, upstreamId, cwd) => onUpstreamSessionChange(sessionRef(session), upstreamId, cwd) : undefined} onPasteImage={transport.supportsRuntimeEvents ? runtimeImagePaste?.(session) : undefined} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
                 </Suspense>
               </section>
             );

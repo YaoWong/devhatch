@@ -1,4 +1,5 @@
 export const TERMINAL_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-terminal-workspace-capacity";
+export const TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY = "devhatch-terminal-thumbnails-auto-hide";
 
 export type TerminalWorkspaceCapacity = 1 | 2 | 3 | 4;
 
@@ -6,6 +7,26 @@ export type TerminalWorkspaceDockState = {
   stagedIds: string[];
   minimizedIds: string[];
 };
+
+type ThumbnailPreferenceStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function readTerminalThumbnailsAutoHide(storage?: Pick<ThumbnailPreferenceStorage, "getItem"> | null) {
+  try {
+    const source = storage === undefined ? globalThis.localStorage : storage;
+    return source?.getItem(TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeTerminalThumbnailsAutoHide(enabled: boolean, storage?: Pick<ThumbnailPreferenceStorage, "setItem"> | null) {
+  try {
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    target?.setItem(TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    return;
+  }
+}
 
 export function terminalViewTransitionName(id: string) {
   let hash = 0xcbf29ce484222325n;

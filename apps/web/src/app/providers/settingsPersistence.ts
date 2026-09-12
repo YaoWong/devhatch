@@ -1,9 +1,10 @@
 import type { UpdateSettingsPatch } from "../../api/settings";
 import {
-  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX,
   DEFAULT_FONT_SIZE_PX,
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_UI_SCALE_PERCENT,
+  DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
   MAX_FONT_SIZE_PX,
   MAX_UI_SCALE_PERCENT,
   MIN_FONT_SIZE_PX,
@@ -29,7 +30,8 @@ const SAVE_DELAY_MS = 200;
 
 export type AppearanceDefaults = {
   theme: typeof DEFAULT_THEME_ID;
-  agentLaunchPathsMaxHeightPx: number;
+  launchPathsMaxHeightPx: number;
+  workspaceMaxHeightPx: number;
   navigationRailWidthPx: number;
   fontSizePx?: number;
   uiScalePercent?: number;
@@ -38,7 +40,8 @@ export type AppearanceDefaults = {
 export function appearanceDefaults(supportsDisplaySettings: boolean): AppearanceDefaults {
   return {
     theme: DEFAULT_THEME_ID,
-    agentLaunchPathsMaxHeightPx: DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+    launchPathsMaxHeightPx: DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+    workspaceMaxHeightPx: DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
     navigationRailWidthPx: DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
     ...(supportsDisplaySettings ? {
       fontSizePx: DEFAULT_FONT_SIZE_PX,

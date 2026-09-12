@@ -1,5 +1,3 @@
-import type { TerminalWorkspace } from "../../types/terminals";
-
 export function getOrCreateInFlightPromise<T>(
   inFlight: Map<string, Promise<T>>,
   key: string,
@@ -15,45 +13,6 @@ export function getOrCreateInFlightPromise<T>(
   promise = result.finally(clear);
   inFlight.set(key, promise);
   return promise;
-}
-
-export function mergeTerminalSession<T extends { id: string }>(current: T[], returned: T) {
-  return [...current.filter((session) => session.id !== returned.id), returned];
-}
-
-export function mergeWorkspaceMembers(
-  current: TerminalWorkspace[],
-  returned: TerminalWorkspace,
-): TerminalWorkspace[] {
-  const existing = current.find((workspace) => workspace.id === returned.id);
-  if (!existing) return [...current, returned];
-  const terminalIds = new Set(existing.members.map((member) => member.terminalId));
-  const members = [
-    ...existing.members,
-    ...returned.members.filter((member) => !terminalIds.has(member.terminalId)),
-  ];
-  if (members.length === existing.members.length) return current;
-  return current.map((workspace) => workspace.id === existing.id ? { ...existing, members } : workspace);
-}
-
-export function mergeDeletedTerminal(
-  current: TerminalWorkspace[],
-  terminalId: string,
-  workspaceId: string | undefined,
-  returned: TerminalWorkspace | null,
-): TerminalWorkspace[] {
-  if (!returned) {
-    return current.filter((workspace) => workspace.id !== workspaceId && !workspace.members.some((member) => member.terminalId === terminalId));
-  }
-  return current.flatMap((workspace) => {
-    if (workspace.id !== returned.id) return [workspace];
-    const members = workspace.members.filter((member) => member.terminalId !== terminalId);
-    const memberIds = new Set(members.map((member) => member.terminalId));
-    const activeTerminalId = workspace.activeTerminalId !== terminalId && workspace.activeTerminalId !== null && memberIds.has(workspace.activeTerminalId)
-      ? workspace.activeTerminalId
-      : returned.activeTerminalId !== null && memberIds.has(returned.activeTerminalId) ? returned.activeTerminalId : (members[0]?.terminalId ?? null);
-    return [{ ...workspace, activeTerminalId, members }];
-  });
 }
 
 export class WorkspaceMutationQueue {
@@ -115,6 +74,21 @@ export class WorkspaceMutationQueue {
     for (;;) {
       const { generation, value } = await this.read(key, task);
       if (this.isLatest(key, generation)) return value;
+    }
+  }
+
+  async readAndApplyLatest<T>(key: string, task: () => Promise<T>, apply: (value: T) => void) {
+    for (;;) {
+      const pending = this.queues.get(key);
+      if (pending) {
+        await pending;
+        continue;
+      }
+      const generation = this.generations.get(key) ?? 0;
+      const value = await task();
+      if (!this.isLatest(key, generation)) continue;
+      apply(value);
+      return;
     }
   }
 

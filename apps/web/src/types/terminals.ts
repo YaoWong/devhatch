@@ -1,4 +1,5 @@
 export type TerminalInfo = {
+  kind: "terminal";
   id: string;
   name: string;
   cwd: string;
@@ -9,29 +10,6 @@ export type TerminalInfo = {
   createdAt: number;
   updatedAt: number;
   exitCode: number | null;
-};
-
-export type TerminalLaunchPath = {
-  id: string;
-  path: string;
-  alias: string | null;
-  pinned: boolean;
-  lastUsedAt: number;
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type TerminalWorkspaceMember = {
-  terminalId: string;
-};
-
-export type TerminalWorkspace = {
-  id: string;
-  name: string | null;
-  activeTerminalId: string | null;
-  members: TerminalWorkspaceMember[];
-  createdAt: number;
-  updatedAt: number;
 };
 
 export type ConnectionPhase = "connecting" | "connected" | "reconnecting" | "disconnected" | "exited";

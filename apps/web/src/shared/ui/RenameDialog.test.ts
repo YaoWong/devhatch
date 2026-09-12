@@ -10,7 +10,7 @@ const renameDialogUsers = Object.entries(sources)
 describe("rename dialogs", () => {
   it("use the shared dialog instead of inline rename controls", () => {
     expect(renameDialogUsers).toHaveLength(5);
-    expect(renameDialogUsers.some((path) => path.endsWith("features/agents/LaunchPaths.tsx"))).toBe(true);
+    expect(renameDialogUsers.some((path) => path.endsWith("features/terminals/LaunchPaths.tsx"))).toBe(true);
     expect(renameDialogUsers.some((path) => path.endsWith("features/skills/Profiles.tsx"))).toBe(true);
     expect(renameDialogUsers.some((path) => path.endsWith("features/skills/Repositories.tsx"))).toBe(true);
     expect(renameDialogUsers.some((path) => path.endsWith("features/terminals/TerminalWorkspace.tsx"))).toBe(true);

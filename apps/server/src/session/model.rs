@@ -4,7 +4,7 @@ use std::{
 };
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex as AsyncMutex, broadcast, watch};
 
 #[derive(Clone)]
@@ -101,10 +101,28 @@ pub(super) struct SessionState {
     pub output: String,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum SessionKind {
     Terminal,
     Agent,
+}
+
+impl SessionKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Terminal => "terminal",
+            Self::Agent => "agent",
+        }
+    }
+
+    pub(crate) fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "terminal" => Some(Self::Terminal),
+            "agent" => Some(Self::Agent),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq)]
@@ -137,6 +155,7 @@ pub(crate) struct SessionView {
 }
 
 impl SessionView {
+    #[cfg(test)]
     pub(crate) fn id(&self) -> &str {
         &self.id
     }
@@ -204,6 +223,14 @@ impl Session {
             .lock()
             .expect("session identity lock poisoned")
             .upstream_session_file
+            .clone()
+    }
+
+    pub(crate) fn cwd(&self) -> String {
+        self.identity
+            .lock()
+            .expect("session identity lock poisoned")
+            .cwd
             .clone()
     }
 
@@ -293,6 +320,7 @@ impl Session {
         self.view_from_state(&state, &identity)
     }
 
+    #[cfg(test)]
     pub(crate) fn live_view(&self) -> Option<SessionView> {
         let identity = self
             .identity

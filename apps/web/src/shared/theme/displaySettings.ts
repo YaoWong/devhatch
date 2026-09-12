@@ -4,8 +4,11 @@ export const MAX_FONT_SIZE_PX = 20;
 export const DEFAULT_UI_SCALE_PERCENT = 100;
 export const MIN_UI_SCALE_PERCENT = 80;
 export const MAX_UI_SCALE_PERCENT = 125;
-export const DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX = 286;
+export const DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX = 286;
+export const DEFAULT_WORKSPACE_MAX_HEIGHT_PX = 286;
 export const DEFAULT_NAVIGATION_RAIL_WIDTH_PX = 288;
+export const MIN_NAVIGATION_RAIL_WIDTH_PX = 256;
+export const MAX_NAVIGATION_RAIL_WIDTH_PX = 480;
 
 const FONT_SIZE_STORAGE_KEY = "devhatch-font-size-px";
 const UI_SCALE_STORAGE_KEY = "devhatch-ui-scale-percent";

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../types/agents";
-import { agentHistoryPollDelay, runWhenVisible, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
+import { agentHistoryPollDelay, replaceAgentSessions, runWhenVisible, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
 
 const session = (overrides: Partial<AgentSession> = {}): AgentSession => ({
   id: "session-1",
   agentId: "opencode",
   agentName: "OpenCode",
-  kind: "opencode",
+  kind: "agent",
   name: "Session",
   cwd: "/tmp",
   shell: "sh",
@@ -117,6 +117,12 @@ describe("agent session selectors", () => {
     expect(sameAgentSessions(current, [{ ...current[0], updatedAt: 2 }])).toBe(true);
     expect(sameAgentSessions(current, [{ ...current[0], upstreamSessionId: "upstream" }])).toBe(false);
     expect(sameAgentSessions(current, [session({ id: "session-2" })])).toBe(false);
+  });
+
+  it("replaces titles only for the selected agent when raw IDs collide", () => {
+    const selected = session({ name: "Updated" });
+    const other = session({ agentId: "codex", agentName: "Codex", name: "Original" });
+    expect(replaceAgentSessions([other, session()], "opencode", [selected])).toEqual([other, selected]);
   });
 
   it("hides an empty search for small session collections", () => {

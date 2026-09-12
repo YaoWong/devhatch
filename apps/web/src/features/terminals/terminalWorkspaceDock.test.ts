@@ -1,7 +1,38 @@
-import { describe, expect, it } from "vitest";
-import { clampTerminalWorkspaceCapacity, minimizeTerminal, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, retainTerminalSurfaces, stageTerminal, terminalSurfaceIds, terminalViewTransitionName } from "./terminalWorkspaceDock";
+import { describe, expect, it, vi } from "vitest";
+import { clampTerminalWorkspaceCapacity, minimizeTerminal, readTerminalThumbnailsAutoHide, reconcileTerminalWorkspaceDock, resizeTerminalWorkspaceDock, retainTerminalSurfaces, stageTerminal, TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY, terminalSurfaceIds, terminalViewTransitionName, writeTerminalThumbnailsAutoHide } from "./terminalWorkspaceDock";
 
 const state = (stagedIds: string[], minimizedIds: string[] = []) => ({ stagedIds, minimizedIds });
+
+describe("terminal thumbnail auto-hide preference", () => {
+  it("defaults to disabled and reads only the enabled value", () => {
+    expect(readTerminalThumbnailsAutoHide({ getItem: () => null })).toBe(false);
+    expect(readTerminalThumbnailsAutoHide({ getItem: () => "0" })).toBe(false);
+    expect(readTerminalThumbnailsAutoHide({ getItem: () => "invalid" })).toBe(false);
+    expect(readTerminalThumbnailsAutoHide({ getItem: () => "1" })).toBe(true);
+  });
+
+  it("persists enabled and disabled values", () => {
+    const setItem = vi.fn();
+    writeTerminalThumbnailsAutoHide(true, { setItem });
+    writeTerminalThumbnailsAutoHide(false, { setItem });
+    expect(setItem).toHaveBeenNthCalledWith(1, TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY, "1");
+    expect(setItem).toHaveBeenNthCalledWith(2, TERMINAL_THUMBNAILS_AUTO_HIDE_STORAGE_KEY, "0");
+  });
+
+  it("survives unavailable storage", () => {
+    expect(readTerminalThumbnailsAutoHide({ getItem: () => { throw new Error("blocked"); } })).toBe(false);
+    expect(() => writeTerminalThumbnailsAutoHide(true, { setItem: () => { throw new Error("blocked"); } })).not.toThrow();
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("blocked"); } });
+    try {
+      expect(readTerminalThumbnailsAutoHide()).toBe(false);
+      expect(() => writeTerminalThumbnailsAutoHide(true)).not.toThrow();
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor);
+      else Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
+});
 
 describe("terminal workspace dock", () => {
   it("creates stable valid transition names from terminal identities", () => {

@@ -3,7 +3,7 @@ import { WorkspacePicker } from "../features/terminals/WorkspacePicker";
 import type { ConfirmAction, DeleteTarget } from "../types/app";
 
 export function AppDialogs({
-  pickerPurpose,
+  pickerOpen,
   pickerInitialPath,
   onClosePicker,
   onSelectPath,
@@ -16,7 +16,7 @@ export function AppDialogs({
   onCancelDelete,
   onConfirmDelete,
 }: {
-  pickerPurpose: "add-launch-path" | "agent" | null;
+  pickerOpen: boolean;
   pickerInitialPath?: string;
   onClosePicker: () => void;
   onSelectPath: (path: string) => void;
@@ -31,9 +31,8 @@ export function AppDialogs({
 }) {
   return (
     <>
-      {pickerPurpose && (
+      {pickerOpen && (
         <WorkspacePicker
-          purpose={pickerPurpose}
           initialPath={pickerInitialPath}
           onClose={onClosePicker}
           onSelect={onSelectPath}

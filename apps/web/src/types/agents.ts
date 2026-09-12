@@ -1,24 +1,10 @@
 import type { TerminalInfo } from "./terminals";
 
-export type AgentSession = TerminalInfo & {
+export type AgentSession = Omit<TerminalInfo, "kind"> & {
+  kind: "agent";
   agentId: string;
   agentName: string;
-  kind: string;
   upstreamSessionId?: string;
-};
-
-export type AgentWorkspace = {
-  id: string;
-  name: string | null;
-  activeAgentSessionId: string | null;
-  members: { agentSessionId: string }[];
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type AgentWorkspaceSnapshot = {
-  agentWorkspaces: AgentWorkspace[];
-  agentSessions: AgentSession[];
 };
 
 export type Agent = {
@@ -44,17 +30,7 @@ export type AgentInstall = {
   version: string;
 };
 
-export type AgentLaunchPath = {
-  id: string;
-  path: string;
-  alias: string | null;
-  pinned: boolean;
-  lastUsedAt: number;
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type AgentLaunchConfig = {
+export type LaunchConfig = {
   id: string;
   agentId: string;
   name: string;
@@ -66,10 +42,13 @@ export type AgentLaunchConfig = {
   updatedAt: number;
 };
 
-export type AgentLaunchConfigInput = Pick<
-  AgentLaunchConfig,
+export type LaunchConfigInput = Pick<
+  LaunchConfig,
   "agentId" | "name" | "isDefault" | "preLaunchScript" | "providerScript" | "tuiScript"
 >;
+
+export type AgentLaunchConfig = LaunchConfig;
+export type AgentLaunchConfigInput = LaunchConfigInput;
 export type HistorySession = {
   id: string;
   title: string;

@@ -6,10 +6,13 @@ import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { PixelRangeControl } from "../../shared/ui/PixelRangeControl";
 import { selectCopyClass } from "../../shared/ui/railStyles";
 import {
-  DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX,
+  DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX,
   DEFAULT_FONT_SIZE_PX,
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_UI_SCALE_PERCENT,
+  DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
+  MAX_NAVIGATION_RAIL_WIDTH_PX,
+  MIN_NAVIGATION_RAIL_WIDTH_PX,
 } from "../../shared/theme/displaySettings";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { DEFAULT_THEME_ID, themes } from "../../shared/theme/themes";
@@ -37,7 +40,8 @@ export function SettingsView({
 }) {
   const {
     themeId,
-    agentLaunchPathsMaxHeightPx,
+    launchPathsMaxHeightPx,
+    workspaceMaxHeightPx,
     navigationRailWidthPx,
     fontSizePx,
     uiScalePercent,
@@ -47,6 +51,8 @@ export function SettingsView({
     dismissError,
     resetAppearance,
     selectTheme,
+    setLaunchPathsMaxHeightPx,
+    setWorkspaceMaxHeightPx,
     setNavigationRailWidthPx,
     setFontSizePx,
     setUiScalePercent,
@@ -54,7 +60,8 @@ export function SettingsView({
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
   const appearanceDirty = themeId !== DEFAULT_THEME_ID ||
-    agentLaunchPathsMaxHeightPx !== DEFAULT_AGENT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
+    launchPathsMaxHeightPx !== DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX ||
+    workspaceMaxHeightPx !== DEFAULT_WORKSPACE_MAX_HEIGHT_PX ||
     navigationRailWidthPx !== DEFAULT_NAVIGATION_RAIL_WIDTH_PX ||
     (supportsDisplaySettings && (fontSizePx !== DEFAULT_FONT_SIZE_PX || uiScalePercent !== DEFAULT_UI_SCALE_PERCENT));
 
@@ -175,11 +182,31 @@ export function SettingsView({
               <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
                 <PanelLeft className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
                 <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Launch paths height</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the maximum height of the Launch Paths list.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsMaxHeightPx} disabled={saving} onChange={setLaunchPathsMaxHeightPx} />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <PanelLeft className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
+                  <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Workspace height</strong>
+                  <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the maximum height of the Workspace list.</small>
+                </span>
+                <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
+                  <PixelRangeControl label="Workspace height" min={160} max={480} step={8} value={workspaceMaxHeightPx} disabled={saving} onChange={setWorkspaceMaxHeightPx} />
+                </div>
+              </div>
+              <div className="tw:grid tw:min-h-[72px] tw:grid-cols-[30px_minmax(0,1fr)_minmax(260px,320px)] tw:items-center tw:gap-x-3 tw:gap-y-2.5 tw:border-t tw:border-border tw:px-3.5 tw:py-2.5 tw:@max-[620px]/settings-card:grid-cols-[30px_minmax(0,1fr)]">
+                <PanelLeft className="tw:size-[30px] tw:rounded-lg tw:bg-muted tw:p-[7px] tw:text-muted-foreground" />
+                <span className="tw:min-w-0">
                   <strong className="tw:block tw:text-sm tw:font-semibold tw:text-foreground">Sidebar width</strong>
                   <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the desktop navigation sidebar width.</small>
                 </span>
                 <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
-                  <PixelRangeControl label="Sidebar width" min={240} max={480} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
+                  <PixelRangeControl label="Sidebar width" min={MIN_NAVIGATION_RAIL_WIDTH_PX} max={MAX_NAVIGATION_RAIL_WIDTH_PX} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
                 </div>
               </div>
               {error && <div className="tw:flex tw:min-h-10 tw:items-center tw:gap-2 tw:border-t tw:border-border tw:py-1 tw:pr-1 tw:pl-3.5 tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert"><span className="tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-lg tw:text-destructive tw:hover:bg-destructive/10! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss settings error" onClick={dismissError}><X className="tw:size-3" /></Button></div>}

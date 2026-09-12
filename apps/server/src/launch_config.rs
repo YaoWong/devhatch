@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::{api::ApiError, clock::now, state::AppState};
 
 const SCRIPT_LIMIT: usize = 65_536;
+pub(crate) const TERMINAL_ID: &str = "terminal";
 
 #[derive(Clone, FromRow, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,7 +70,7 @@ pub(crate) async fn list(
         Ok(query) => query,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
     };
-    if !crate::agent::supported(&query.agent_id) {
+    if !supported(&query.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
     match sqlx::query_as::<_, AgentLaunchConfig>("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE agent_id = ? ORDER BY is_default DESC, name COLLATE NOCASE, id")
@@ -90,7 +91,7 @@ pub(crate) async fn create(
         Ok(request) => request,
         Err(_) => return error(StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
     };
-    if !crate::agent::supported(&request.agent_id) {
+    if !supported(&request.agent_id) {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
     let name = match validate_name(&request.name) {
@@ -168,7 +169,7 @@ pub(crate) async fn update(
     if request
         .agent_id
         .as_deref()
-        .is_some_and(|agent_id| !crate::agent::supported(agent_id))
+        .is_some_and(|agent_id| !supported(agent_id))
     {
         return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID");
     }
@@ -190,7 +191,11 @@ pub(crate) async fn update(
     {
         return error(StatusCode::BAD_REQUEST, "EMPTY_UPDATE");
     }
-    let current = match find(state.pool(), &id).await {
+    let mut transaction = match state.pool().begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => return database_error(),
+    };
+    let current = match find_in_transaction(&mut transaction, &id).await {
         Ok(Some(config)) => config,
         Ok(None) => return not_found(),
         Err(_) => return database_error(),
@@ -223,10 +228,6 @@ pub(crate) async fn update(
     ) {
         return error(StatusCode::BAD_REQUEST, code);
     }
-    let mut transaction = match state.pool().begin().await {
-        Ok(transaction) => transaction,
-        Err(_) => return database_error(),
-    };
     let timestamp = now() as i64;
     if request.is_default == Some(true)
         && clear_default(&mut transaction, &current.agent_id, timestamp)
@@ -346,13 +347,6 @@ pub(crate) async fn summary(
     Ok((count, default))
 }
 
-async fn find(pool: &sqlx::SqlitePool, id: &str) -> Result<Option<AgentLaunchConfig>, sqlx::Error> {
-    sqlx::query_as("SELECT id, agent_id, name, is_default, pre_launch_script, provider_script, tui_script, created_at, updated_at FROM agent_launch_configs WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool)
-        .await
-}
-
 async fn find_in_transaction(
     transaction: &mut Transaction<'_, Sqlite>,
     id: &str,
@@ -376,6 +370,10 @@ async fn clear_default(
     .execute(&mut **transaction)
     .await?;
     Ok(())
+}
+
+fn supported(id: &str) -> bool {
+    id == TERMINAL_ID || crate::agent::supported(id)
 }
 
 fn validate_name(value: &str) -> Result<String, &'static str> {
@@ -418,7 +416,48 @@ fn error(status: StatusCode, code: &'static str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_name, validate_scripts};
+    use std::sync::Arc;
+
+    use axum::{
+        Json,
+        body::to_bytes,
+        extract::{Path, Query, State},
+        http::StatusCode,
+        response::Response,
+    };
+    use serde_json::Value;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::{
+        CreateRequest, ListQuery, TERMINAL_ID, UpdateRequest, create, list, remove, supported,
+        update, validate_name, validate_scripts,
+    };
+    use crate::state::{AppState, OpenCodeHistoryPool};
+
+    async fn state() -> (tempfile::TempDir, Arc<AppState>) {
+        let root = tempfile::tempdir().unwrap();
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let skillink = skillink::Skillink::open(Some(root.path().join("skillink")))
+            .await
+            .unwrap();
+        let state = Arc::new(AppState::new(
+            root.path().to_owned(),
+            pool,
+            OpenCodeHistoryPool::new(root.path().join("history.db")),
+            skillink,
+            None,
+            false,
+        ));
+        (root, state)
+    }
+
+    async fn response_json(response: Response) -> Value {
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+    }
 
     #[test]
     fn validates_names() {
@@ -433,5 +472,70 @@ mod tests {
         assert!(validate_scripts(["", "printf '%s' arbitrary"]).is_ok());
         assert!(validate_scripts(["x\0y"]).is_err());
         assert!(validate_scripts(["x".repeat(65_537).as_str()]).is_err());
+    }
+
+    #[test]
+    fn supports_terminal_without_changing_agent_support() {
+        assert!(supported(TERMINAL_ID));
+        assert!(!crate::agent::supported(TERMINAL_ID));
+        assert!(!supported("unknown"));
+    }
+
+    #[tokio::test]
+    async fn terminal_configs_support_crud_and_list() {
+        let (_root, state) = state().await;
+        let response = create(
+            State(state.clone()),
+            Ok(Json(CreateRequest {
+                agent_id: TERMINAL_ID.into(),
+                name: "Work".into(),
+                is_default: false,
+                pre_launch_script: "export PRE=1".into(),
+                provider_script: "export PROVIDER=1".into(),
+                tui_script: "export TUI=1".into(),
+            })),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let created = response_json(response).await;
+        let id = created["agentLaunchConfig"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(created["agentLaunchConfig"]["agentId"], TERMINAL_ID);
+
+        let response = list(
+            State(state.clone()),
+            Ok(Query(ListQuery {
+                agent_id: TERMINAL_ID.into(),
+            })),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let listed = response_json(response).await;
+        assert_eq!(listed["agentLaunchConfigs"].as_array().unwrap().len(), 2);
+        assert_eq!(listed["agentLaunchConfigs"][0]["id"], "terminal-default");
+
+        let response = update(
+            State(state.clone()),
+            Path(id.clone()),
+            Ok(Json(UpdateRequest {
+                agent_id: Some(TERMINAL_ID.into()),
+                name: Some("Renamed".into()),
+                is_default: None,
+                pre_launch_script: None,
+                provider_script: None,
+                tui_script: None,
+            })),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(response).await["agentLaunchConfig"]["name"],
+            "Renamed"
+        );
+
+        let response = remove(State(state), Path(id)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
 }
