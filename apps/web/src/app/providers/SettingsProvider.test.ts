@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MIN_NAVIGATION_RAIL_WIDTH_PX } from "../../shared/theme/displaySettings";
 import { appearanceDefaults, DebouncedNumberSetting, hasDisplaySettings, persistLatestValue } from "./settingsPersistence";
 
 function deferred<T>() {
@@ -161,7 +162,7 @@ describe("DebouncedNumberSetting", () => {
     const setting = new DebouncedNumberSetting({
       key: "navigationRailWidthPx",
       initialValue: 288,
-      min: 240,
+      min: MIN_NAVIGATION_RAIL_WIDTH_PX,
       max: 480,
       step: 8,
       persist,
@@ -186,7 +187,7 @@ describe("DebouncedNumberSetting", () => {
     const setting = new DebouncedNumberSetting({
       key: "navigationRailWidthPx",
       initialValue: 288,
-      min: 240,
+      min: MIN_NAVIGATION_RAIL_WIDTH_PX,
       max: 480,
       step: 8,
       persist,
@@ -219,7 +220,7 @@ describe("DebouncedNumberSetting", () => {
     const setting = new DebouncedNumberSetting({
       key: "navigationRailWidthPx",
       initialValue: 304,
-      min: 240,
+      min: MIN_NAVIGATION_RAIL_WIDTH_PX,
       max: 480,
       step: 8,
       persist,
@@ -252,7 +253,7 @@ describe("DebouncedNumberSetting", () => {
     const setting = new DebouncedNumberSetting({
       key: "navigationRailWidthPx",
       initialValue: 304,
-      min: 240,
+      min: MIN_NAVIGATION_RAIL_WIDTH_PX,
       max: 480,
       step: 8,
       persist,
@@ -284,7 +285,7 @@ describe("DebouncedNumberSetting", () => {
     const setting = new DebouncedNumberSetting({
       key: "navigationRailWidthPx",
       initialValue: 288,
-      min: 240,
+      min: MIN_NAVIGATION_RAIL_WIDTH_PX,
       max: 480,
       step: 8,
       persist,

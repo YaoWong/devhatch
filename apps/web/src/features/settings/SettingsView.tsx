@@ -11,6 +11,8 @@ import {
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_UI_SCALE_PERCENT,
   DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
+  MAX_NAVIGATION_RAIL_WIDTH_PX,
+  MIN_NAVIGATION_RAIL_WIDTH_PX,
 } from "../../shared/theme/displaySettings";
 import { useTheme } from "../../shared/theme/ThemeContext";
 import { DEFAULT_THEME_ID, themes } from "../../shared/theme/themes";
@@ -204,7 +206,7 @@ export function SettingsView({
                   <small className="tw:mt-1 tw:block tw:text-xs tw:leading-relaxed tw:text-muted-foreground">Set the desktop navigation sidebar width.</small>
                 </span>
                 <div className="tw:min-w-0 tw:@max-[620px]/settings-card:col-span-2 tw:@max-[620px]/settings-card:w-full">
-                  <PixelRangeControl label="Sidebar width" min={240} max={480} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
+                  <PixelRangeControl label="Sidebar width" min={MIN_NAVIGATION_RAIL_WIDTH_PX} max={MAX_NAVIGATION_RAIL_WIDTH_PX} step={8} value={navigationRailWidthPx} disabled={saving} onChange={setNavigationRailWidthPx} />
                 </div>
               </div>
               {error && <div className="tw:flex tw:min-h-10 tw:items-center tw:gap-2 tw:border-t tw:border-border tw:py-1 tw:pr-1 tw:pl-3.5 tw:text-xs tw:leading-relaxed tw:text-destructive" role="alert"><span className="tw:min-w-0 tw:flex-1 tw:[overflow-wrap:anywhere]">{error}</span><Button variant="ghost" size="icon" className="tw:size-10 tw:flex-none tw:rounded-lg tw:text-destructive tw:hover:bg-destructive/10! tw:hover:text-destructive! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Dismiss settings error" onClick={dismissError}><X className="tw:size-3" /></Button></div>}

@@ -12,8 +12,10 @@ import {
   DEFAULT_NAVIGATION_RAIL_WIDTH_PX,
   DEFAULT_WORKSPACE_MAX_HEIGHT_PX,
   MAX_FONT_SIZE_PX,
+  MAX_NAVIGATION_RAIL_WIDTH_PX,
   MAX_UI_SCALE_PERCENT,
   MIN_FONT_SIZE_PX,
+  MIN_NAVIGATION_RAIL_WIDTH_PX,
   MIN_UI_SCALE_PERCENT,
 } from "../../shared/theme/displaySettings";
 import { applyTheme, cachedTheme, DEFAULT_THEME_ID, isThemeId } from "../../shared/theme/themes";
@@ -74,7 +76,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
   const { value: heightValue, setValue: setHeightValue, loadValue: loadHeightValue } = usePersistedNumberSetting("launchPathsMaxHeightPx", DEFAULT_LAUNCH_PATHS_MAX_HEIGHT_PX, 160, 480, reportError);
   const { value: workspaceHeightValue, setValue: setWorkspaceHeightValue, loadValue: loadWorkspaceHeightValue } = usePersistedNumberSetting("workspaceMaxHeightPx", DEFAULT_WORKSPACE_MAX_HEIGHT_PX, 160, 480, reportError);
-  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, 240, 480, reportError);
+  const { value: widthValue, setValue: setWidthValue, loadValue: loadWidthValue } = usePersistedNumberSetting("navigationRailWidthPx", DEFAULT_NAVIGATION_RAIL_WIDTH_PX, MIN_NAVIGATION_RAIL_WIDTH_PX, MAX_NAVIGATION_RAIL_WIDTH_PX, reportError);
   const { value: fontSizeValue, setValue: setFontSizeValue, loadValue: loadFontSizeValue } = usePersistedNumberSetting("fontSizePx", initialDisplaySettings.fontSizePx, MIN_FONT_SIZE_PX, MAX_FONT_SIZE_PX, reportError, supportsDisplaySettings);
   const { value: uiScaleValue, setValue: setUiScaleValue, loadValue: loadUiScaleValue } = usePersistedNumberSetting("uiScalePercent", initialDisplaySettings.uiScalePercent, MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT, reportError, supportsDisplaySettings, 5);
 

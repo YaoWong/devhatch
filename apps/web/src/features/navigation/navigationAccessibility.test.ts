@@ -17,6 +17,7 @@ import pixelRangeSource from "../../shared/ui/PixelRangeControl.tsx?raw";
 import workspaceListSource from "../../shared/ui/RailWorkspaceList.tsx?raw";
 import navigationSource from "./useNavigation.ts?raw";
 import { getRailFocusRequest } from "./useNavigation";
+import { MIN_NAVIGATION_RAIL_WIDTH_PX } from "../../shared/theme/displaySettings";
 
 const { readFileSync } = (globalThis as typeof globalThis & {
   process: { getBuiltinModule: (name: "node:fs") => { readFileSync: (url: URL, encoding: "utf8") => string } };
@@ -107,20 +108,29 @@ describe("navigation rail accessibility", () => {
     expect(terminalLayoutSource).toContain('aria-label={`${count}-pane layout`}');
   });
 
-  it("uses width-based action layouts without hover geometry changes", () => {
+  it("expands desktop actions on interaction without reserving text space", () => {
     expect(launchPathsSource).toContain("launch-path-row");
-    expect(launchPathsSource).toContain("path-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(launchPathsSource).toContain("path-actions tw:flex tw:w-0");
+    expect(launchPathsSource).toContain("tw:[@media(pointer:coarse)]:w-[max(88px,calc(88px*var(--app-ui-scale)))]");
+    expect(launchPathsSource).toContain("path-launch-action");
+    expect(launchPathsSource).toContain("path-pin-action");
     expect(launchPathsSource).toContain('pathOverflowMenu(item, false, "path-overflow-secondary")');
     expect(launchPathsSource).toContain('pathOverflowMenu(item, true, "path-overflow-all")');
-    expect(launchPathsSource).not.toMatch(/group-(?:hover|focus-within)\/path:w/);
     expect(workspaceListSource).toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
     expect(workspaceListSource).not.toMatch(/group-(?:hover|focus-within)\/workspace:w/);
     expect(agentSessionListSource).not.toMatch(/group-(?:hover|focus-within)\/session-row:pr/);
-    expect(shellStyles).toMatch(/@media \(pointer: fine\) \{[\s\S]*?\.rail-width-320 \.path-actions \{ width: max\(120px, calc\(120px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-320 \.workspace-actions \{ width: max\(80px, calc\(80px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-320 \.session-actions-history \{ width: max\(104px, calc\(104px \* var\(--app-ui-scale\)\)\); \}/);
-    expect(shellStyles).toMatch(/\.rail-width-420 \.path-actions \{ width: max\(160px, calc\(160px \* var\(--app-ui-scale\)\)\) !important; \}/);
+    expect(shellStyles).toContain(".launch-path-row:hover .path-actions, .launch-path-row:focus-within .path-actions, .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }");
+    expect(shellStyles).toContain(".rail-width-264 .launch-path-row:hover .path-actions, .rail-width-264 .launch-path-row:focus-within .path-actions, .rail-width-264 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(120px, calc(120px * var(--app-ui-scale))) !important; }");
+    expect(shellStyles).toContain(".rail-width-320 .launch-path-row:hover .path-actions, .rail-width-320 .launch-path-row:focus-within .path-actions, .rail-width-320 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }");
+    expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?\.rail-width-280 \.path-actions \{ width: max\(132px, calc\(132px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-336 \.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}/);
     expect(shellStyles).not.toContain("@container navigation-rail");
     expect(shellStyles).not.toContain("container-name: navigation-rail");
+    expect(railSource).toContain("rail-width-264");
     expect(railSource).toContain("rail-width-320");
+    expect(railSource).toContain("rail-width-336");
+    expect(MIN_NAVIGATION_RAIL_WIDTH_PX).toBe(256);
+    expect(settingsSource).toContain('min={MIN_NAVIGATION_RAIL_WIDTH_PX}');
+    expect(resizeHandleSource).toContain("aria-valuemin={MIN_NAVIGATION_RAIL_WIDTH_PX}");
     expect(appSource).toContain("railWidthPx={mobileNavigation ? null : navigationRailWidthPx}");
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
   });

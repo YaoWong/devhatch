@@ -111,15 +111,16 @@
 .agent-session-list::-webkit-scrollbar-track { background: transparent; }
 .agent-session-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; }
 .agent-session-list:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
-.path-primary-action, .path-wide-action, .path-overflow-secondary, .workspace-wide-action, .session-direct-action { display: none !important; }
+.path-pin-action, .path-wide-action, .path-overflow-secondary, .workspace-wide-action, .session-direct-action { display: none !important; }
 .session-main { padding-right: max(40px, calc(40px * var(--app-ui-scale))); }
 @media (pointer: coarse) {
   .session-main { padding-right: max(44px, calc(44px * var(--app-ui-scale))); }
 }
 @media (pointer: fine) {
-  .rail-width-320 .path-actions { width: max(120px, calc(120px * var(--app-ui-scale))) !important; }
-  .rail-width-320 .path-actions .path-primary-action, .rail-width-320 .path-actions .path-overflow-secondary { display: inline-flex !important; }
-  .rail-width-320 .path-actions .path-overflow-all { display: none !important; }
+  .launch-path-row:hover .path-actions, .launch-path-row:focus-within .path-actions, .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }
+  .rail-width-264 .launch-path-row:hover .path-actions, .rail-width-264 .launch-path-row:focus-within .path-actions, .rail-width-264 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(120px, calc(120px * var(--app-ui-scale))) !important; }
+  .rail-width-264 .path-actions .path-pin-action, .rail-width-264 .path-actions .path-overflow-secondary { display: inline-flex !important; }
+  .rail-width-264 .path-actions .path-overflow-all { display: none !important; }
   .rail-width-320 .workspace-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }
   .rail-width-320 .workspace-actions .workspace-wide-action { display: inline-flex !important; }
   .rail-width-320 .workspace-actions .workspace-overflow-action { display: none !important; }
@@ -129,14 +130,14 @@
   .rail-width-320 .session-actions-history { width: max(104px, calc(104px * var(--app-ui-scale))); }
   .rail-width-320 .session-actions .session-direct-action { display: inline-flex !important; }
   .rail-width-320 .session-actions .session-overflow-action { display: none !important; }
-  .rail-width-420 .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }
-  .rail-width-420 .path-actions .path-wide-action { display: inline-flex !important; }
-  .rail-width-420 .path-actions .path-overflow-secondary { display: none !important; }
+  .rail-width-320 .launch-path-row:hover .path-actions, .rail-width-320 .launch-path-row:focus-within .path-actions, .rail-width-320 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }
+  .rail-width-320 .path-actions .path-wide-action { display: inline-flex !important; }
+  .rail-width-320 .path-actions .path-overflow-secondary { display: none !important; }
 }
 @media (pointer: coarse) {
-  .rail-width-340 .path-actions { width: max(132px, calc(132px * var(--app-ui-scale))) !important; }
-  .rail-width-340 .path-actions .path-primary-action, .rail-width-340 .path-actions .path-overflow-secondary { display: inline-flex !important; }
-  .rail-width-340 .path-actions .path-overflow-all { display: none !important; }
+  .rail-width-280 .path-actions { width: max(132px, calc(132px * var(--app-ui-scale))) !important; }
+  .rail-width-280 .path-actions .path-pin-action, .rail-width-280 .path-actions .path-overflow-secondary { display: inline-flex !important; }
+  .rail-width-280 .path-actions .path-overflow-all { display: none !important; }
   .rail-width-340 .workspace-actions { width: max(88px, calc(88px * var(--app-ui-scale))) !important; }
   .rail-width-340 .workspace-actions .workspace-wide-action { display: inline-flex !important; }
   .rail-width-340 .workspace-actions .workspace-overflow-action { display: none !important; }
@@ -146,7 +147,7 @@
   .rail-width-340 .session-actions-history { width: max(108px, calc(108px * var(--app-ui-scale))); }
   .rail-width-340 .session-actions .session-direct-action { display: inline-flex !important; }
   .rail-width-340 .session-actions .session-overflow-action { display: none !important; }
-  .rail-width-440 .path-actions { width: max(176px, calc(176px * var(--app-ui-scale))) !important; }
-  .rail-width-440 .path-actions .path-wide-action { display: inline-flex !important; }
-  .rail-width-440 .path-actions .path-overflow-secondary { display: none !important; }
+  .rail-width-336 .path-actions { width: max(176px, calc(176px * var(--app-ui-scale))) !important; }
+  .rail-width-336 .path-actions .path-wide-action { display: inline-flex !important; }
+  .rail-width-336 .path-actions .path-overflow-secondary { display: none !important; }
 }

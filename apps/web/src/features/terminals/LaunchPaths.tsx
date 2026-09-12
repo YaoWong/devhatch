@@ -72,7 +72,7 @@ export function LaunchPaths({
   const openMenuRef = useRef(false);
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
   const visiblePaths = paths.length > 24 ? paths.slice((page - 1) * 10, page * 10) : paths;
-  const pathOverflowMenu = (item: LaunchPath, includePrimary: boolean, triggerClassName: string) => (
+  const pathOverflowMenu = (item: LaunchPath, includePin: boolean, triggerClassName: string) => (
     <DropdownMenu
       modal={false}
       onOpenChange={(open) => {
@@ -89,23 +89,14 @@ export function LaunchPaths({
         <Ellipsis />
       </DropdownMenuTrigger>
       <DropdownMenuContent portalOwner={portalOwnerId} align="end" side="bottom" sideOffset={6} className="tw:w-44">
-        {includePrimary && (
-          <>
-            <DropdownMenuItem onClick={() => {
-              menuTriggerRef.current?.focus();
-              queueMicrotask(() => onPin(item));
-            }}>
-              <Pin />
-              {item.pinned ? "Unpin path" : "Pin path"}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={!available || launching} onClick={() => {
-              menuTriggerRef.current?.focus();
-              queueMicrotask(() => onLaunch(item));
-            }}>
-              <Play />
-              Launch {launchTargetName ?? "session"}
-            </DropdownMenuItem>
-          </>
+        {includePin && (
+          <DropdownMenuItem onClick={() => {
+            menuTriggerRef.current?.focus();
+            queueMicrotask(() => onPin(item));
+          }}>
+            <Pin />
+            {item.pinned ? "Unpin path" : "Pin path"}
+          </DropdownMenuItem>
         )}
         <DropdownMenuItem onClick={() => {
           menuTriggerRef.current?.focus();
@@ -178,12 +169,12 @@ export function LaunchPaths({
                     </span>
                   </div>
                 )}
-                <span className={`path-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))] tw:flex-none tw:overflow-hidden tw:[@media(pointer:coarse)]:w-[max(44px,calc(44px*var(--app-ui-scale)))] ${renaming ? "tw:hidden" : ""}`}>
+                <span className={`path-actions tw:flex tw:w-0 tw:flex-none tw:overflow-hidden tw:[@media(pointer:coarse)]:w-[max(88px,calc(88px*var(--app-ui-scale)))] ${renaming ? "tw:hidden" : ""}`}>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={`path-primary-action ${pathActionClass} ${item.pinned ? "tw:pointer-events-auto tw:bg-[var(--color-accent-soft)] tw:text-[var(--color-warning-fg)] tw:opacity-100 tw:shadow-[inset_0_0_0_1px_var(--color-border-strong)] tw:hover:text-[var(--color-warning-fg)]! tw:[&_svg]:-rotate-12 tw:[&_svg]:fill-current tw:[&_svg]:fill-opacity-20" : ""}`}
+                    className={`path-pin-action ${pathActionClass} ${item.pinned ? "tw:pointer-events-auto tw:bg-[var(--color-accent-soft)] tw:text-[var(--color-warning-fg)] tw:opacity-100 tw:shadow-[inset_0_0_0_1px_var(--color-border-strong)] tw:hover:text-[var(--color-warning-fg)]! tw:[&_svg]:-rotate-12 tw:[&_svg]:fill-current tw:[&_svg]:fill-opacity-20" : ""}`}
                     aria-label={item.pinned ? "Unpin path" : "Pin path"}
                     aria-pressed={item.pinned}
                     title={item.pinned ? "Pinned" : "Pin path"}
@@ -198,7 +189,7 @@ export function LaunchPaths({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={`path-primary-action ${pathActionClass}`}
+                    className={`path-launch-action ${pathActionClass}`}
                     aria-label={`Launch ${launchTargetName ?? "session"} in ${item.path}`}
                     disabled={!available || launching}
                     onClick={(event) => {

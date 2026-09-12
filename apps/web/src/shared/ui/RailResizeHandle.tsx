@@ -1,4 +1,5 @@
 import { useEffect, useRef, type FocusEventHandler, type KeyboardEvent, type PointerEvent, type Ref } from "react";
+import { MAX_NAVIGATION_RAIL_WIDTH_PX, MIN_NAVIGATION_RAIL_WIDTH_PX } from "../theme/displaySettings";
 
 type Props = {
   value: number;
@@ -13,7 +14,7 @@ type Props = {
   onBlur?: FocusEventHandler<HTMLDivElement>;
 };
 
-const clamp = (value: number) => Math.min(480, Math.max(240, Math.round(value)));
+const clamp = (value: number) => Math.min(MAX_NAVIGATION_RAIL_WIDTH_PX, Math.max(MIN_NAVIGATION_RAIL_WIDTH_PX, Math.round(value)));
 
 const setAccessibleValue = (element: HTMLDivElement, value: number) => {
   element.setAttribute("aria-valuenow", String(value));
@@ -72,8 +73,8 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
     let next = value;
     if (event.key === "ArrowLeft") next -= event.shiftKey ? 32 : 8;
     else if (event.key === "ArrowRight") next += event.shiftKey ? 32 : 8;
-    else if (event.key === "Home") next = 240;
-    else if (event.key === "End") next = 480;
+    else if (event.key === "Home") next = MIN_NAVIGATION_RAIL_WIDTH_PX;
+    else if (event.key === "End") next = MAX_NAVIGATION_RAIL_WIDTH_PX;
     else return;
     event.preventDefault();
     next = clamp(next);
@@ -89,8 +90,8 @@ export function RailResizeHandle({ value, hidden, handleRef, onPreview, onCommit
       aria-label="Resize navigation sidebar"
       aria-hidden={hidden}
       aria-orientation="vertical"
-      aria-valuemin={240}
-      aria-valuemax={480}
+      aria-valuemin={MIN_NAVIGATION_RAIL_WIDTH_PX}
+      aria-valuemax={MAX_NAVIGATION_RAIL_WIDTH_PX}
       aria-valuenow={value}
       aria-valuetext={`${value} pixels`}
       tabIndex={hidden ? -1 : 0}

@@ -121,7 +121,7 @@ export function NavigationRail({
     <aside
       ref={railRef}
       id={railId}
-      className={`rail ${railWidthPx !== null && railWidthPx >= 320 ? "rail-width-320" : ""} ${railWidthPx !== null && railWidthPx >= 340 ? "rail-width-340" : ""} ${railWidthPx !== null && railWidthPx >= 420 ? "rail-width-420" : ""} ${railWidthPx !== null && railWidthPx >= 440 ? "rail-width-440" : ""}`}
+      className={`rail ${railWidthPx !== null && railWidthPx >= 264 ? "rail-width-264" : ""} ${railWidthPx !== null && railWidthPx >= 280 ? "rail-width-280" : ""} ${railWidthPx !== null && railWidthPx >= 320 ? "rail-width-320" : ""} ${railWidthPx !== null && railWidthPx >= 336 ? "rail-width-336" : ""} ${railWidthPx !== null && railWidthPx >= 340 ? "rail-width-340" : ""}`}
       tabIndex={-1}
       inert={!railInteractive ? true : undefined}
       onMouseEnter={onCanvasEnter}
