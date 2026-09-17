@@ -130,7 +130,7 @@ export function LaunchPaths({
         <p className={`${railMenuLabelClass} tw:mb-0 tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap`}>Launch Paths</p>
         <RailCreateButton label="Add" disabled={!canAdd} onClick={onChoose} />
       </div>
-      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
+      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain launch-path-list">
         {visiblePaths.length ? (
           visiblePaths.map((item) => {
             const renaming = renamingId === item.id;

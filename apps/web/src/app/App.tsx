@@ -180,6 +180,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const canvasHandleRef = useRef<HTMLDivElement | null>(null);
   const breakpointFocusTargetRef = useRef<"mobile" | "desktop" | null>(null);
   const confirmedRailWidthRef = useRef(navigationRailWidthPx);
+  const [previewRailWidthPx, setPreviewRailWidthPx] = useState<number | null>(null);
   const [railResizing, setRailResizing] = useState(false);
   const railResizingRef = useRef(false);
   const [focusVersion, setFocusVersion] = useState(0);
@@ -258,13 +259,15 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   }, [navigationRailWidthPx]);
   const previewRailWidth = useCallback((value: number) => {
     appRef.current?.style.setProperty("--navigation-rail-width", `${value}px`);
+    if (railResizingRef.current) setPreviewRailWidthPx(value);
   }, []);
   const cancelRailResize = useCallback(() => {
     if (!railResizingRef.current) return;
     railResizingRef.current = false;
     setRailResizing(false);
-    previewRailWidth(confirmedRailWidthRef.current);
-  }, [previewRailWidth]);
+    setPreviewRailWidthPx(null);
+    appRef.current?.style.setProperty("--navigation-rail-width", `${confirmedRailWidthRef.current}px`);
+  }, []);
   useEffect(() => {
     const query = window.matchMedia("(max-width: 920px)");
     return subscribeMobileNavigationLifecycle(query, window, (movingToMobile) => {
@@ -629,7 +632,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       >
         <AppNavigationRail
         navigation={navigation}
-        railWidthPx={mobileNavigation ? null : navigationRailWidthPx}
+        railWidthPx={mobileNavigation ? null : previewRailWidthPx ?? navigationRailWidthPx}
         workspace={workspace}
         agent={agent}
         skills={skills}
@@ -725,6 +728,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           onResizingChange={(resizing) => {
           railResizingRef.current = resizing;
           setRailResizing(resizing);
+          if (!resizing) setPreviewRailWidthPx(null);
           if (resizing) cancelCanvasClose();
           else if (!canvasRailHoverRef.current && !canvasHandleHoverRef.current) scheduleCanvasClose();
         }}

@@ -19,6 +19,14 @@
   .skills-rail-page .skills-section-nav > [data-slot="button"] span { text-align: center; }
   .mode-webapp .webapps-workspace:not(.is-running) { padding-top: 58px !important; }
   .mode-settings .shell > div:last-child { padding-top: 58px !important; }
+  @media (min-width: 344px) {
+    [data-slot="sheet-content"] .session-main-live { padding-right: max(44px, calc(44px * var(--app-ui-scale))); }
+    [data-slot="sheet-content"] .session-main-history { padding-right: max(108px, calc(108px * var(--app-ui-scale))); }
+    [data-slot="sheet-content"] .session-actions-live { width: max(44px, calc(44px * var(--app-ui-scale))); }
+    [data-slot="sheet-content"] .session-actions-history { width: max(108px, calc(108px * var(--app-ui-scale))); }
+    [data-slot="sheet-content"] .session-actions .session-direct-action { display: inline-flex !important; }
+    [data-slot="sheet-content"] .session-actions .session-overflow-action { display: none !important; }
+  }
 }
 
 @media (max-width: 640px) {
