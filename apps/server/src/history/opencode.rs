@@ -182,12 +182,19 @@ pub(crate) async fn new_session_candidates(
         return Ok(Vec::new());
     };
     validate_schema(pool).await.map_err(|_| ())?;
-    sqlx::query_scalar::<_, String>("SELECT id FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND directory = ? AND time_created >= ? ORDER BY time_created ASC")
-        .bind(directory)
+    let directory = canonical_identity(directory);
+    sqlx::query_as::<_, (String, String)>("SELECT id, directory FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND time_created >= ? ORDER BY time_created ASC")
         .bind(launched_at.saturating_sub(2_000))
         .fetch_all(pool)
         .await
-        .map(|ids| ids.into_iter().filter(|id| !baseline.contains(id)).collect())
+        .map(|rows| {
+            rows.into_iter()
+                .filter(|(id, candidate_directory)| {
+                    !baseline.contains(id) && canonical_identity(candidate_directory) == directory
+                })
+                .map(|(id, _)| id)
+                .collect()
+        })
         .map_err(|_| ())
 }
 
@@ -208,27 +215,33 @@ pub(crate) async fn fork_successor_id(
 ) -> Result<Option<String>, ()> {
     let Some(pool) = pool else { return Ok(None) };
     validate_schema(pool).await.map_err(|_| ())?;
-    let current = sqlx::query_as::<_, (String, i64)>(
-        "SELECT title, time_created FROM session WHERE id = ? AND parent_id IS NULL AND time_archived IS NULL AND directory = ?",
+    let directory = canonical_identity(directory);
+    let current = sqlx::query_as::<_, (String, i64, String)>(
+        "SELECT title, time_created, directory FROM session WHERE id = ? AND parent_id IS NULL AND time_archived IS NULL",
     )
     .bind(current_id)
-    .bind(directory)
     .fetch_optional(pool)
     .await
     .map_err(|_| ())?;
-    let Some((title, created_at)) = current else {
+    let Some((title, created_at, current_directory)) = current else {
         return Ok(None);
     };
-    sqlx::query_scalar::<_, String>(
-        "SELECT id FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND directory = ? AND title = ? AND time_created > ? AND time_created >= ? ORDER BY time_created DESC LIMIT 1",
+    if canonical_identity(&current_directory) != directory {
+        return Ok(None);
+    }
+    let candidates = sqlx::query_as::<_, (String, String)>(
+        "SELECT id, directory FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND title = ? AND time_created > ? AND time_created >= ? ORDER BY time_created DESC",
     )
-    .bind(directory)
     .bind(next_fork_title(&title))
     .bind(created_at)
     .bind(launched_at.saturating_sub(2_000))
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
-    .map_err(|_| ())
+    .map_err(|_| ())?;
+    Ok(candidates
+        .into_iter()
+        .find(|(_, candidate_directory)| canonical_identity(candidate_directory) == directory)
+        .map(|(id, _)| id))
 }
 
 pub(crate) async fn fork_successor(
@@ -239,6 +252,7 @@ pub(crate) async fn fork_successor(
 ) -> Result<bool, ()> {
     let Some(pool) = pool else { return Ok(false) };
     validate_schema(pool).await.map_err(|_| ())?;
+    let directory = canonical_identity(directory);
     let rows = sqlx::query_as::<_, (String, String, String)>(
         "SELECT id, title, directory FROM session WHERE id IN (?, ?) AND parent_id IS NULL AND time_archived IS NULL",
     )
@@ -250,8 +264,8 @@ pub(crate) async fn fork_successor(
     let current = rows.iter().find(|row| row.0 == current_id);
     let candidate = rows.iter().find(|row| row.0 == candidate_id);
     Ok(current.zip(candidate).is_some_and(|(current, candidate)| {
-        current.2 == directory
-            && candidate.2 == directory
+        canonical_identity(&current.2) == directory
+            && canonical_identity(&candidate.2) == directory
             && candidate.1 == next_fork_title(&current.1)
     }))
 }
@@ -380,10 +394,54 @@ fn canonical_identity(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        HistoryRow, Presence, canonical_identity, next_fork_title, presence_for,
-        unique_unclaimed_session,
+        HistoryRow, Presence, canonical_identity, fork_successor, fork_successor_id,
+        new_session_candidates, next_fork_title, presence_for, unique_unclaimed_session,
     };
-    use std::collections::HashSet;
+    use sqlx::{
+        SqlitePool,
+        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    };
+    use std::{collections::HashSet, fs, path::Path};
+    use tempfile::TempDir;
+
+    async fn history_database() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(":memory:")
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE project (id TEXT PRIMARY KEY, name TEXT, worktree TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE session (id TEXT PRIMARY KEY, project_id TEXT, parent_id TEXT, directory TEXT NOT NULL, title TEXT NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, time_archived INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool
+    }
+
+    async fn insert_session(
+        pool: &SqlitePool,
+        id: &str,
+        title: &str,
+        directory: &Path,
+        created: i64,
+    ) {
+        sqlx::query("INSERT INTO session (id, project_id, parent_id, directory, title, time_created, time_updated, time_archived) VALUES (?, NULL, NULL, ?, ?, ?, ?, NULL)")
+            .bind(id)
+            .bind(directory.to_string_lossy().as_ref())
+            .bind(title)
+            .bind(created)
+            .bind(created)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
 
     fn row() -> HistoryRow {
         HistoryRow {
@@ -396,6 +454,61 @@ mod tests {
             time_created: 1,
             time_updated: 1000,
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reconciliation_matches_canonical_directory_aliases() {
+        use std::os::unix::fs::symlink;
+
+        let root = TempDir::new().unwrap();
+        let canonical = root.path().join("canonical");
+        let alias = root.path().join("alias");
+        fs::create_dir(&canonical).unwrap();
+        symlink(&canonical, &alias).unwrap();
+        let pool = history_database().await;
+        insert_session(&pool, "ses_current", "Original", &canonical, 10_000).await;
+        insert_session(
+            &pool,
+            "ses_successor",
+            "Original (fork #1)",
+            &canonical,
+            11_000,
+        )
+        .await;
+
+        assert_eq!(
+            new_session_candidates(
+                Some(&pool),
+                alias.to_string_lossy().as_ref(),
+                10_000,
+                &HashSet::from(["ses_successor".to_string()]),
+            )
+            .await
+            .unwrap(),
+            vec!["ses_current".to_string()]
+        );
+        assert_eq!(
+            fork_successor_id(
+                Some(&pool),
+                "ses_current",
+                alias.to_string_lossy().as_ref(),
+                10_000,
+            )
+            .await
+            .unwrap(),
+            Some("ses_successor".to_string())
+        );
+        assert!(
+            fork_successor(
+                Some(&pool),
+                "ses_current",
+                "ses_successor",
+                alias.to_string_lossy().as_ref(),
+            )
+            .await
+            .unwrap()
+        );
     }
 
     #[test]

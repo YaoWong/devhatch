@@ -34,6 +34,17 @@ use workspace::{
 const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
 
+fn resolve_agent_cwd(value: &str) -> std::io::Result<PathBuf> {
+    let cwd = resolve_path(value)?;
+    if !cwd.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "invalid cwd",
+        ));
+    }
+    std::fs::canonicalize(cwd)
+}
+
 pub(super) async fn installed_version(data_dir: &Path, kind: AgentKind) -> Option<String> {
     verified_executable(data_dir, kind)
         .await
@@ -310,10 +321,7 @@ pub(super) fn spawn_opencode(
         .as_ref()
         .and_then(serde_json::Value::as_str)
         .unwrap_or(&fallback_cwd);
-    let cwd = resolve_path(requested_cwd)?;
-    if !cwd.is_dir() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cwd").into());
-    }
+    let cwd = resolve_agent_cwd(requested_cwd)?;
     let cols = dimension(request.cols.as_ref(), DEFAULT_COLS);
     let rows = dimension(request.rows.as_ref(), DEFAULT_ROWS);
     let run_dir = create_run_dir(state.data_dir())?;
@@ -792,10 +800,27 @@ mod tests {
     use std::{ffi::OsString, path::Path};
 
     use super::{
-        codex_args, parse_pi_identity_state, pi_args, safe_runtime_cwd, supports_image_paste,
-        trae_args,
+        codex_args, parse_pi_identity_state, pi_args, resolve_agent_cwd, safe_runtime_cwd,
+        supports_image_paste, trae_args,
     };
     use crate::agent::AgentKind;
+
+    #[cfg(unix)]
+    #[test]
+    fn canonicalizes_agent_working_directories() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let canonical = root.path().join("canonical");
+        let alias = root.path().join("alias");
+        std::fs::create_dir(&canonical).unwrap();
+        symlink(&canonical, &alias).unwrap();
+
+        assert_eq!(
+            resolve_agent_cwd(alias.to_str().unwrap()).unwrap(),
+            canonical
+        );
+    }
 
     #[test]
     fn gates_terminal_image_paste_by_verified_version() {
