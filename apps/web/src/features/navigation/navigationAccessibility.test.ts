@@ -116,13 +116,38 @@ describe("navigation rail accessibility", () => {
     expect(launchPathsSource).toContain("path-pin-action");
     expect(launchPathsSource).toContain('pathOverflowMenu(item, false, "path-overflow-secondary")');
     expect(launchPathsSource).toContain('pathOverflowMenu(item, true, "path-overflow-all")');
-    expect(workspaceListSource).toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(workspaceListSource).toContain("workspace-main tw:flex");
+    expect(workspaceListSource).toContain("workspace-actions tw:absolute tw:top-1/2 tw:right-[5px]");
+    expect(workspaceListSource).not.toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(workspaceListSource).toContain("workspace-row tw:group/workspace tw:relative tw:flex tw:min-h-[52px]");
+    expect(workspaceListSource).toContain("tw:rounded-[9px] tw:border tw:px-[7px] tw:py-[5px]");
     expect(workspaceListSource).not.toMatch(/group-(?:hover|focus-within)\/workspace:w/);
     expect(agentSessionListSource).not.toMatch(/group-(?:hover|focus-within)\/session-row:pr/);
+    expect(agentSessionListSource).not.toContain("tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(agentSessionListSource).not.toContain("tw:[@media(pointer:coarse)]:w-[max(44px,calc(44px*var(--app-ui-scale)))]");
+    expect(agentSessionListSource).toContain("const resumeHistory = !live;");
+    expect(agentSessionListSource).toContain('className={`${sessionActionsClass} session-actions-history`}');
+    expect(agentSessionListSource).toContain("if (live) onActivate(live.id);");
+    expect(agentSessionListSource).toContain('disabled={resumeHistory && launching}');
+    expect(agentSessionListSource).not.toContain("!live && history");
+    expect(agentSessionListSource).toContain("tw:bg-[color-mix(in_srgb,var(--color-surface)_38%,transparent)]!");
+    expect(agentSessionListSource).toContain("session-actions tw:pointer-events-none");
+    expect(agentSessionListSource).toContain("tw:overflow-hidden tw:bg-transparent tw:opacity-0");
+    expect(agentSessionListSource).not.toContain("linear-gradient(90deg,transparent,var(--color-canvas)_14px)");
+    expect(agentSessionListSource).not.toContain("tw:bg-card tw:px-2.5");
+    expect(shellStyles).toContain(".workspace-main { padding-right: max(40px, calc(40px * var(--app-ui-scale))) !important; }");
+    expect(shellStyles).toContain(".workspace-actions { width: max(40px, calc(40px * var(--app-ui-scale))); }");
+    expect(shellStyles).toContain(".rail-width-320 .workspace-main { padding-right: max(80px, calc(80px * var(--app-ui-scale))) !important; }");
+    expect(shellStyles).toContain(".rail-width-320 .workspace-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }");
     expect(shellStyles).toContain(".launch-path-row:hover .path-actions, .launch-path-row:focus-within .path-actions, .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(80px, calc(80px * var(--app-ui-scale))) !important; }");
     expect(shellStyles).toContain(".rail-width-264 .launch-path-row:hover .path-actions, .rail-width-264 .launch-path-row:focus-within .path-actions, .rail-width-264 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(120px, calc(120px * var(--app-ui-scale))) !important; }");
     expect(shellStyles).toContain(".rail-width-320 .launch-path-row:hover .path-actions, .rail-width-320 .launch-path-row:focus-within .path-actions, .rail-width-320 .launch-path-row:has(.path-actions [data-popup-open]) .path-actions { width: max(160px, calc(160px * var(--app-ui-scale))) !important; }");
     expect(shellStyles).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?\.rail-width-280 \.path-actions \{ width: max\(132px, calc\(132px \* var\(--app-ui-scale\)\)\) !important; \}[\s\S]*?\.rail-width-336 \.path-actions \{ width: max\(176px, calc\(176px \* var\(--app-ui-scale\)\)\) !important; \}/);
+    expect(shellStyles).toContain(".session-main { padding-right: max(104px, calc(104px * var(--app-ui-scale))); }");
+    expect(shellStyles).toContain(".session-actions-history { width: max(104px, calc(104px * var(--app-ui-scale))); }");
+    expect(shellStyles).toContain(".session-actions .session-direct-action { display: inline-flex !important; }");
+    expect(shellStyles).toContain(".session-actions .session-overflow-action { display: none !important; }");
+    expect(shellStyles).not.toMatch(/\.rail-width-\d+ \.session-actions \.session-direct-action/);
     expect(shellStyles).not.toContain("@container navigation-rail");
     expect(shellStyles).not.toContain("container-name: navigation-rail");
     expect(railSource).toContain("rail-width-264");
@@ -131,7 +156,7 @@ describe("navigation rail accessibility", () => {
     expect(MIN_NAVIGATION_RAIL_WIDTH_PX).toBe(256);
     expect(settingsSource).toContain('min={MIN_NAVIGATION_RAIL_WIDTH_PX}');
     expect(resizeHandleSource).toContain("aria-valuemin={MIN_NAVIGATION_RAIL_WIDTH_PX}");
-    expect(appSource).toContain("railWidthPx={mobileNavigation ? null : navigationRailWidthPx}");
+    expect(appSource).toContain("railWidthPx={mobileNavigation ? null : previewRailWidthPx ?? navigationRailWidthPx}");
     expect(terminalStyles).toMatch(/@container terminal-pane \(min-width: 420px\) \{[\s\S]*?\.terminal-pane-actions \{ display: flex; \}[\s\S]*?\.terminal-pane-overflow \{ display: none !important; \}/);
   });
 
@@ -148,14 +173,16 @@ describe("navigation rail accessibility", () => {
     expect(shellStyles).toMatch(/@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\.canvas-edge-hot-zone \{[^}]*inset: 0 auto 0 0;[^}]*z-index: 39;[^}]*width: 4px;[^}]*\}[\s\S]*?\.canvas-rail-open > \.canvas-edge-hot-zone \{ width: 12px; \}[\s\S]*?\.canvas-edge-trigger \{ pointer-events: none; \}/);
     expect(shellStyles).toMatch(/\[data-slot="sheet-content"\] > \.rail\s*\{[^}]*width:\s*100%[^}]*transform:\s*none/);
     expect(shellStyles).not.toMatch(/\.app > \.rail\s*\{[^}]*container-type:/);
-    expect(responsiveStyles).not.toMatch(/\[data-slot="sheet-content"\] > \.rail/);
+    expect(responsiveStyles).toMatch(/@media \(min-width: 344px\) \{[\s\S]*?\[data-slot="sheet-content"\] \.session-actions-history \{ width: max\(108px, calc\(108px \* var\(--app-ui-scale\)\)\); \}[\s\S]*?\[data-slot="sheet-content"\] \.session-actions \.session-direct-action \{ display: inline-flex !important; \}[\s\S]*?\[data-slot="sheet-content"\] \.session-actions \.session-overflow-action \{ display: none !important; \}/);
     expect(responsiveStyles).toContain('.skills-rail-page .skills-section-nav > .skills-menu-label { display: none; }');
   });
 
-  it("previews rail resizing without updating App state", () => {
+  it("previews rail width and responsive action thresholds during resizing", () => {
     expect(appSource).toContain('appRef.current?.style.setProperty("--navigation-rail-width", `${value}px`)');
+    expect(appSource).toContain("if (railResizingRef.current) setPreviewRailWidthPx(value);");
+    expect(appSource).toContain("railWidthPx={mobileNavigation ? null : previewRailWidthPx ?? navigationRailWidthPx}");
+    expect(appSource).toContain("if (!resizing) setPreviewRailWidthPx(null);");
     expect(appSource).toContain("onPreview={previewRailWidth}");
-    expect(appSource).not.toContain("setDraftRailWidth");
     expect(resizeHandleSource).toContain("onPointerMove={(event) => {");
     expect(resizeHandleSource).toContain("onPreview(next);");
     expect(resizeHandleSource).toContain("if (commit) onCommit(drag.currentWidth);");
@@ -209,7 +236,7 @@ describe("navigation rail accessibility", () => {
     expect(workspaceControllerSource).toMatch(/const activateWorkspace[\s\S]*?closeSidebar\(\);[\s\S]*?bumpFocus\(\);/);
     expect(terminalWorkspaceSource).toContain("if (visible && !activeId) stageRef.current?.focus({ preventScroll: true });");
     expect(agentRailSource).toContain("disabled={busy || launching || configsLoading}");
-    expect(workspaceListSource).toContain("workspace-actions tw:flex tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
+    expect(workspaceListSource).toContain("workspace-actions tw:absolute tw:top-1/2 tw:right-[5px]");
     expect(workspaceListSource).toContain("workspace-overflow-action");
     expect(workspaceListSource).toContain("portalOwner={portalOwnerId}");
     expect(workspaceListSource).toContain("dispatchCustomSelectOpenChange(portalOwnerRef.current, open)");
@@ -228,9 +255,9 @@ describe("navigation rail accessibility", () => {
     expect(agentSessionListSource).toContain("tw:has-[:focus-visible]:border-[var(--color-accent)]");
     expect(agentSessionListSource).toContain("tw:has-[:focus-visible]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_16%,transparent)]");
     expect(agentSessionListSource).not.toContain("tw:focus-visible:[outline:2px_solid_var(--color-accent)]");
-    expect(launchPathsSource).toMatch(/>Launch Paths<\/p>[\s\S]*?<div className="tw:grid tw:min-h-0 tw:flex-1[^"]*tw:overflow-y-auto/);
+    expect(launchPathsSource).toMatch(/>Launch Paths<\/p>[\s\S]*?<div className="[^"]*launch-path-list[^"]*tw:overflow-y-auto|>Launch Paths<\/p>[\s\S]*?<div className="[^"]*tw:overflow-y-auto[^"]*launch-path-list/);
     expect(workspaceListSource).toMatch(/>Workspace<\/p>[\s\S]*?<div className="workspace-list[^"]*tw:overflow-y-auto/);
-    expect(shellStyles).toMatch(/\.workspace-list\s*\{[^}]*scrollbar-gutter:\s*stable/);
+    expect(shellStyles).toMatch(/\.workspace-list, \.launch-path-list\s*\{[^}]*scrollbar-gutter:\s*stable/);
     expect(shellStyles).toMatch(/\.agent-session-list\s*{[^}]*overflow-y:\s*auto/);
     expect(shellStyles).not.toContain(".sessions-section.is-scrolling");
     expect(shellStyles).toMatch(/\.app > \.rail\s*{[^}]*background:\s*transparent;/);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentSession } from "../../types/agents";
-import { agentHistoryPollDelay, replaceAgentSessions, runWhenVisible, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
+import type { AgentSession, HistoryResponse, HistorySession } from "../../types/agents";
+import { agentHistoryPollDelay, mergeAgentSessions, replaceAgentSessions, runWhenVisible, sameAgentSessions, shouldShowAgentSessionSearch, subscribeVisiblePolling } from "./selectors";
 
 const session = (overrides: Partial<AgentSession> = {}): AgentSession => ({
   id: "session-1",
@@ -17,6 +17,25 @@ const session = (overrides: Partial<AgentSession> = {}): AgentSession => ({
   updatedAt: 1,
   exitCode: null,
   ...overrides,
+});
+
+const historySession = (overrides: Partial<HistorySession> = {}): HistorySession => ({
+  id: "history-1",
+  title: "History",
+  directory: "/tmp",
+  projectId: null,
+  projectName: null,
+  projectWorktree: null,
+  timeCreated: 1,
+  timeUpdated: 2,
+  presence: "inactive",
+  ...overrides,
+});
+
+const history = (sessions: HistorySession[]): HistoryResponse => ({
+  available: true,
+  diagnostic: null,
+  sessions,
 });
 
 describe("agent session selectors", () => {
@@ -123,6 +142,15 @@ describe("agent session selectors", () => {
     const selected = session({ name: "Updated" });
     const other = session({ agentId: "codex", agentName: "Codex", name: "Original" });
     expect(replaceAgentSessions([other, session()], "opencode", [selected])).toEqual([other, selected]);
+  });
+
+  it("merges matching live and history sessions into one history row", () => {
+    const live = session({ upstreamSessionId: "history-1" });
+    const persisted = historySession();
+
+    expect(mergeAgentSessions([live], history([persisted]), "", null, false)).toEqual([
+      { live, history: persisted },
+    ]);
   });
 
   it("hides an empty search for small session collections", () => {
