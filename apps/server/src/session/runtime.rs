@@ -141,6 +141,7 @@ impl Session {
                 updated_at: timestamp,
                 exit_code: None,
                 output: String::new(),
+                agent_activity: None,
             }),
             master: std::sync::Mutex::new(pair.master),
             input: std::sync::Mutex::new(Some(input)),

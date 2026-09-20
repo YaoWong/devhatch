@@ -7,6 +7,6 @@ pub(crate) use dimensions::dimension;
 #[allow(unused_imports)]
 pub(crate) use model::SessionSnapshot;
 pub(crate) use model::{
-    RuntimeEndpoint, Session, SessionEvent, SessionExitCleanup, SessionKind, SessionSpawn,
-    SessionStatus, SessionView,
+    AgentActivityPhase, AgentActivityStatus, RuntimeEndpoint, Session, SessionEvent,
+    SessionExitCleanup, SessionKind, SessionSpawn, SessionStatus, SessionView,
 };

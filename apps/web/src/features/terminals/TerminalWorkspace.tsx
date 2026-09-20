@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { AgentActivity } from "../../types/agents";
 import type { ConnectionPhase } from "../../types/terminals";
 import { isAgentSession, sessionKey, sessionRef, type Workspace, type WorkspaceSession, type WorkspaceSessionRef } from "../../types/workspaces";
 import { FloatingAlert } from "../../shared/ui/FloatingAlert";
@@ -112,9 +113,23 @@ function terminalGridStyle(count: TerminalLayoutCount | null, preset: TerminalLa
   return style;
 }
 
+function agentActivityLabel(activity?: AgentActivity) {
+  if (!activity) return null;
+  if (activity.detail) return activity.detail;
+  if (activity.status === "busy") return activity.phase === "tool" ? "Running tool" : "Working";
+  if (activity.status === "retry") return "Retrying";
+  if (activity.status === "waiting") return activity.phase === "permission" ? "Waiting for permission" : "Waiting for input";
+  if (activity.status === "error") return "Error";
+  return "Idle";
+}
+
+function agentActivityClass(activity?: AgentActivity) {
+  return activity ? `agent-${activity.status}` : null;
+}
+
 export function TerminalWorkspace({
-  visible, busy, launching, visibleSessions, workspace, workspaceLabel = "workspace", sessionLabel = "session", stageId = "terminal", emptyIcon, phases, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
-  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, runtimeImagePaste, onOpenLink, onError, onDismissError,
+  visible, busy, launching, visibleSessions, workspace, workspaceLabel = "workspace", sessionLabel = "session", stageId = "terminal", emptyIcon, phases, agentActivities, focusVersion, capacity, thumbnailsAutoHide, thumbnailSide, workspaceLayouts, error,
+  onActivate, onRename, onClose, onCreate, onChoosePath, onPhaseChange, onAgentActivity, onLayoutCountChange, onWorkspaceLayoutChange, onRemoved, onUpstreamSessionChange, runtimeImagePaste, onOpenLink, onError, onDismissError,
 }: {
   visible: boolean;
   busy: boolean;
@@ -126,6 +141,7 @@ export function TerminalWorkspace({
   stageId?: string;
   emptyIcon?: React.ReactNode;
   phases: Record<string, ConnectionPhase>;
+  agentActivities?: Record<string, AgentActivity>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
   thumbnailsAutoHide: boolean;
@@ -138,6 +154,7 @@ export function TerminalWorkspace({
   onCreate?: (cwd?: string) => void;
   onChoosePath?: () => void;
   onPhaseChange: (key: string, phase: ConnectionPhase) => void;
+  onAgentActivity?: (ref: WorkspaceSessionRef, activity: AgentActivity) => void;
   onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onRemoved?: (ref: WorkspaceSessionRef) => void;
@@ -624,13 +641,16 @@ export function TerminalWorkspace({
           <nav id={`${stageId}-thumbnail-list`} className="terminal-thumbnail-stack" aria-label={`${sessionLabel} thumbnails`} aria-hidden={!thumbnailDockOpen} inert={!thumbnailDockOpen ? true : undefined}>
              {thumbnailSessions.map((session, index) => {
                const key = sessionKey(session);
+               const activity = isAgentSession(session) ? agentActivities?.[key] : undefined;
+               const activityLabel = agentActivityLabel(activity);
+               const dotClass = agentActivityClass(activity) ?? (phases[key] ?? "connecting");
                return (
                <Button
                  key={key}
                  ref={(node) => { if (node) thumbnailRefs.current.set(key, node); else thumbnailRefs.current.delete(key); }}
                  type="button"
                  variant="outline"
-                 aria-label={`${sessionDisplayName(session)}, ${phases[key] ?? "connecting"}`}
+                 aria-label={`${sessionDisplayName(session)}, ${activityLabel ?? phases[key] ?? "connecting"}`}
                  className="terminal-thumbnail tw:h-auto tw:w-full tw:shrink-0 tw:rounded-[10px] tw:border-border tw:bg-card tw:px-0 tw:pt-6 tw:pb-0 tw:text-foreground tw:shadow-[0_4px_10px_rgb(var(--overlay-color)/12%)] tw:hover:border-input tw:hover:bg-card! tw:max-[640px]:h-[75px] tw:max-[640px]:w-[120px] tw:max-[640px]:min-w-[120px]"
                  style={{ viewTransitionName: `${stageId}-${terminalViewTransitionName(key)}` }}
                  onClick={() => activateAndStage(key)}
@@ -638,7 +658,7 @@ export function TerminalWorkspace({
                >
                  <img className="tw:block tw:h-full tw:w-full tw:object-cover tw:[&:not([src])]:invisible" ref={thumbnailImageRef(key)} alt="" aria-hidden="true" />
                  <span className="terminal-thumbnail-caption">
-                   <span className={`tab-dot ${phases[key] ?? "connecting"}`} aria-hidden="true" />
+                   <span className={`tab-dot ${dotClass}`} aria-hidden="true" />
                    {sessionDisplayName(session)}
                  </span>
                </Button>
@@ -673,6 +693,9 @@ export function TerminalWorkspace({
             const focused = shown && key === activeId;
             const index = currentState.stagedIds.indexOf(key);
             const phase = phases[key] ?? "connecting";
+            const activity = isAgentSession(session) ? agentActivities?.[key] : undefined;
+            const activityLabel = agentActivityLabel(activity);
+            const dotClass = agentActivityClass(activity) ?? phase;
             return (
               <section
                 key={key}
@@ -683,7 +706,7 @@ export function TerminalWorkspace({
                 role={shown ? "listitem" : undefined}
                 inert={!shown ? true : undefined}
                 aria-hidden={!shown}
-                aria-label={`${sessionDisplayName(session)} ${sessionLabel}, ${phase}`}
+                aria-label={`${sessionDisplayName(session)} ${sessionLabel}, ${activityLabel ?? phase}`}
                 aria-current={focused ? "true" : undefined}
               >
                 <header className="terminal-window-titlebar">
@@ -692,14 +715,14 @@ export function TerminalWorkspace({
                     type="button"
                     variant="ghost"
                     className="tw:h-10 tw:min-w-0 tw:flex-1 tw:justify-start tw:gap-2 tw:rounded-lg tw:px-1 tw:text-left tw:font-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:h-11 tw:[&>span:not(.tab-dot)]:min-w-0 tw:[&>span:not(.tab-dot)]:flex-1 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:font-normal tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:max-[640px]:[&_small]:hidden tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:font-mono tw:[&_strong]:text-sm tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap"
-                    aria-label={`Activate ${sessionDisplayName(session)} ${sessionLabel}, ${phase}`}
+                    aria-label={`Activate ${sessionDisplayName(session)} ${sessionLabel}, ${activityLabel ?? phase}`}
                     aria-pressed={focused}
                     onClick={() => activateAndStage(key)}
                   >
-                    <span className={`tab-dot ${phase}`} aria-hidden="true" />
+                    <span className={`tab-dot ${dotClass}`} aria-hidden="true" />
                     <span>
                       <strong>{sessionDisplayName(session)}</strong>
-                      <small>{session.cwd}</small>
+                      <small>{activityLabel ? `${activityLabel} · ${session.cwd}` : session.cwd}</small>
                     </span>
                   </Button>
                   <div className="terminal-pane-actions">
@@ -743,7 +766,7 @@ export function TerminalWorkspace({
                   </DropdownMenu>
                 </header>
                 <Suspense fallback={<div className={`terminal-surface ${shown || thumbnailSource ? "active" : ""}`} />}>
-                  <TerminalSurface session={session} phaseKey={key} socketBase={transport.socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource && thumbnailDockOpen} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(key); }} onPhaseChange={onPhaseChange} onRemoved={transport.supportsRuntimeEvents && onRemoved ? () => onRemoved(sessionRef(session)) : undefined} onUpstreamSessionChange={transport.supportsRuntimeEvents && onUpstreamSessionChange ? (_id, upstreamId, cwd) => onUpstreamSessionChange(sessionRef(session), upstreamId, cwd) : undefined} onPasteImage={transport.supportsRuntimeEvents ? runtimeImagePaste?.(session) : undefined} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
+                  <TerminalSurface session={session} phaseKey={key} socketBase={transport.socketBase} visible={shown} rendered={shown || thumbnailSource} focused={focused} focusVersion={focusVersion} thumbnailEnabled={thumbnailSource && thumbnailDockOpen} thumbnailIntervalMs={500} onFocus={() => { if (!focused) activateAndStage(key); }} onPhaseChange={onPhaseChange} onAgentActivity={transport.supportsRuntimeEvents && onAgentActivity ? (_id, activity) => onAgentActivity(sessionRef(session), activity) : undefined} onRemoved={transport.supportsRuntimeEvents && onRemoved ? () => onRemoved(sessionRef(session)) : undefined} onUpstreamSessionChange={transport.supportsRuntimeEvents && onUpstreamSessionChange ? (_id, upstreamId, cwd) => onUpstreamSessionChange(sessionRef(session), upstreamId, cwd) : undefined} onPasteImage={transport.supportsRuntimeEvents ? runtimeImagePaste?.(session) : undefined} onThumbnail={updateThumbnail} onTransitionPrepareAvailable={registerTransitionPrepare} onOpenLink={onOpenLink} onError={onError} />
                 </Suspense>
               </section>
             );

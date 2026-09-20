@@ -106,6 +106,16 @@ async fn handle_socket(
     {
         return;
     }
+    if let Some(activity) = snapshot.activity
+        && send_json(
+            &mut sender,
+            serde_json::json!({ "type": "agentActivity", "activity": activity }),
+        )
+        .await
+        .is_err()
+    {
+        return;
+    }
     if snapshot.status == SessionStatus::Exited
         && send_json(
             &mut sender,
@@ -141,6 +151,9 @@ async fn handle_socket(
                     }
                     Ok(SessionEvent::UpstreamSessionChanged { id, cwd }) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "upstreamSessionChanged", "upstreamSessionId": id, "cwd": cwd })).await.is_err() { break; }
+                    }
+                    Ok(SessionEvent::AgentActivity(activity)) => {
+                        if send_json(&mut sender, serde_json::json!({ "type": "agentActivity", "activity": activity })).await.is_err() { break; }
                     }
                     Ok(SessionEvent::Exit(code)) => {
                         if send_json(&mut sender, serde_json::json!({ "type": "exit", "code": code })).await.is_err() { break; }

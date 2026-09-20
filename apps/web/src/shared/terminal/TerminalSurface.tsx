@@ -6,6 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import { verifyAuth } from "../../api/auth";
 import { notifyUnauthorized } from "../../api/client";
 import { useTheme } from "../theme/ThemeContext";
+import type { AgentActivity } from "../../types/agents";
 import type { ConnectionPhase } from "../../types/terminals";
 import type { WorkspaceSession } from "../../types/workspaces";
 import { SocketConnection, terminalSocketPath } from "./socketConnection";
@@ -28,6 +29,7 @@ export function TerminalSurface({
   className,
   onFocus,
   onPhaseChange,
+  onAgentActivity,
   onRemoved,
   onUpstreamSessionChange,
   onPasteImage,
@@ -48,6 +50,7 @@ export function TerminalSurface({
   className?: string;
   onFocus?: () => void;
   onPhaseChange: (id: string, phase: ConnectionPhase) => void;
+  onAgentActivity?: (id: string, activity: AgentActivity) => void;
   onRemoved?: (id: string) => void;
   onUpstreamSessionChange?: (id: string, upstreamSessionId: string, cwd?: string) => void;
   onPasteImage?: (image: Blob, signal?: AbortSignal) => Promise<void>;
@@ -74,6 +77,7 @@ export function TerminalSurface({
   visibleRef.current = visible;
   focusedRef.current = focused;
   const onRemovedRef = useRef(onRemoved);
+  const onAgentActivityRef = useRef(onAgentActivity);
   const onUpstreamSessionChangeRef = useRef(onUpstreamSessionChange);
   const onPasteImageRef = useRef(onPasteImage);
   const thumbnailEnabledRef = useRef(thumbnailEnabled);
@@ -84,10 +88,11 @@ export function TerminalSurface({
   const thumbnailGenerationRef = useRef(0);
   useEffect(() => {
     onRemovedRef.current = onRemoved;
+    onAgentActivityRef.current = onAgentActivity;
     onUpstreamSessionChangeRef.current = onUpstreamSessionChange;
     onPasteImageRef.current = onPasteImage;
     onTransitionPrepareAvailableRef.current = onTransitionPrepareAvailable;
-  }, [onRemoved, onUpstreamSessionChange, onPasteImage, onTransitionPrepareAvailable]);
+  }, [onRemoved, onAgentActivity, onUpstreamSessionChange, onPasteImage, onTransitionPrepareAvailable]);
   useEffect(() => {
     thumbnailIntervalMsRef.current = thumbnailIntervalMs;
   }, [thumbnailIntervalMs]);
@@ -319,6 +324,7 @@ export function TerminalSurface({
             data?: string;
             upstreamSessionId?: string;
             cwd?: string;
+            activity?: AgentActivity;
             terminal?: { upstreamSessionId?: string; cwd?: string; cols?: number; rows?: number };
           };
           if (message.type === "ready") {
@@ -340,6 +346,9 @@ export function TerminalSurface({
               message.upstreamSessionId,
               message.cwd,
             );
+          }
+          if (message.type === "agentActivity" && message.activity) {
+            onAgentActivityRef.current?.(session.id, message.activity);
           }
           if (message.type === "snapshot" && connection.snapshot(generation)) {
             const dimensions = snapshotDimensions;

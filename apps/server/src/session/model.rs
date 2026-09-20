@@ -99,6 +99,7 @@ pub(super) struct SessionState {
     pub updated_at: u64,
     pub exit_code: Option<u32>,
     pub output: String,
+    pub agent_activity: Option<AgentActivity>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -130,6 +131,37 @@ impl SessionKind {
 pub(crate) enum SessionStatus {
     Running,
     Exited,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentActivity {
+    pub status: AgentActivityStatus,
+    pub phase: AgentActivityPhase,
+    pub detail: Option<String>,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AgentActivityStatus {
+    Idle,
+    Busy,
+    Retry,
+    Waiting,
+    Error,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum AgentActivityPhase {
+    Idle,
+    Thinking,
+    Tool,
+    Permission,
+    Question,
+    Retry,
+    Error,
 }
 
 #[derive(Serialize)]
@@ -164,6 +196,7 @@ impl SessionView {
 pub(crate) struct SessionSnapshot {
     pub view: SessionView,
     pub output: String,
+    pub activity: Option<AgentActivity>,
     pub status: SessionStatus,
     pub exit_code: Option<u32>,
 }
@@ -172,6 +205,7 @@ pub(crate) struct SessionSnapshot {
 pub(crate) enum SessionEvent {
     Output(Arc<str>),
     UpstreamSessionChanged { id: String, cwd: String },
+    AgentActivity(AgentActivity),
     Exit(Option<u32>),
     Removed(Option<u32>),
     Terminate,
@@ -305,6 +339,33 @@ impl Session {
             .send(SessionEvent::UpstreamSessionChanged { id, cwd });
     }
 
+    pub(crate) fn publish_agent_activity(
+        &self,
+        status: AgentActivityStatus,
+        phase: AgentActivityPhase,
+        detail: Option<String>,
+    ) {
+        let activity = AgentActivity {
+            status,
+            phase,
+            detail,
+            updated_at: crate::clock::now(),
+        };
+        {
+            let mut state = self.state.lock().expect("session lock poisoned");
+            if state.agent_activity.as_ref().is_some_and(|current| {
+                current.status == activity.status
+                    && current.phase == activity.phase
+                    && current.detail == activity.detail
+            }) {
+                return;
+            }
+            state.agent_activity = Some(activity.clone());
+            state.updated_at = activity.updated_at;
+        }
+        let _ = self.events.send(SessionEvent::AgentActivity(activity));
+    }
+
     pub(crate) fn rename(&self, name: String) {
         let mut state = self.state.lock().expect("session lock poisoned");
         state.name = name;
@@ -343,6 +404,7 @@ impl Session {
         let snapshot = SessionSnapshot {
             view: self.view_from_state(&state, &identity),
             output: state.output.clone(),
+            activity: state.agent_activity.clone(),
             status: state.status,
             exit_code: state.exit_code,
         };

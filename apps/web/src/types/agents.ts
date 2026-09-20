@@ -1,5 +1,15 @@
 import type { TerminalInfo } from "./terminals";
 
+export type AgentActivityStatus = "idle" | "busy" | "retry" | "waiting" | "error";
+export type AgentActivityPhase = "idle" | "thinking" | "tool" | "permission" | "question" | "retry" | "error";
+
+export type AgentActivity = {
+  status: AgentActivityStatus;
+  phase: AgentActivityPhase;
+  detail?: string | null;
+  updatedAt: number;
+};
+
 export type AgentSession = Omit<TerminalInfo, "kind"> & {
   kind: "agent";
   agentId: string;

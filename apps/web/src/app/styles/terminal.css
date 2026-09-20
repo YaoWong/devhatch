@@ -101,8 +101,10 @@
 .terminal-xterm-host .xterm-viewport { scrollbar-color: var(--color-border-strong) transparent; scrollbar-width: thin; }
 .terminal-xterm-host .xterm-screen canvas { image-rendering: auto; }
 .tab-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--color-success-fg); }
-.tab-dot.connecting, .tab-dot.reconnecting { background: var(--color-warning-fg); }
-.tab-dot.disconnected, .tab-dot.exited { background: var(--color-text-faint); }
+.tab-dot.connecting, .tab-dot.reconnecting, .tab-dot.agent-retry, .tab-dot.agent-waiting { background: var(--color-warning-fg); }
+.tab-dot.agent-busy { background: var(--color-accent); }
+.tab-dot.agent-error { background: var(--color-danger); }
+.tab-dot.disconnected, .tab-dot.exited, .tab-dot.agent-idle { background: var(--color-text-faint); }
 
 html.terminal-stage-transition { view-transition-name: none; }
 html.terminal-stage-transition::view-transition-group(*) { z-index: 20; overflow: clip; border-radius: 12px; animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }

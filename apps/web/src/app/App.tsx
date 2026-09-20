@@ -38,6 +38,7 @@ import {
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
 import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
+import type { AgentActivity } from "../types/agents";
 import type { ConnectionPhase } from "../types/terminals";
 import { sessionKey, type WorkspaceSession } from "../types/workspaces";
 
@@ -186,6 +187,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [focusVersion, setFocusVersion] = useState(0);
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null);
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
+  const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>({});
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -480,12 +482,21 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     setPhases((current) => (current[key] === phase ? current : { ...current, [key]: phase }));
   }, []);
 
+  const setAgentActivity = useCallback((key: string, activity: AgentActivity) => {
+    setAgentActivities((current) => current[key]?.updatedAt === activity.updatedAt ? current : { ...current, [key]: activity });
+  }, []);
+
   const deleteSession = useCallback(async (target: DeleteTarget) => {
     setDeleting(true);
     try {
       await workspace.deleteSession(target);
       if (target.kind === "agent") void agent.refreshHistory();
       setPhases((current) => {
+        const next = { ...current };
+        delete next[sessionKey({ sessionId: target.id, kind: target.kind })];
+        return next;
+      });
+      setAgentActivities((current) => {
         const next = { ...current };
         delete next[sessionKey({ sessionId: target.id, kind: target.kind })];
         return next;
@@ -757,6 +768,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           webApps={webApps}
           busy={busy}
           phases={phases}
+          agentActivities={agentActivities}
           focusVersion={focusVersion}
           capacity={terminalCapacity}
           thumbnailsAutoHide={terminalThumbnailsAutoHide}
@@ -766,6 +778,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
           skillsSection={skillsSection}
           onCloseSession={requestClose}
           onPhaseChange={setPhase}
+          onAgentActivity={setAgentActivity}
           onLayoutCountChange={setTerminalLayoutCount}
           onWorkspaceLayoutChange={updateTerminalWorkspaceLayout}
            onError={reportError}

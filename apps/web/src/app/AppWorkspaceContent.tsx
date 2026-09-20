@@ -11,6 +11,7 @@ import type { TerminalWorkspaceCapacity } from "../features/terminals/terminalWo
 import type { useWorkspaceController } from "../features/terminals/useWorkspaceController";
 import { WebAppsWorkspace } from "../features/web-apps/WebApps";
 import type { useWebApps } from "../features/web-apps/useWebApps";
+import type { AgentActivity } from "../types/agents";
 import type { ConfirmAction, WorkspaceMode } from "../types/app";
 import type { ConnectionPhase } from "../types/terminals";
 import { isAgentSession, sessionKey, type WorkspaceSession } from "../types/workspaces";
@@ -25,6 +26,7 @@ type AppWorkspaceContentProps = {
   webApps: ReturnType<typeof useWebApps>;
   busy: boolean;
   phases: Record<string, ConnectionPhase>;
+  agentActivities: Record<string, AgentActivity>;
   focusVersion: number;
   capacity: TerminalWorkspaceCapacity;
   thumbnailsAutoHide: boolean;
@@ -34,6 +36,7 @@ type AppWorkspaceContentProps = {
   skillsSection: SkillsSection;
   onCloseSession: (session: WorkspaceSession, returnFocus?: HTMLElement | null, fallbackFocus?: HTMLElement | null) => void;
   onPhaseChange: (key: string, phase: ConnectionPhase) => void;
+  onAgentActivity: (key: string, activity: AgentActivity) => void;
   onLayoutCountChange: (count: TerminalLayoutCount | null) => void;
   onWorkspaceLayoutChange: (workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => void;
   onError: (message: string) => void;
@@ -53,6 +56,7 @@ export function AppWorkspaceContent({
   webApps,
   busy,
   phases,
+  agentActivities,
   focusVersion,
   capacity,
   thumbnailsAutoHide,
@@ -62,6 +66,7 @@ export function AppWorkspaceContent({
   skillsSection,
   onCloseSession,
   onPhaseChange,
+  onAgentActivity,
   onLayoutCountChange,
   onWorkspaceLayoutChange,
   onError,
@@ -93,6 +98,7 @@ export function AppWorkspaceContent({
         sessionLabel="session"
         emptyIcon={<Bot />}
         phases={phases}
+        agentActivities={agentActivities}
         focusVersion={focusVersion}
         capacity={capacity}
         thumbnailsAutoHide={thumbnailsAutoHide}
@@ -104,6 +110,7 @@ export function AppWorkspaceContent({
         onClose={onCloseSession}
         onCreate={(cwd) => void workspace.addTerminal(cwd)}
         onPhaseChange={onPhaseChange}
+        onAgentActivity={(ref, activity) => onAgentActivity(sessionKey(ref), activity)}
         onLayoutCountChange={onLayoutCountChange}
         onWorkspaceLayoutChange={onWorkspaceLayoutChange}
         onRemoved={(ref) => {
