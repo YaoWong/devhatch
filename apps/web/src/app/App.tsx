@@ -38,7 +38,7 @@ import {
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
 import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
-import type { AgentActivity } from "../types/agents";
+import type { AgentActivity, AgentSession } from "../types/agents";
 import type { ConnectionPhase } from "../types/terminals";
 import { sessionKey, type WorkspaceSession } from "../types/workspaces";
 
@@ -52,7 +52,21 @@ const AGENT_WORKSPACE_CAPACITY_STORAGE_KEY = "devhatch-agent-workspace-capacity"
 const AGENT_THUMBNAIL_SIDE_STORAGE_KEY = "devhatch-agent-thumbnail-side";
 const TERMINAL_PATH_DISPLAY_STORAGE_KEY = "devhatch-terminal-path-display";
 const AGENT_PATH_DISPLAY_STORAGE_KEY = "devhatch-agent-path-display";
+const AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY = "devhatch-agent-system-notifications";
 type TerminalThumbnailSide = "left" | "right";
+
+type AgentNotificationState = {
+  lastStatus: AgentActivity["status"] | null;
+  hasBeenBusy: boolean;
+};
+
+function readAgentSystemNotifications() {
+  try {
+    return localStorage.getItem(AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function initialPathDisplay(): LaunchPathDisplay {
   try {
@@ -68,6 +82,15 @@ function initialThumbnailSide(): TerminalThumbnailSide {
   } catch {
     return "left";
   }
+}
+
+function agentActivityNotification(session: AgentSession | undefined, activity: AgentActivity, state: AgentNotificationState) {
+  const name = session ? `${session.agentName} · ${session.name}` : "Agent";
+  if (activity.status === "waiting") return { title: `${name} needs input`, body: activity.detail ?? "Waiting for you" };
+  if (activity.status === "retry") return { title: `${name} is retrying`, body: activity.detail ?? "Retrying request" };
+  if (activity.status === "error") return { title: `${name} hit an error`, body: activity.detail ?? "Check DevHatch" };
+  if (activity.status === "idle" && state.hasBeenBusy && state.lastStatus !== "idle") return { title: `${name} finished`, body: "Agent is idle" };
+  return null;
 }
 
 function isCanvasRailOwnedTarget(rail: Element | null, target: EventTarget | null) {
@@ -188,6 +211,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null);
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
   const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>({});
+  const [agentSystemNotifications, setAgentSystemNotificationsState] = useState(readAgentSystemNotifications);
+  const agentNotificationStateRef = useRef<Record<string, AgentNotificationState>>({});
+  const agentSystemNotificationsRef = useRef(agentSystemNotifications);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -216,6 +242,26 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const setTerminalThumbnailSide = useCallback((side: TerminalThumbnailSide) => {
     setTerminalThumbnailSideState(side);
     try { localStorage.setItem(TERMINAL_THUMBNAIL_SIDE_STORAGE_KEY, side); } catch { return; }
+  }, []);
+  const setAgentSystemNotifications = useCallback(async (enabled: boolean) => {
+    if (enabled && !("Notification" in window)) {
+      setError("System notifications are not supported in this browser");
+      return;
+    }
+    if (enabled && Notification.permission === "default") {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setError("System notification permission was not granted");
+        return;
+      }
+    }
+    if (enabled && Notification.permission !== "granted") {
+      setError("System notifications are blocked for this site");
+      return;
+    }
+    agentSystemNotificationsRef.current = enabled;
+    setAgentSystemNotificationsState(enabled);
+    try { localStorage.setItem(AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY, enabled ? "1" : "0"); } catch { return; }
   }, []);
   const updateTerminalWorkspaceLayout = useCallback((workspaceId: string, update: (current: TerminalWorkspaceLayoutPreferences) => TerminalWorkspaceLayoutPreferences) => {
     setTerminalWorkspaceLayouts((current) => {
@@ -478,13 +524,44 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     onReady: markReady,
   });
 
+  useEffect(() => {
+    agentSystemNotificationsRef.current = agentSystemNotifications;
+  }, [agentSystemNotifications]);
+  useEffect(() => {
+    if (agentSystemNotifications && (!("Notification" in window) || Notification.permission !== "granted")) {
+      agentSystemNotificationsRef.current = false;
+      setAgentSystemNotificationsState(false);
+      try { localStorage.setItem(AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY, "0"); } catch { return; }
+    }
+  }, [agentSystemNotifications]);
+  useEffect(() => {
+    const liveKeys = new Set(workspace.agentSessions.map((session) => sessionKey(session)));
+    for (const key of Object.keys(agentNotificationStateRef.current)) {
+      if (!liveKeys.has(key)) delete agentNotificationStateRef.current[key];
+    }
+  }, [workspace.agentSessions]);
+
   const setPhase = useCallback((key: string, phase: ConnectionPhase) => {
     setPhases((current) => (current[key] === phase ? current : { ...current, [key]: phase }));
   }, []);
 
   const setAgentActivity = useCallback((key: string, activity: AgentActivity) => {
     setAgentActivities((current) => current[key]?.updatedAt === activity.updatedAt ? current : { ...current, [key]: activity });
-  }, []);
+    const previous = agentNotificationStateRef.current[key] ?? { lastStatus: null, hasBeenBusy: false };
+    const next: AgentNotificationState = {
+      lastStatus: activity.status,
+      hasBeenBusy: previous.hasBeenBusy || activity.status === "busy" || activity.status === "retry" || activity.status === "waiting",
+    };
+    agentNotificationStateRef.current[key] = next;
+    if (previous.lastStatus === activity.status) return;
+    const notification = agentActivityNotification(agent.displaySessions.find((session) => sessionKey(session) === key), activity, previous);
+    if (!notification || !agentSystemNotificationsRef.current || !("Notification" in window) || Notification.permission !== "granted") return;
+    const systemNotification = new Notification(notification.title, {
+      body: notification.body,
+      tag: `devhatch-${key}-${activity.status}`,
+    });
+    systemNotification.onclick = () => window.focus();
+  }, [agent.displaySessions]);
 
   const deleteSession = useCallback(async (target: DeleteTarget) => {
     setDeleting(true);
@@ -498,7 +575,9 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       });
       setAgentActivities((current) => {
         const next = { ...current };
-        delete next[sessionKey({ sessionId: target.id, kind: target.kind })];
+        const key = sessionKey({ sessionId: target.id, kind: target.kind });
+        delete next[key];
+        delete agentNotificationStateRef.current[key];
         return next;
       });
     } catch (reason) {
@@ -660,6 +739,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         layoutCount={terminalLayoutCount}
         layoutPreset={terminalLayoutPreset}
         pathDisplay={terminalPathDisplay}
+        agentSystemNotifications={agentSystemNotifications}
         thumbnailsAutoHide={terminalThumbnailsAutoHide}
         thumbnailSide={terminalThumbnailSide}
         launchPathsHeight={launchPathsMaxHeightPx}
@@ -668,6 +748,7 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         onCapacityChange={setTerminalCapacity}
         onLayoutPresetChange={setTerminalLayoutPreset}
         onPathDisplayChange={setTerminalPathDisplay}
+        onAgentSystemNotificationsChange={(enabled) => void setAgentSystemNotifications(enabled)}
         onToggleThumbnailAutoHide={() => setTerminalThumbnailAutoHide(!terminalThumbnailsAutoHide)}
         onThumbnailSideChange={setTerminalThumbnailSide}
         onLaunchPathsHeightChange={setLaunchPathsMaxHeightPx}

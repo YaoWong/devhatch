@@ -34,6 +34,7 @@ type AppNavigationRailProps = {
   layoutCount: TerminalLayoutCount | null;
   layoutPreset: TerminalLayoutPreset | null;
   pathDisplay: LaunchPathDisplay;
+  agentSystemNotifications: boolean;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
@@ -42,6 +43,7 @@ type AppNavigationRailProps = {
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onPathDisplayChange: (mode: LaunchPathDisplay) => void;
+  onAgentSystemNotificationsChange: (enabled: boolean) => void;
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
@@ -80,6 +82,7 @@ export function AppNavigationRail({
   layoutCount,
   layoutPreset,
   pathDisplay,
+  agentSystemNotifications,
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
@@ -88,6 +91,7 @@ export function AppNavigationRail({
   onCapacityChange,
   onLayoutPresetChange,
   onPathDisplayChange,
+  onAgentSystemNotificationsChange,
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
@@ -136,6 +140,7 @@ export function AppNavigationRail({
       layoutCount={layoutCount}
       layoutPreset={layoutPreset}
       pathDisplay={pathDisplay}
+      agentSystemNotifications={agentSystemNotifications}
       thumbnailsAutoHide={thumbnailsAutoHide}
       thumbnailSide={thumbnailSide}
       launchPathsHeight={launchPathsHeight}
@@ -150,6 +155,7 @@ export function AppNavigationRail({
       onCapacityChange={onCapacityChange}
       onLayoutPresetChange={onLayoutPresetChange}
       onPathDisplayChange={onPathDisplayChange}
+      onAgentSystemNotificationsChange={onAgentSystemNotificationsChange}
       onToggleThumbnailAutoHide={onToggleThumbnailAutoHide}
       onThumbnailSideChange={onThumbnailSideChange}
       onLaunchPathsHeightChange={onLaunchPathsHeightChange}

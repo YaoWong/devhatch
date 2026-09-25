@@ -31,6 +31,7 @@ export function NavigationRail({
   layoutCount,
   layoutPreset,
   pathDisplay,
+  agentSystemNotifications,
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
@@ -42,6 +43,7 @@ export function NavigationRail({
   onCapacityChange,
   onLayoutPresetChange,
   onPathDisplayChange,
+  onAgentSystemNotificationsChange,
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
@@ -79,6 +81,7 @@ export function NavigationRail({
   layoutCount: TerminalLayoutCount | null;
   layoutPreset: TerminalLayoutPreset | null;
   pathDisplay: LaunchPathDisplay;
+  agentSystemNotifications: boolean;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
@@ -90,6 +93,7 @@ export function NavigationRail({
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onPathDisplayChange: (mode: LaunchPathDisplay) => void;
+  onAgentSystemNotificationsChange: (enabled: boolean) => void;
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
@@ -182,6 +186,7 @@ export function NavigationRail({
               layoutCount={layoutCount}
               layoutPreset={layoutPreset}
               pathDisplay={pathDisplay}
+              agentSystemNotifications={agentSystemNotifications}
               thumbnailsAutoHide={thumbnailsAutoHide}
               thumbnailSide={thumbnailSide}
               launchPathsHeight={launchPathsHeight}
@@ -192,6 +197,7 @@ export function NavigationRail({
               onCapacityChange={onCapacityChange}
               onLayoutPresetChange={onLayoutPresetChange}
               onPathDisplayChange={onPathDisplayChange}
+              onAgentSystemNotificationsChange={onAgentSystemNotificationsChange}
               onToggleThumbnailAutoHide={onToggleThumbnailAutoHide}
               onThumbnailSideChange={onThumbnailSideChange}
               onLaunchPathsHeightChange={onLaunchPathsHeightChange}

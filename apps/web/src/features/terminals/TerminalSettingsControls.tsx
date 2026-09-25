@@ -13,6 +13,7 @@ export function TerminalSettingsControls({
   layoutCount,
   layoutPreset,
   pathDisplay,
+  agentSystemNotifications,
   thumbnailsAutoHide,
   thumbnailSide,
   launchPathsHeight,
@@ -26,6 +27,7 @@ export function TerminalSettingsControls({
   onCapacityChange,
   onLayoutPresetChange,
   onPathDisplayChange,
+  onAgentSystemNotificationsChange,
   onToggleThumbnailAutoHide,
   onThumbnailSideChange,
   onLaunchPathsHeightChange,
@@ -37,6 +39,7 @@ export function TerminalSettingsControls({
   layoutCount: TerminalLayoutCount | null;
   layoutPreset: TerminalLayoutPreset | null;
   pathDisplay: LaunchPathDisplay;
+  agentSystemNotifications: boolean;
   thumbnailsAutoHide: boolean;
   thumbnailSide: "left" | "right";
   launchPathsHeight: number;
@@ -50,6 +53,7 @@ export function TerminalSettingsControls({
   onCapacityChange: (capacity: TerminalWorkspaceCapacity) => void;
   onLayoutPresetChange: (preset: TerminalLayoutPreset) => void;
   onPathDisplayChange: (mode: LaunchPathDisplay) => void;
+  onAgentSystemNotificationsChange: (enabled: boolean) => void;
   onToggleThumbnailAutoHide: () => void;
   onThumbnailSideChange: (side: "left" | "right") => void;
   onLaunchPathsHeightChange: (height: number) => void;
@@ -95,6 +99,10 @@ export function TerminalSettingsControls({
         {(["folder", "full"] as const).map((mode) => <Button variant="ghost" className={`${segmentClassName} tw:min-w-16 tw:px-3 tw:font-sans`} key={mode} type="button" aria-label={mode === "folder" ? "Show relative paths" : "Show absolute paths"} aria-pressed={pathDisplay === mode} onClick={() => onPathDisplayChange(mode)}>{mode === "folder" ? "Relative" : "Absolute"}</Button>)}
       </div>
     </div>
+    <label className={`${settingRowClass} tw:cursor-pointer`}>
+      <span>Agent system notifications</span>
+      <Switch className="tw:ml-auto tw:flex-none tw:after:-inset-x-2 tw:after:-inset-y-3 tw:data-checked:bg-[var(--color-accent)]" checked={agentSystemNotifications} onCheckedChange={onAgentSystemNotificationsChange} />
+    </label>
     {showLaunchPathsHeight && <div className={settingRangeClass}>
       <span>Launch paths height</span>
       <PixelRangeControl label="Launch paths height" min={160} max={480} step={8} value={launchPathsHeight} onChange={onLaunchPathsHeightChange} />
