@@ -5,7 +5,7 @@ use std::fs;
 use tempfile::TempDir;
 
 #[test]
-fn discovers_nested_skill_directories() {
+fn discovers_skill_directories_across_repository() {
     let temp = TempDir::new().unwrap();
     write_skill(
         temp.path(),
@@ -19,6 +19,11 @@ fn discovers_nested_skill_directories() {
         "---\nname: nested\ndescription: Nested\n---\n",
     );
     write_skill(temp.path(), "other", "---\nname: other\n---\n");
+    write_skill(
+        temp.path(),
+        "packages/app/.agents/skills/review",
+        "---\nname: review\n---\n",
+    );
     let discovered = discover_repository(temp.path()).unwrap();
     assert_eq!(
         discovered
@@ -27,6 +32,8 @@ fn discovers_nested_skill_directories() {
             .collect::<Vec<_>>(),
         [
             ("root-skill", "."),
+            ("other", "other"),
+            ("review", "packages/app/.agents/skills/review"),
             ("alpha", "skills/alpha"),
             ("nested", "skills/engineering/nested")
         ]
@@ -35,12 +42,16 @@ fn discovers_nested_skill_directories() {
 
 #[cfg(unix)]
 #[test]
-fn ignores_links_outside_non_root_skills() {
+fn discovers_hidden_skill_directories_and_ignores_unrelated_links() {
     use std::os::unix::fs::symlink;
     let temp = TempDir::new().unwrap();
     let repository = temp.path().join("repository");
     write_skill(&repository, "skills/alpha", "---\nname: alpha\n---\n");
-    fs::create_dir_all(repository.join(".agents/skills/skill-creator")).unwrap();
+    write_skill(
+        &repository,
+        ".agents/skills/skill-creator",
+        "---\nname: skill-creator\n---\n",
+    );
     fs::create_dir_all(repository.join(".claude/skills")).unwrap();
     symlink(
         "../../.agents/skills/skill-creator",
@@ -56,7 +67,14 @@ fn ignores_links_outside_non_root_skills() {
             .file_type()
             .is_symlink()
     );
-    assert_eq!(discover_repository(&repository).unwrap().len(), 1);
+    assert_eq!(
+        discover_repository(&repository)
+            .unwrap()
+            .iter()
+            .map(|skill| skill.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        [".agents/skills/skill-creator", "skills/alpha"]
+    );
 }
 
 #[cfg(unix)]
@@ -66,20 +84,25 @@ fn materializes_only_internal_file_links() {
     let temp = TempDir::new().unwrap();
     let repository = temp.path().join("repository");
     let outside = temp.path().join("outside.md");
-    fs::create_dir_all(repository.join("skills/source/references")).unwrap();
-    fs::create_dir_all(repository.join("skills/consumer/references")).unwrap();
+    write_skill(
+        &repository,
+        "packages/consumer",
+        "---\nname: consumer\n---\n",
+    );
+    fs::create_dir_all(repository.join("packages/source/references")).unwrap();
+    fs::create_dir_all(repository.join("packages/consumer/references")).unwrap();
     fs::write(
-        repository.join("skills/source/references/invocation.md"),
+        repository.join("packages/source/references/invocation.md"),
         "shared",
     )
     .unwrap();
     symlink(
         "../../source/references/invocation.md",
-        repository.join("skills/consumer/references/invocation.md"),
+        repository.join("packages/consumer/references/invocation.md"),
     )
     .unwrap();
     materialize_internal_file_links(&repository).unwrap();
-    let materialized = repository.join("skills/consumer/references/invocation.md");
+    let materialized = repository.join("packages/consumer/references/invocation.md");
     assert!(
         materialized
             .symlink_metadata()
@@ -91,11 +114,11 @@ fn materializes_only_internal_file_links() {
     fs::write(&outside, "private").unwrap();
     symlink(
         &outside,
-        repository.join("skills/consumer/references/unsafe.md"),
+        repository.join("packages/consumer/references/unsafe.md"),
     )
     .unwrap();
     assert!(
-        matches!(materialize_internal_file_links(&repository), Err(Error::UnsafeEntry(path)) if path.ends_with("skills/consumer/references/unsafe.md"))
+        matches!(materialize_internal_file_links(&repository), Err(Error::UnsafeEntry(path)) if path.ends_with("packages/consumer/references/unsafe.md"))
     );
 }
 

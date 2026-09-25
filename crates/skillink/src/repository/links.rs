@@ -1,21 +1,12 @@
-use crate::{Error, Result};
+use crate::{Error, Result, repository::discovery::find_skill_directories};
 use std::{fs, path::Path};
 use walkdir::WalkDir;
 
 pub(super) fn materialize_internal_file_links(root: &Path) -> Result<()> {
-    let scan_root = if root.join("SKILL.md").exists() {
-        root
-    } else {
-        let skills = root.join("skills");
-        if !skills.exists() {
-            return Ok(());
-        }
-        if !skills.symlink_metadata()?.file_type().is_dir() {
-            return Err(Error::UnsafeEntry(skills.display().to_string()));
-        }
-        return materialize_links_under(root, &skills);
-    };
-    materialize_links_under(root, scan_root)
+    for directory in find_skill_directories(root)? {
+        materialize_links_under(root, &directory)?;
+    }
+    Ok(())
 }
 
 fn materialize_links_under(root: &Path, scan_root: &Path) -> Result<()> {

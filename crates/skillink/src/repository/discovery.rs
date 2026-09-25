@@ -3,7 +3,10 @@ use crate::{
     skill::manifest::parse_strict,
     validation::{path_to_db, validate_slug},
 };
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 const ROOT_RELATIVE_PATH: &str = ".";
@@ -16,66 +19,43 @@ pub(super) struct DiscoveredSkill {
 }
 
 pub(super) fn discover_repository(root: &Path) -> Result<Vec<DiscoveredSkill>> {
-    let mut discovered = Vec::new();
-    let root_manifest = root.join("SKILL.md");
-    if root_manifest.exists() {
-        if !root_manifest.symlink_metadata()?.file_type().is_file() {
-            return Err(Error::UnsafeEntry(root_manifest.display().to_string()));
+    let skill_roots = find_skill_directories(root)?;
+    let mut discovered = Vec::with_capacity(skill_roots.len());
+    for directory in skill_roots {
+        let manifest_path = directory.join("SKILL.md");
+        if !manifest_path.symlink_metadata()?.file_type().is_file() {
+            return Err(Error::UnsafeEntry(manifest_path.display().to_string()));
         }
-        validate_skill_directory(root, true)?;
-        let manifest = parse_strict(&root_manifest)?;
-        let slug = manifest.name.ok_or_else(|| Error::Manifest {
-            path: ROOT_RELATIVE_PATH.into(),
-            message: "root SKILL.md requires name".into(),
-        })?;
-        validate_manifest_slug(&slug, ROOT_RELATIVE_PATH)?;
-        discovered.push(DiscoveredSkill {
-            slug,
-            description: manifest.description.unwrap_or_default(),
-            relative_path: ROOT_RELATIVE_PATH.into(),
-        });
-    }
-    let skills = root.join("skills");
-    if skills.exists() {
-        if !skills.symlink_metadata()?.file_type().is_dir() {
-            return Err(Error::UnsafeEntry(skills.display().to_string()));
-        }
-        let mut skill_roots = Vec::new();
-        for entry in WalkDir::new(&skills).follow_links(false).min_depth(1) {
-            let entry = entry?;
-            let file_type = entry.file_type();
-            if file_type.is_symlink() || (!file_type.is_file() && !file_type.is_dir()) {
-                return Err(Error::UnsafeEntry(entry.path().display().to_string()));
-            }
-            if !file_type.is_file() || entry.file_name() != "SKILL.md" {
-                continue;
-            }
-            let directory = entry
-                .path()
-                .parent()
-                .ok_or_else(|| Error::UnsafeEntry(entry.path().display().to_string()))?;
-            skill_roots.push(directory.to_owned());
-            let relative_path = path_to_db(
+        let is_root = directory == root;
+        validate_skill_directory(&directory, is_root)?;
+        let relative_path = if is_root {
+            ROOT_RELATIVE_PATH.to_owned()
+        } else {
+            path_to_db(
                 directory
                     .strip_prefix(root)
                     .map_err(|_| Error::UnsafeEntry(directory.display().to_string()))?,
-            )?;
-            let manifest = parse_strict(entry.path())?;
+            )?
+        };
+        let manifest = parse_strict(&directory.join("SKILL.md"))?;
+        let slug = if is_root {
+            manifest.name.ok_or_else(|| Error::Manifest {
+                path: ROOT_RELATIVE_PATH.into(),
+                message: "root SKILL.md requires name".into(),
+            })?
+        } else {
             let fallback = directory
                 .file_name()
                 .and_then(|name| name.to_str())
                 .ok_or_else(|| Error::UnsafeEntry(directory.display().to_string()))?;
-            let slug = manifest.name.unwrap_or_else(|| fallback.to_owned());
-            validate_manifest_slug(&slug, &relative_path)?;
-            discovered.push(DiscoveredSkill {
-                slug,
-                description: manifest.description.unwrap_or_default(),
-                relative_path,
-            });
-        }
-        for directory in skill_roots {
-            validate_skill_directory(&directory, false)?;
-        }
+            manifest.name.unwrap_or_else(|| fallback.to_owned())
+        };
+        validate_manifest_slug(&slug, &relative_path)?;
+        discovered.push(DiscoveredSkill {
+            slug,
+            description: manifest.description.unwrap_or_default(),
+            relative_path,
+        });
     }
     discovered.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     let mut slugs: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -89,6 +69,32 @@ pub(super) fn discover_repository(root: &Path) -> Result<Vec<DiscoveredSkill>> {
         return Err(Error::DuplicateRepositorySlug { slug, paths });
     }
     Ok(discovered)
+}
+
+pub(super) fn find_skill_directories(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut directories = Vec::new();
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| entry.depth() == 0 || entry.file_name() != ".git")
+    {
+        let entry = entry?;
+        if entry.file_name() != "SKILL.md" {
+            continue;
+        }
+        if !entry.file_type().is_file() && !entry.file_type().is_symlink() {
+            return Err(Error::UnsafeEntry(entry.path().display().to_string()));
+        }
+        directories.push(
+            entry
+                .path()
+                .parent()
+                .ok_or_else(|| Error::UnsafeEntry(entry.path().display().to_string()))?
+                .to_owned(),
+        );
+    }
+    directories.sort();
+    Ok(directories)
 }
 
 fn validate_skill_directory(directory: &Path, root: bool) -> Result<()> {
