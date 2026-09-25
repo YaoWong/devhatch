@@ -1,5 +1,31 @@
 import type { ConnectionPhase } from "../../types/terminals";
 
+const opencodeNewlineInput = "\x1b[13;2u";
+
+type TerminalKeyEvent = Pick<KeyboardEvent, "type" | "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey">;
+
+export function terminalKeyInput(agentId: string | null, event: TerminalKeyEvent) {
+  if (
+    agentId === "opencode"
+    && event.type === "keydown"
+    && event.key === "Enter"
+    && event.shiftKey
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.metaKey
+  ) return opencodeNewlineInput;
+  return null;
+}
+
+export function shouldCopyTerminalSelection(hasSelection: boolean, event: TerminalKeyEvent) {
+  return hasSelection
+    && event.type === "keydown"
+    && event.key.toLowerCase() === "c"
+    && !event.shiftKey
+    && !event.altKey
+    && (event.ctrlKey || event.metaKey);
+}
+
 export function terminalSocketPath(socketBase: string, sessionId: string) {
   return `${socketBase}/${encodeURIComponent(sessionId)}/socket`;
 }

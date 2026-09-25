@@ -9,9 +9,9 @@ import { useTheme } from "../theme/ThemeContext";
 import type { AgentActivity } from "../../types/agents";
 import type { ConnectionPhase } from "../../types/terminals";
 import type { WorkspaceSession } from "../../types/workspaces";
-import { SocketConnection, terminalSocketPath } from "./socketConnection";
+import { shouldCopyTerminalSelection, SocketConnection, terminalKeyInput, terminalSocketPath } from "./socketConnection";
 import { loadTerminalFonts } from "./terminalFonts";
-import { registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
+import { registerTerminalClipboardHandler, registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
 import { clipboardImage, runImagePaste, type ImagePastePhase } from "./runtimeImagePaste";
 import { TerminalThumbnailCaptureState, terminalThumbnailBounds, terminalThumbnailSize } from "./terminalThumbnail";
 import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
@@ -62,6 +62,7 @@ export function TerminalSurface({
   onError: (message: string) => void;
 }) {
   const { themeId, fontSizePx } = useTheme();
+  const agentId = session.kind === "agent" ? session.agentId : null;
   const [imagePastePhase, setImagePastePhase] = useState<ImagePastePhase>(null);
   const initialThemeRef = useRef(themeId);
   const initialFontSizeRef = useRef(fontSizePx);
@@ -177,6 +178,7 @@ export function TerminalSurface({
         fontWeightBold: "bold",
         lineHeight: 1,
         linkHandler: { activate: (_event, url) => onOpenLink(url) },
+        macOptionClickForcesSelection: true,
         screenReaderMode: visibleRef.current,
         scrollback: 5000,
         theme: terminalThemes[initialThemeRef.current],
@@ -184,6 +186,14 @@ export function TerminalSurface({
       fit = new FitAddon();
       terminal.loadAddon(fit);
       terminal.open(container);
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (shouldCopyTerminalSelection(terminal.hasSelection(), event)) return false;
+        const data = terminalKeyInput(agentId, event);
+        if (!data) return true;
+        terminal.input(data, false);
+        event.preventDefault();
+        return false;
+      });
       try {
         terminal.loadAddon(onThumbnailRef.current ? new WebglAddon(true) : new WebglAddon());
       } catch {
@@ -197,6 +207,16 @@ export function TerminalSurface({
     terminalRef.current = terminal;
     const snapshotReplayGuard = new TerminalSnapshotReplayGuard();
     const snapshotReplayHandlers = registerTerminalSnapshotReplayHandlers(terminal.parser, snapshotReplayGuard);
+    const clipboardHandler = agentId === "opencode" ? registerTerminalClipboardHandler(
+      terminal.parser,
+      snapshotReplayGuard,
+      () => visibleRef.current
+        && focusedRef.current
+        && window.isSecureContext
+        && document.hasFocus()
+        && Boolean(navigator.clipboard),
+      (text) => navigator.clipboard.writeText(text),
+    ) : null;
     const terminalWriter = new TerminalWriteQueue(
       (data, onComplete) => terminal.write(data, onComplete),
       (generation) => {
@@ -477,6 +497,7 @@ export function TerminalSurface({
       container.removeEventListener("paste", paste, true);
       input.dispose();
       render.dispose();
+      clipboardHandler?.dispose();
       snapshotReplayHandlers.dispose();
       const socket = socketRef.current;
       socketRef.current = null;
@@ -488,7 +509,7 @@ export function TerminalSurface({
       requestThumbnailRef.current = null;
       onTransitionPrepareAvailableRef.current?.(phaseKey, () => Promise.resolve(null));
     };
-  }, [session.id, phaseKey, socketBase, onPhaseChange, onOpenLink, onError]);
+  }, [session.id, agentId, phaseKey, socketBase, onPhaseChange, onOpenLink, onError]);
   return (
     <div
       className={`terminal-surface ${rendered ? "active" : ""} ${className ?? ""}`}

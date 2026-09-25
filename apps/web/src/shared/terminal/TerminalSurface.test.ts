@@ -1,10 +1,44 @@
 import { describe, expect, it, vi } from "vitest";
-import { terminalSocketPath } from "./socketConnection";
+import { shouldCopyTerminalSelection, terminalKeyInput, terminalSocketPath } from "./socketConnection";
 import { applyTerminalTheme } from "./terminalThemes";
 
 describe("terminal transport", () => {
   it("encodes the raw session id without a composite prefix", () => {
     expect(terminalSocketPath("/api/agent-sessions", "same/id")).toBe("/api/agent-sessions/same%2Fid/socket");
+  });
+
+  it("copies a terminal selection without replacing Ctrl+C interrupt behavior", () => {
+    const copy = {
+      type: "keydown",
+      key: "c",
+      shiftKey: false,
+      altKey: false,
+      ctrlKey: true,
+      metaKey: false,
+    } as const;
+
+    expect(shouldCopyTerminalSelection(true, copy)).toBe(true);
+    expect(shouldCopyTerminalSelection(false, copy)).toBe(false);
+    expect(shouldCopyTerminalSelection(true, { ...copy, metaKey: true, ctrlKey: false })).toBe(true);
+    expect(shouldCopyTerminalSelection(true, { ...copy, key: "C", shiftKey: true })).toBe(false);
+    expect(shouldCopyTerminalSelection(true, { ...copy, type: "keyup" })).toBe(false);
+  });
+
+  it("encodes Shift+Enter for OpenCode multiline input", () => {
+    const shiftEnter = {
+      type: "keydown",
+      key: "Enter",
+      shiftKey: true,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+    } as const;
+
+    expect(terminalKeyInput("opencode", shiftEnter)).toBe("\x1b[13;2u");
+    expect(terminalKeyInput("codex", shiftEnter)).toBeNull();
+    expect(terminalKeyInput(null, shiftEnter)).toBeNull();
+    expect(terminalKeyInput("opencode", { ...shiftEnter, shiftKey: false })).toBeNull();
+    expect(terminalKeyInput("opencode", { ...shiftEnter, type: "keyup" })).toBeNull();
   });
 });
 

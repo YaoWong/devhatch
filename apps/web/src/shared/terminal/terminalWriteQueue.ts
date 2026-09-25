@@ -7,7 +7,9 @@ type WriteLifecycle = {
   onSettled?: () => void;
 };
 type Parser = Pick<IParser, "registerCsiHandler" | "registerDcsHandler" | "registerOscHandler">;
+type OscParser = Pick<IParser, "registerOscHandler">;
 type ReplyMatcher = (data: string) => boolean;
+type ClipboardWrite = (text: string) => Promise<void>;
 
 type PendingWrite = {
   generation: number;
@@ -118,6 +120,40 @@ export function registerTerminalSnapshotReplayHandlers(parser: Parser, guard: Te
       guard.clear();
     },
   };
+}
+
+const MAX_CLIPBOARD_BYTES = 64 * 1024;
+const MAX_CLIPBOARD_BASE64_CHARACTERS = 4 * Math.ceil(MAX_CLIPBOARD_BYTES / 3);
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+export function registerTerminalClipboardHandler(
+  parser: OscParser,
+  guard: TerminalSnapshotReplayGuard,
+  canWrite: () => boolean,
+  write: ClipboardWrite,
+): IDisposable {
+  return parser.registerOscHandler(52, (data) => {
+    if (guard.active || !canWrite()) return true;
+    const separator = data.indexOf(";");
+    if (separator < 0 || data.slice(0, separator) !== "c") return true;
+    const encoded = data.slice(separator + 1);
+    if (
+      !encoded
+      || encoded === "?"
+      || encoded.length > MAX_CLIPBOARD_BASE64_CHARACTERS
+      || !BASE64.test(encoded)
+    ) return true;
+    try {
+      const binary = atob(encoded);
+      if (binary.length > MAX_CLIPBOARD_BYTES || btoa(binary) !== encoded) return true;
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      void write(text).catch(() => undefined);
+    } catch {
+      return true;
+    }
+    return true;
+  });
 }
 
 const DEFAULT_MAX_PENDING_CHARACTERS = 2 * 1024 * 1024;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
+import { registerTerminalClipboardHandler, registerTerminalSnapshotReplayHandlers, TerminalSnapshotReplayGuard, TerminalWriteQueue } from "./terminalWriteQueue";
 
 type WriteCall = { data: string; complete: () => void };
 type Params = (number | number[])[];
@@ -141,6 +141,57 @@ describe("terminal write queue", () => {
     expect(guard.suppress("\x1b]12;rgb:3333/3333/3333\x1b\\")).toBe(true);
     expect(guard.suppress("\x1b[I")).toBe(true);
     expect(guard.suppress("user paste")).toBe(false);
+  });
+
+  it("writes valid OSC 52 UTF-8 clipboard data", async () => {
+    const { parser, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    const write = vi.fn(() => Promise.resolve());
+    registerTerminalClipboardHandler(parser, guard, () => true, write);
+
+    expect(runOsc(52, "c;SGVsbG8sIOS4lueVjCE=")).toBe(true);
+    expect(write).toHaveBeenCalledWith("Hello, 世界!");
+    await Promise.resolve();
+  });
+
+  it("consumes OSC 52 without writing when clipboard access is unsafe", () => {
+    const { parser, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    const write = vi.fn(() => Promise.resolve());
+    let allowed = false;
+    registerTerminalClipboardHandler(parser, guard, () => allowed, write);
+
+    expect(runOsc(52, "c;aGVsbG8=")).toBe(true);
+    allowed = true;
+    guard.begin(1);
+    expect(runOsc(52, "c;aGVsbG8=")).toBe(true);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("rejects OSC 52 reads, unsupported selectors, malformed UTF-8, and oversized data", () => {
+    const { parser, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    const write = vi.fn(() => Promise.resolve());
+    registerTerminalClipboardHandler(parser, guard, () => true, write);
+
+    for (const data of [
+      "c;?",
+      "p;aGVsbG8=",
+      "c;",
+      "c;aGVsbG8",
+      "c;/w==",
+      `c;${btoa("x".repeat(64 * 1024 + 1))}`,
+    ]) expect(runOsc(52, data)).toBe(true);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("contains rejected clipboard write promises", async () => {
+    const { parser, runOsc } = parserHarness();
+    const guard = new TerminalSnapshotReplayGuard();
+    registerTerminalClipboardHandler(parser, guard, () => true, () => Promise.reject(new Error("denied")));
+
+    expect(runOsc(52, "c;aGVsbG8=")).toBe(true);
+    await Promise.resolve();
   });
 
   it("always applies an empty snapshot through an in-band reset", () => {
