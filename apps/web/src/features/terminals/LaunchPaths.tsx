@@ -14,6 +14,7 @@ import { dispatchCustomSelectOpenChange } from "../../shared/ui/customSelectPort
 import { RailCreateButton } from "../../shared/ui/RailCreateButton";
 import { RenameDialog } from "../../shared/ui/RenameDialog";
 import { RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
+import { useScrollEdgeFade } from "../../shared/ui/useScrollEdgeFade";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 
@@ -68,6 +69,7 @@ export function LaunchPaths({
 }) {
   const portalOwnerId = useId();
   const portalOwnerRef = useRef<HTMLDivElement | null>(null);
+  const pathListRef = useScrollEdgeFade<HTMLDivElement>();
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const openMenuRef = useRef(false);
   const pageCount = Math.max(1, Math.ceil(paths.length / 10));
@@ -126,18 +128,18 @@ export function LaunchPaths({
   }, []);
   return (
     <div ref={portalOwnerRef} id={portalOwnerId} className={`${railMenuSectionClass} paths-section ${className}`}>
-      <div className="tw:mb-[7px] tw:flex tw:items-center tw:justify-between tw:gap-[5px]">
+      <div className="tw:mb-[8px] tw:flex tw:items-center tw:justify-between tw:gap-[5px]">
         <p className={`${railMenuLabelClass} tw:mb-0 tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap`}>Launch Paths</p>
         <RailCreateButton label="Add" disabled={!canAdd} onClick={onChoose} />
       </div>
-      <div className="tw:grid tw:min-h-0 tw:flex-1 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain launch-path-list">
+      <div ref={pathListRef} className="launch-path-list rail-scroll-fade tw:grid tw:min-h-0 tw:flex-1 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
         {visiblePaths.length ? (
           visiblePaths.map((item) => {
             const renaming = renamingId === item.id;
             return (
               <div
                 key={item.id}
-                className={`launch-path-row tw:group/path tw:relative tw:flex tw:min-h-12 tw:w-full tw:min-w-0 tw:items-center tw:gap-1 tw:rounded-[10px] tw:border tw:px-1 tw:py-1 tw:transition-[background,border-color] ${selectedPathId === item.id ? "tw:border-input tw:bg-card" : "tw:border-transparent tw:bg-transparent tw:hover:border-border tw:hover:bg-background"}`}
+                className={`launch-path-row tw:group/path tw:relative tw:flex tw:min-h-[52px] tw:w-full tw:min-w-0 tw:items-center tw:gap-[7px] tw:rounded-[9px] tw:border tw:px-[7px] tw:py-[5px] tw:transition-[background,border-color] ${selectedPathId === item.id ? "tw:border-input tw:bg-card" : "tw:border-transparent tw:bg-transparent tw:hover:border-border tw:hover:bg-background"}`}
               >
                 <Folder className="tw:size-3.5 tw:flex-none tw:text-[var(--color-warning-fg)]" />
                 {onSelect ? (

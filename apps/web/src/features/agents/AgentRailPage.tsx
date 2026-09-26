@@ -6,6 +6,7 @@ import { AgentIcon } from "../../shared/branding/Branding";
 import { CustomSelect } from "../../shared/ui/CustomSelect";
 import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { railMenuLabelClass, railMenuSectionClass, selectCopyClass } from "../../shared/ui/railStyles";
+import { useScrollEdgeFade } from "../../shared/ui/useScrollEdgeFade";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import type { Agent, LaunchConfig, LaunchConfigInput } from "../../types/agents";
 import type { ConfirmAction } from "../../types/app";
@@ -83,6 +84,7 @@ export function AgentRailPage({
   onConfirm: (action: ConfirmAction) => void;
 }) {
   const [configOpen, setConfigOpen] = useState(false);
+  const launchSetupRef = useScrollEdgeFade<HTMLElement>();
   const showAgentLoading = useDelayedLoading(busy);
   const targetName = selectedAgent?.name ?? "Terminal";
   const targetOptions: LaunchTargetOption[] = [
@@ -100,7 +102,7 @@ export function AgentRailPage({
   const loadingAnnouncement = showAgentLoading ? "Loading launch targets…" : busy ? "" : "Launch targets loaded.";
 
   return (
-    <section className={`${railMenuSectionClass} agent-launch-section`}>
+    <section ref={launchSetupRef} className={`${railMenuSectionClass} agent-launch-section rail-scroll-fade`}>
       <LiveRegion>{loadingAnnouncement}</LiveRegion>
       <LiveRegion>{installAnnouncement}</LiveRegion>
       {configOpen && (
@@ -140,10 +142,10 @@ export function AgentRailPage({
           onInstall={() => void onInstallAgent(selectedAgent.id)}
         />
       )}
-      <Card className={`tw:mt-1.5 tw:grid tw:w-full tw:overflow-visible tw:rounded-[13px] tw:border tw:border-border tw:bg-popover tw:px-0.5 tw:py-0 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-0.5"}`}>
+      <Card className={`tw:mt-1.5 tw:grid tw:w-full tw:overflow-visible tw:rounded-[12px] tw:border tw:border-border tw:bg-popover tw:p-1.5 tw:text-base tw:leading-[normal] tw:ring-0 ${launchSetupCollapsed ? "tw:gap-0" : "tw:gap-1"}`}>
         <Button
           variant="ghost"
-          className="tw:h-10 tw:w-full tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-1.5 tw:py-0 tw:text-xs tw:leading-[1.2] tw:font-bold tw:tracking-[0.06em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
+          className="tw:h-10 tw:w-full tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-2 tw:py-0 tw:text-[calc(11px*var(--app-font-scale))] tw:leading-[1.2] tw:font-semibold tw:tracking-[0.04em] tw:text-[var(--color-text-faint)] tw:uppercase tw:transition-none tw:hover:bg-transparent! tw:hover:text-[var(--color-text-faint)]! tw:active:not-aria-[haspopup]:translate-y-0! tw:focus-visible:border-transparent! tw:focus-visible:ring-0! tw:focus-visible:[outline:3px_solid_color-mix(in_srgb,var(--color-accent)_30%,transparent)] tw:focus-visible:outline-offset-2 tw:aria-expanded:bg-transparent! tw:aria-expanded:text-[var(--color-text-faint)]! tw:dark:hover:bg-transparent! tw:[@media(pointer:coarse)]:h-11 tw:[&_svg]:size-[13px] tw:[&_svg]:transition-transform tw:[&_svg]:duration-150 tw:[&_svg]:ease-[ease] tw:aria-expanded:[&_svg]:rotate-180"
           type="button"
           aria-expanded={!launchSetupCollapsed}
           aria-controls="launch-setup-body"
@@ -153,7 +155,7 @@ export function AgentRailPage({
             writeLaunchSetupCollapsed(launchSetupStorageKey, collapsed);
           }}
         >
-          <span className="tw:flex tw:w-full tw:items-center tw:justify-between tw:px-0.5">
+          <span className="tw:flex tw:w-full tw:items-center tw:justify-between">
             <span>Options</span>
             <ChevronDown />
           </span>

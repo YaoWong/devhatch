@@ -6,6 +6,7 @@ import type { Agent } from "../../types/agents";
 import type { DetailMode, LaunchPathDisplay, RailMotion, RailPage, WorkspaceMode } from "../../types/app";
 import type { WebAppOperation } from "../../types/web-apps";
 import { Brand } from "../../shared/branding/Branding";
+import { useScrollEdgeFade } from "../../shared/ui/useScrollEdgeFade";
 import { TerminalSettingsControls } from "../terminals/TerminalSettingsControls";
 import type { TerminalLayoutCount, TerminalLayoutPreset } from "../terminals/terminalWorkspaceLayout";
 import type { TerminalWorkspaceCapacity } from "../terminals/terminalWorkspaceDock";
@@ -207,7 +208,7 @@ export function NavigationRail({
             />
           </PopoverContent>
         </Popover>
-        <Button variant="outline" size="icon" className="tw:size-10 tw:rounded-[10px] tw:bg-transparent tw:text-muted-foreground tw:transition-transform tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Auto-hide navigation" aria-pressed={!canvasPinned} title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`} onClick={onCanvasPinnedChange}>
+        <Button variant="ghost" size="icon" className="tw:size-10 tw:rounded-[10px] tw:border-0 tw:bg-transparent tw:text-muted-foreground tw:transition-[background-color,color,transform] tw:hover:bg-muted! tw:hover:text-foreground! tw:aria-pressed:bg-muted tw:aria-pressed:text-foreground tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Auto-hide navigation" aria-pressed={!canvasPinned} title={`Auto-hide navigation: ${canvasPinned ? "off" : "on"}`} onClick={onCanvasPinnedChange}>
           {canvasPinned ? <Pin className="tw:size-4" /> : <PinOff className="tw:size-4" />}
         </Button>
       </footer>
@@ -253,10 +254,11 @@ function DetailPage({ mode, className, railMotion, active, pageRefs, titleRefs, 
     webapp: { icon: Globe2, label: "Web Apps" },
   }[mode];
   const Icon = meta.icon;
+  const detailRef = useScrollEdgeFade<HTMLDivElement>();
   return (
     <section ref={(node) => { pageRefs.current[mode] = node; }} className={className} aria-hidden={!active} inert={!active ? true : undefined}>
       <div className="rail-page-title">
-        <Button variant="ghost" size="icon" className="rail-back tw:size-10 tw:flex-none tw:rounded-lg tw:text-[var(--color-text-subtle)] tw:transition-none tw:hover:bg-[var(--color-canvas)]! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
+        <Button variant="ghost" size="icon" className="rail-back tw:size-10 tw:flex-none tw:rounded-lg tw:border-0 tw:bg-transparent tw:text-[var(--color-text-subtle)] tw:transition-[background-color,color,transform] tw:hover:bg-muted! tw:hover:text-foreground! tw:[@media(pointer:coarse)]:size-11" type="button" aria-label="Back to modes" onClick={() => onNavigate("modes", "return", true)}>
           <ArrowLeft className="tw:size-[18px]" />
         </Button>
         <span ref={(node) => { titleRefs.current[mode] = node; }} className="mode-title">
@@ -264,7 +266,7 @@ function DetailPage({ mode, className, railMotion, active, pageRefs, titleRefs, 
           <strong>{meta.label}</strong>
         </span>
       </div>
-      <div className={`rail-detail ${mode === "terminal" ? "agent-detail" : ""} ${railMotion === "forward" ? "awaiting-title" : ""}`}>
+      <div ref={mode === "terminal" ? undefined : detailRef} className={`rail-detail ${mode === "terminal" ? "agent-detail" : "rail-scroll-fade"} ${railMotion === "forward" ? "awaiting-title" : ""}`}>
         {children}
       </div>
     </section>

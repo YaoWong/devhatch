@@ -94,23 +94,18 @@
 .workbench-rail-layout { min-width: 0; min-height: 0; display: flex; flex: 1; flex-direction: column; gap: 16px; overflow: hidden; }
 .workbench-rail-layout > * { min-width: 0; min-height: 0; }
 .workspace-section { max-height: var(--workspace-list-max-height, 286px); display: flex; flex: none; flex-direction: column; overflow: hidden; }
-.workspace-list, .launch-path-list { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.workspace-list:hover, .launch-path-list:hover { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
-.workspace-list::-webkit-scrollbar, .launch-path-list::-webkit-scrollbar { width: 6px; height: 0; }
-.workspace-list::-webkit-scrollbar-track, .launch-path-list::-webkit-scrollbar-track { background: transparent; }
-.workspace-list::-webkit-scrollbar-thumb, .launch-path-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; }
-.workspace-list:hover::-webkit-scrollbar-thumb, .launch-path-list:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
-.agent-launch-section { max-height: min(420px, 48%); flex: 0 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 3px; margin: -3px; }
+.workspace-list, .launch-path-list, .agent-launch-section, .agent-session-list { scrollbar-width: none; }
+.rail-scroll-fade { --rail-scroll-mask: linear-gradient(to bottom, #000 0, #000 100%); -webkit-mask-image: var(--rail-scroll-mask); mask-image: var(--rail-scroll-mask); }
+.rail-scroll-fade[data-scroll-fade-top="true"][data-scroll-fade-bottom="false"] { --rail-scroll-mask: linear-gradient(to bottom, transparent 0, #000 14px, #000 100%); }
+.rail-scroll-fade[data-scroll-fade-top="false"][data-scroll-fade-bottom="true"] { --rail-scroll-mask: linear-gradient(to bottom, #000 0, #000 calc(100% - 14px), transparent 100%); }
+.rail-scroll-fade[data-scroll-fade-top="true"][data-scroll-fade-bottom="true"] { --rail-scroll-mask: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); }
+.workspace-list::-webkit-scrollbar, .launch-path-list::-webkit-scrollbar, .agent-launch-section::-webkit-scrollbar, .agent-session-list::-webkit-scrollbar { display: none; }
+.agent-launch-section { max-height: min(420px, 48%); flex: 0 1 auto; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .paths-section, .sessions-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .paths-section { flex: 1 1 120px; overflow: hidden; }
 .has-agent-history .paths-section { max-height: var(--launch-paths-max-height, 286px); flex: 0 1 auto; }
 .sessions-section { flex: 1 1 120px; overflow: hidden; }
-.agent-session-list { min-height: 0; display: grid; align-content: start; gap: 3px; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.agent-session-list:hover { scrollbar-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent) transparent; }
-.agent-session-list::-webkit-scrollbar { width: 6px; height: 0; }
-.agent-session-list::-webkit-scrollbar-track { background: transparent; }
-.agent-session-list::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 99px; background: transparent; background-clip: padding-box; }
-.agent-session-list:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--color-text-faint) 55%, transparent); }
+.agent-session-list { min-height: 0; display: grid; align-content: start; gap: 4px; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .path-pin-action, .path-wide-action, .path-overflow-secondary, .workspace-wide-action { display: none !important; }
 .workspace-main { padding-right: max(40px, calc(40px * var(--app-ui-scale))) !important; }
 .workspace-actions { width: max(40px, calc(40px * var(--app-ui-scale))); }

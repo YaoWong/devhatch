@@ -10,7 +10,7 @@ export function RailCreateButton({ label, disabled = false, onClick }: {
     <Button
       type="button"
       variant="outline"
-      className="tw:h-10 tw:touch-manipulation tw:rounded-lg tw:border-input tw:bg-card tw:px-3 tw:text-xs tw:text-foreground tw:transition-[background-color,border-color,color,box-shadow,transform] tw:duration-150 tw:hover:border-ring/50 tw:hover:bg-muted! tw:hover:text-foreground! tw:hover:shadow-sm tw:[@media(pointer:coarse)]:h-11"
+      className="tw:h-10 tw:w-[68px] tw:flex-none tw:gap-1.5 tw:touch-manipulation tw:rounded-lg tw:border-input tw:bg-card tw:px-3 tw:text-xs tw:text-foreground tw:transition-[background-color,border-color,color,box-shadow,transform] tw:duration-150 tw:hover:border-ring/50 tw:hover:bg-muted! tw:hover:text-foreground! tw:hover:shadow-sm tw:[@media(pointer:coarse)]:h-11"
       disabled={disabled}
       onClick={onClick}
     >

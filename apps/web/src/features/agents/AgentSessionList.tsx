@@ -18,6 +18,7 @@ import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { historyStatusClass, RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
 import { shouldShowAgentSessionSearch } from "./selectors";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
+import { useScrollEdgeFade } from "../../shared/ui/useScrollEdgeFade";
 
 type HomePaths = { home: string; resolvedHome: string } | null;
 type SessionRow = { live?: AgentSession; history?: HistorySession };
@@ -84,6 +85,7 @@ export function AgentSessionList({
   const [retrying, setRetrying] = useState(false);
   const portalOwnerId = useId();
   const portalOwnerRef = useRef<HTMLDivElement | null>(null);
+  const sessionListRef = useScrollEdgeFade<HTMLDivElement>();
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const openMenuRef = useRef(false);
   const historyUnavailable =
@@ -148,9 +150,9 @@ export function AgentSessionList({
       <LiveRegion>{announcement}</LiveRegion>
       <div className="tw:mb-[8px] tw:grid tw:flex-none tw:gap-[6px]">
         <div className="tw:flex tw:min-h-[20px] tw:flex-wrap tw:items-center tw:justify-between tw:gap-[8px]">
-          <p className={`${railMenuLabelClass} tw:mb-0 tw:leading-[20px]`}>Agent History</p>
+          <p className={`${railMenuLabelClass} tw:mb-0`}>Agent History</p>
           {selectedPath && (
-            <label className="tw:inline-flex tw:min-h-10 tw:cursor-pointer tw:items-center tw:gap-1.5 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:text-[var(--color-text-muted)] tw:[@media(pointer:coarse)]:min-h-11">
+            <label className="tw:ml-auto tw:inline-flex tw:min-h-10 tw:cursor-pointer tw:items-center tw:gap-1.5 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:text-[var(--color-text-muted)] tw:[@media(pointer:coarse)]:min-h-11">
               <span>Subdirectories</span>
               <Switch
                 checked={includeSubdirectories}
@@ -166,7 +168,7 @@ export function AgentSessionList({
           </div>
         )}
         {shouldShowAgentSessionSearch(sessionCount, historyCount, search) && (
-          <label className="tw:flex tw:h-10 tw:items-center tw:gap-[5px] tw:rounded-lg tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] tw:px-2 tw:shadow-[0_5px_14px_rgb(29_29_31/4%)] tw:backdrop-blur-[8px] tw:has-[:focus-visible]:border-[var(--color-accent)] tw:has-[:focus-visible]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_16%,transparent)] tw:[@media(pointer:coarse)]:h-11 tw:[&>svg]:w-3 tw:[&>svg]:text-[var(--color-text-faint)]">
+          <label className="tw:flex tw:h-10 tw:items-center tw:gap-[5px] tw:rounded-lg tw:border tw:border-border tw:bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] tw:px-[7px] tw:shadow-[0_5px_14px_rgb(29_29_31/4%)] tw:backdrop-blur-[8px] tw:has-[:focus-visible]:border-[var(--color-accent)] tw:has-[:focus-visible]:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_16%,transparent)] tw:[@media(pointer:coarse)]:h-11 tw:[&>svg]:w-3 tw:[&>svg]:text-[var(--color-text-faint)]">
             <Search />
             <Input
               variant="bare"
@@ -179,7 +181,7 @@ export function AgentSessionList({
           </label>
         )}
       </div>
-      <div className="agent-session-list tw:touch-pan-y">
+      <div ref={sessionListRef} className="agent-session-list rail-scroll-fade tw:touch-pan-y">
         {rows.length ? (
           <>
             {(historyUnavailable || historyMessage) && (
@@ -208,7 +210,7 @@ export function AgentSessionList({
               return (
               <div
                 key={live?.id ?? history!.id}
-                className={`tw:group/session-row tw:relative tw:flex tw:min-h-[52px] tw:w-full tw:min-w-0 tw:items-center tw:gap-[7px] tw:rounded-[9px] tw:border tw:px-[7px] tw:py-[5px] tw:[transition:background_150ms_ease,border-color_150ms_ease] tw:[&:hover]:border-border tw:[&:hover]:bg-background tw:focus-within:border-border tw:focus-within:bg-background ${live?.id === activeId ? "tw:border-border tw:bg-background" : "tw:border-transparent tw:bg-transparent"}`}
+                className={`tw:group/session-row tw:relative tw:flex tw:min-h-[52px] tw:w-full tw:min-w-0 tw:items-center tw:gap-[7px] tw:rounded-[9px] tw:border tw:px-[7px] tw:py-[5px] tw:[transition:background_150ms_ease,border-color_150ms_ease] tw:[&:hover]:border-border tw:[&:hover]:bg-background tw:focus-within:border-border tw:focus-within:bg-background ${live?.id === activeId ? "tw:border-input tw:bg-card" : "tw:border-transparent tw:bg-transparent"}`}
               >
                 {live ? (
                   <Button type="button" variant="ghost" className={`${sessionMainClass} ${historySessionActionSpace}`} aria-current={live.id === activeId ? "true" : undefined} onClick={() => onActivate(live.id)}>

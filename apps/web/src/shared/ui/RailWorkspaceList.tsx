@@ -12,6 +12,7 @@ import type { ConfirmAction } from "../../types/app";
 import { dispatchCustomSelectOpenChange } from "./customSelectPortal";
 import { RenameDialog } from "./RenameDialog";
 import { RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "./railStyles";
+import { useScrollEdgeFade } from "./useScrollEdgeFade";
 
 const workspaceMainClass = "workspace-main tw:flex tw:h-auto tw:min-h-10 tw:min-w-0 tw:flex-1 tw:shrink tw:items-center tw:justify-start tw:rounded-none tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:font-normal tw:whitespace-normal tw:text-foreground tw:transition-none tw:hover:bg-transparent! tw:hover:text-foreground! tw:active:not-aria-[haspopup]:translate-y-0! tw:[@media(pointer:coarse)]:min-h-11 tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:overflow-hidden tw:[&_small]:font-mono tw:[&_small]:text-[calc(10px*var(--app-font-scale))] tw:[&_small]:leading-tight tw:[&_small]:text-[var(--color-text-faint)] tw:[&_small]:text-ellipsis tw:[&_small]:whitespace-nowrap tw:[&_strong]:block tw:[&_strong]:overflow-hidden tw:[&_strong]:text-sm tw:[&_strong]:leading-tight tw:[&_strong]:font-semibold tw:[&_strong]:text-ellipsis tw:[&_strong]:whitespace-nowrap";
 const workspaceActionClass = "tw:pointer-events-none tw:size-10 tw:min-h-[40px] tw:min-w-[40px] tw:flex-none tw:touch-manipulation tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:opacity-0 tw:transition-[background,color,opacity] tw:hover:bg-muted! tw:hover:text-foreground! tw:group-hover/workspace:pointer-events-auto tw:group-hover/workspace:opacity-100 tw:group-focus-within/workspace:pointer-events-auto tw:group-focus-within/workspace:opacity-100 tw:data-popup-open:pointer-events-auto tw:data-popup-open:bg-muted tw:data-popup-open:text-foreground tw:data-popup-open:opacity-100 tw:[@media(pointer:coarse)]:pointer-events-auto tw:[@media(pointer:coarse)]:size-11 tw:[@media(pointer:coarse)]:min-h-[44px] tw:[@media(pointer:coarse)]:min-w-[44px] tw:[@media(pointer:coarse)]:opacity-100 tw:[&_svg]:size-3.5";
@@ -58,6 +59,7 @@ export function RailWorkspaceList<T extends RailWorkspace>({
 }) {
   const portalOwnerId = useId();
   const portalOwnerRef = useRef<HTMLDivElement | null>(null);
+  const workspaceListRef = useScrollEdgeFade<HTMLDivElement>();
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const actionMenuOpenRef = useRef(false);
   const workspaceCopy = (workspace: T) => {
@@ -145,11 +147,11 @@ export function RailWorkspaceList<T extends RailWorkspace>({
 
   return (
     <div ref={portalOwnerRef} id={portalOwnerId} className={`${railMenuSectionClass} workspace-section`}>
-      <div className="tw:mb-[7px] tw:flex tw:items-center tw:justify-between tw:gap-[5px]">
+      <div className="tw:mb-[8px] tw:flex tw:items-center tw:justify-between tw:gap-[5px]">
         <p className={`${railMenuLabelClass} tw:mb-0 tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:text-ellipsis tw:whitespace-nowrap`}>Workspace</p>
         <RailCreateButton label="New" disabled={launching} onClick={onCreate} />
       </div>
-      <div className="workspace-list tw:grid tw:min-h-0 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
+      <div ref={workspaceListRef} className="workspace-list rail-scroll-fade tw:grid tw:min-h-0 tw:touch-pan-y tw:content-start tw:gap-1 tw:overflow-x-hidden tw:overflow-y-auto tw:overscroll-contain">
         {workspaces.length ? workspaces.map((workspace) => {
           const selected = workspace.id === selectedWorkspaceId;
           return (
