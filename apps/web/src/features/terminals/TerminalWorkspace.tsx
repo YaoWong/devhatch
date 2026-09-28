@@ -258,7 +258,6 @@ export function TerminalWorkspace({
       visible,
       retainedSurfacesRef.current,
       workspaceId,
-      currentState,
       memberIds,
     );
   });

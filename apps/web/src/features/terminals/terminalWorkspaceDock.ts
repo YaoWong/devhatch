@@ -74,14 +74,13 @@ export function retainTerminalSurfaces(
   visible: boolean,
   retained: RetainedTerminalSurfaces,
   workspaceId: string | null,
-  state: TerminalWorkspaceDockState,
   memberIds: string[],
 ): RetainedTerminalSurfaces {
   const members = new Set(memberIds);
   return {
     workspaceId,
     ids: visible
-      ? state.stagedIds.filter((id) => members.has(id))
+      ? memberIds
       : retained.workspaceId === workspaceId ? retained.ids.filter((id) => members.has(id)) : [],
   };
 }

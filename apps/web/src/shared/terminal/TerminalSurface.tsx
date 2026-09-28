@@ -18,6 +18,36 @@ import { applyTerminalTheme, terminalThemes } from "./terminalThemes";
 
 const socketProtocol = () => window.location.protocol === "https:" ? "wss:" : "ws:";
 
+function refreshTerminalRenderer(
+  terminal: Pick<Terminal, "clearTextureAtlas" | "refresh" | "rows">,
+  fit: Pick<FitAddon, "fit">,
+) {
+  fit.fit();
+  terminal.clearTextureAtlas();
+  terminal.refresh(0, Math.max(0, terminal.rows - 1));
+}
+
+function loadTerminalWebglRenderer(
+  terminal: Pick<Terminal, "loadAddon" | "refresh" | "rows">,
+  createAddon: () => WebglAddon,
+) {
+  let addon: WebglAddon | null = null;
+  try {
+    addon = createAddon();
+    terminal.loadAddon(addon);
+    addon.onContextLoss(() => {
+      addon?.dispose();
+      addon = null;
+      terminal.refresh(0, Math.max(0, terminal.rows - 1));
+    });
+    return true;
+  } catch {
+    addon?.dispose();
+    terminal.refresh(0, Math.max(0, terminal.rows - 1));
+    return false;
+  }
+}
+
 export function TerminalSurface({
   session,
   phaseKey = session.id,
@@ -194,11 +224,10 @@ export function TerminalSurface({
         event.preventDefault();
         return false;
       });
-      try {
-        terminal.loadAddon(onThumbnailRef.current ? new WebglAddon(true) : new WebglAddon());
-      } catch {
-        terminal.refresh(0, terminal.rows - 1);
-      }
+      loadTerminalWebglRenderer(
+        terminal,
+        () => onThumbnailRef.current ? new WebglAddon(true) : new WebglAddon(),
+      );
     } catch (reason) {
       onPhaseChange(phaseKey, "disconnected");
       onError(reason instanceof Error ? reason.message : String(reason));
@@ -298,19 +327,35 @@ export function TerminalSurface({
     };
     requestThumbnailRef.current = scheduleThumbnail;
     const render = terminal.onRender(scheduleThumbnail);
-    const sendResize = () => {
-      if (!visibleRef.current) return;
-      try {
-        fit.fit();
-      } catch {
-        return;
-      }
+    const hasRenderableSize = () => {
+      const bounds = container.getBoundingClientRect();
+      return bounds.width > 0 && bounds.height > 0;
+    };
+    const sendDimensions = () => {
       const socket = socketRef.current;
       const dimensions = `${terminal.cols}x${terminal.rows}`;
       if (protocolReady && socket?.readyState === WebSocket.OPEN && dimensions !== lastResize) {
         socket.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
         lastResize = dimensions;
       }
+    };
+    const sendResize = () => {
+      if (!visibleRef.current || !hasRenderableSize()) return;
+      try {
+        fit.fit();
+      } catch {
+        return;
+      }
+      sendDimensions();
+    };
+    const recoverRenderer = () => {
+      if (!visibleRef.current || !hasRenderableSize()) return;
+      try {
+        refreshTerminalRenderer(terminal, fit);
+      } catch {
+        return;
+      }
+      sendDimensions();
     };
     const scheduleResize = () => {
       if (disposed || !visibleRef.current || resizeFrame !== null) return;
@@ -320,7 +365,7 @@ export function TerminalSurface({
       });
     };
     activateRef.current = () => {
-      sendResize();
+      recoverRenderer();
       if (focusedRef.current) terminal.focus();
     };
     const connect = () => {

@@ -54,15 +54,15 @@ describe("terminal workspace dock", () => {
     expect(terminalSurfaceIds(false, { workspaceId: "other", ids: ["a"] }, "workspace", state(["a"]), ["a", "b"])).toEqual([]);
   });
 
-  it("retains staged surfaces across a hidden round trip", () => {
+  it("retains every session surface across a hidden round trip", () => {
     const initial = { workspaceId: null, ids: [] };
-    const mounted = retainTerminalSurfaces(true, initial, "workspace", state(["a", "b"]), ["a", "b", "thumbnail"]);
-    expect(mounted).toEqual({ workspaceId: "workspace", ids: ["a", "b"] });
-    expect(terminalSurfaceIds(false, mounted, "workspace", state(["a", "b"]), ["a", "b", "thumbnail"])).toEqual(["a", "b"]);
+    const mounted = retainTerminalSurfaces(true, initial, "workspace", ["a", "b", "thumbnail"]);
+    expect(mounted).toEqual({ workspaceId: "workspace", ids: ["a", "b", "thumbnail"] });
+    expect(terminalSurfaceIds(false, mounted, "workspace", state(["a", "b"]), ["a", "b", "thumbnail"])).toEqual(["a", "b", "thumbnail"]);
 
-    const pruned = retainTerminalSurfaces(false, mounted, "workspace", state(["a"]), ["a", "thumbnail"]);
-    expect(pruned).toEqual({ workspaceId: "workspace", ids: ["a"] });
-    expect(retainTerminalSurfaces(false, pruned, "other", state(["other"]), ["other"])).toEqual({ workspaceId: "other", ids: [] });
+    const pruned = retainTerminalSurfaces(false, mounted, "workspace", ["a", "thumbnail"]);
+    expect(pruned).toEqual({ workspaceId: "workspace", ids: ["a", "thumbnail"] });
+    expect(retainTerminalSurfaces(false, pruned, "other", ["other"])).toEqual({ workspaceId: "other", ids: [] });
   });
 
   it("appends a restored terminal", () => {

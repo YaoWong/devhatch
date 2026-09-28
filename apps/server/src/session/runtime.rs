@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use super::model::{
     Session, SessionCompletion, SessionEvent, SessionKind, SessionSpawn, SessionState,
-    SessionStatus,
+    SessionStatus, TerminalState,
 };
 use crate::{clock::now, filesystem::path_string, state::SessionRegistry};
 
@@ -141,6 +141,8 @@ impl Session {
                 updated_at: timestamp,
                 exit_code: None,
                 output: String::new(),
+                terminal: (spawn.agent_id == Some(crate::agent::OPENCODE_ID))
+                    .then(|| TerminalState::new(spawn.rows, spawn.cols)),
                 agent_activity: None,
             }),
             master: std::sync::Mutex::new(pair.master),
@@ -234,6 +236,9 @@ impl Session {
             state.cols = cols;
             state.rows = rows;
             state.updated_at = now();
+            if let Some(terminal) = state.terminal.as_mut() {
+                terminal.resize(rows, cols);
+            }
             !self.is_deleting() && state.status == SessionStatus::Running
         };
         if running {
@@ -317,7 +322,7 @@ impl Session {
                         if !pending.is_empty()
                             && let Some(session) = weak.upgrade()
                         {
-                            session.publish_output(String::from_utf8_lossy(&pending).into_owned());
+                            session.publish_output(&pending);
                         }
                         break;
                     }
@@ -335,20 +340,22 @@ impl Session {
                     let Some(session) = weak.upgrade() else {
                         break;
                     };
-                    let data = String::from_utf8_lossy(&pending[..valid_length]).into_owned();
+                    session.publish_output(&pending[..valid_length]);
                     pending.drain(..valid_length);
-                    session.publish_output(data);
                 }
             })?;
         Ok(())
     }
 
-    fn publish_output(&self, data: String) {
-        let data: Arc<str> = data.into();
+    fn publish_output(&self, bytes: &[u8]) {
+        let data: Arc<str> = String::from_utf8_lossy(bytes).into_owned().into();
         let mut state = self.state.lock().expect("session lock poisoned");
         state.updated_at = now();
         state.output.push_str(&data);
         trim_output(&mut state.output);
+        if let Some(terminal) = state.terminal.as_mut() {
+            terminal.process(bytes);
+        }
         let _ = self.events.send(SessionEvent::Output(data));
     }
 

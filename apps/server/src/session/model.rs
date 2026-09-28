@@ -90,6 +90,180 @@ pub(super) struct SessionIdentity {
     pub cwd: String,
 }
 
+#[derive(Default)]
+pub(super) struct TerminalModes {
+    focus_events: bool,
+    unicode_mode: bool,
+    color_scheme_notifications: bool,
+}
+
+impl vt100::Callbacks for TerminalModes {
+    fn unhandled_csi(
+        &mut self,
+        _: &mut vt100::Screen,
+        first_intermediate: Option<u8>,
+        _: Option<u8>,
+        params: &[&[u16]],
+        action: char,
+    ) {
+        if first_intermediate != Some(b'?') || !matches!(action, 'h' | 'l') {
+            return;
+        }
+        let enabled = action == 'h';
+        for mode in params.iter().filter_map(|param| param.first()) {
+            match mode {
+                1004 => self.focus_events = enabled,
+                2027 => self.unicode_mode = enabled,
+                2031 => self.color_scheme_notifications = enabled,
+                _ => {}
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+enum TerminalSequenceState {
+    #[default]
+    Ground,
+    Escape,
+    Csi,
+    Osc,
+    OscEscape,
+    String,
+    StringEscape,
+}
+
+pub(super) struct TerminalState {
+    parser: vt100::Parser<TerminalModes>,
+    sequence_state: TerminalSequenceState,
+    pending_sequence: Vec<u8>,
+}
+
+impl TerminalState {
+    pub(super) fn new(rows: u16, cols: u16) -> Self {
+        Self {
+            parser: vt100::Parser::new_with_callbacks(rows, cols, 0, TerminalModes::default()),
+            sequence_state: TerminalSequenceState::Ground,
+            pending_sequence: Vec::new(),
+        }
+    }
+
+    pub(super) fn process(&mut self, bytes: &[u8]) {
+        self.parser.process(bytes);
+        for &byte in bytes {
+            self.process_sequence_byte(byte);
+        }
+    }
+
+    pub(super) fn resize(&mut self, rows: u16, cols: u16) {
+        self.parser.screen_mut().set_size(rows, cols);
+    }
+
+    pub(super) fn snapshot(&self) -> String {
+        let screen = self.parser.screen();
+        let mut output = Vec::new();
+        if screen.alternate_screen() {
+            output.extend_from_slice(b"\x1b[?1049h");
+        }
+        output.extend(screen.state_formatted());
+        let modes = self.parser.callbacks();
+        if modes.focus_events {
+            output.extend_from_slice(b"\x1b[?1004h");
+        }
+        if modes.unicode_mode {
+            output.extend_from_slice(b"\x1b[?2027h");
+        }
+        if modes.color_scheme_notifications {
+            output.extend_from_slice(b"\x1b[?2031h");
+        }
+        output.extend_from_slice(&self.pending_sequence);
+        String::from_utf8_lossy(&output).into_owned()
+    }
+
+    fn process_sequence_byte(&mut self, byte: u8) {
+        use TerminalSequenceState::{Csi, Escape, Ground, Osc, OscEscape, String, StringEscape};
+
+        match self.sequence_state {
+            Ground => {
+                if byte == 0x1b {
+                    self.start_sequence(Escape, byte);
+                }
+            }
+            Escape => {
+                self.pending_sequence.push(byte);
+                self.sequence_state = match byte {
+                    b'[' => Csi,
+                    b']' => Osc,
+                    b'P' | b'X' | b'^' | b'_' => String,
+                    0x1b => {
+                        self.pending_sequence.clear();
+                        self.pending_sequence.push(byte);
+                        Escape
+                    }
+                    0x20..=0x2f => Escape,
+                    _ => Ground,
+                };
+                if matches!(self.sequence_state, Ground) {
+                    self.pending_sequence.clear();
+                }
+            }
+            Csi => {
+                self.pending_sequence.push(byte);
+                if byte == 0x1b {
+                    self.pending_sequence.clear();
+                    self.pending_sequence.push(byte);
+                    self.sequence_state = Escape;
+                } else if (0x40..=0x7e).contains(&byte) {
+                    self.pending_sequence.clear();
+                    self.sequence_state = Ground;
+                }
+            }
+            Osc => {
+                self.pending_sequence.push(byte);
+                if matches!(byte, 0x07 | 0x9c) {
+                    self.pending_sequence.clear();
+                    self.sequence_state = Ground;
+                } else if byte == 0x1b {
+                    self.sequence_state = OscEscape;
+                }
+            }
+            OscEscape => {
+                self.pending_sequence.push(byte);
+                if byte == b'\\' {
+                    self.pending_sequence.clear();
+                    self.sequence_state = Ground;
+                } else if byte != 0x1b {
+                    self.sequence_state = Osc;
+                }
+            }
+            String => {
+                self.pending_sequence.push(byte);
+                if byte == 0x9c {
+                    self.pending_sequence.clear();
+                    self.sequence_state = Ground;
+                } else if byte == 0x1b {
+                    self.sequence_state = StringEscape;
+                }
+            }
+            StringEscape => {
+                self.pending_sequence.push(byte);
+                if byte == b'\\' {
+                    self.pending_sequence.clear();
+                    self.sequence_state = Ground;
+                } else if byte != 0x1b {
+                    self.sequence_state = String;
+                }
+            }
+        }
+    }
+
+    fn start_sequence(&mut self, state: TerminalSequenceState, byte: u8) {
+        self.pending_sequence.clear();
+        self.pending_sequence.push(byte);
+        self.sequence_state = state;
+    }
+}
+
 pub(super) struct SessionState {
     pub name: String,
     pub status: SessionStatus,
@@ -99,6 +273,7 @@ pub(super) struct SessionState {
     pub updated_at: u64,
     pub exit_code: Option<u32>,
     pub output: String,
+    pub terminal: Option<TerminalState>,
     pub agent_activity: Option<AgentActivity>,
 }
 
@@ -403,7 +578,11 @@ impl Session {
         let events = self.events.subscribe();
         let snapshot = SessionSnapshot {
             view: self.view_from_state(&state, &identity),
-            output: state.output.clone(),
+            output: state
+                .terminal
+                .as_ref()
+                .map(TerminalState::snapshot)
+                .unwrap_or_else(|| state.output.clone()),
             activity: state.agent_activity.clone(),
             status: state.status,
             exit_code: state.exit_code,
@@ -471,7 +650,55 @@ fn merge_runtime_identity(
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use super::{SessionCompletion, SessionEvent, merge_runtime_identity};
+    use super::{
+        SessionCompletion, SessionEvent, TerminalModes, TerminalState, merge_runtime_identity,
+    };
+
+    #[test]
+    fn terminal_snapshot_restores_alternate_screen_and_input_modes() {
+        let mut terminal = TerminalState::new(3, 12);
+        terminal.process(
+            b"primary\x1b[?1049h\x1b[2J\x1b[Hhello\x1b[2;3Hworld\x1b[?1004h\x1b[?2004h\x1b[?2026h\x1b[?2027h\x1b[?2031h",
+        );
+
+        let snapshot = terminal.snapshot();
+        let mut restored = vt100::Parser::new_with_callbacks(3, 12, 0, TerminalModes::default());
+        restored.process(snapshot.as_bytes());
+
+        assert!(snapshot.starts_with("\x1b[?1049h"));
+        assert!(!snapshot.contains("\x1b[?2026h"));
+        assert!(restored.screen().alternate_screen());
+        assert_eq!(restored.screen().contents(), "hello\n  world");
+        assert!(restored.screen().bracketed_paste());
+        assert!(restored.callbacks().focus_events);
+        assert!(restored.callbacks().unicode_mode);
+        assert!(restored.callbacks().color_scheme_notifications);
+    }
+
+    #[test]
+    fn terminal_snapshot_restores_sparse_updates() {
+        let mut terminal = TerminalState::new(3, 12);
+        terminal.process(b"\x1b[?1049h\x1b[2J\x1b[Hfirst\x1b[2;1Hsecond\x1b[3;1Hthird");
+        terminal.process(b"\x1b[2;1Hnext");
+
+        let mut restored = vt100::Parser::new(3, 12, 0);
+        restored.process(terminal.snapshot().as_bytes());
+
+        assert_eq!(restored.screen().contents(), "first\nnextnd\nthird");
+    }
+
+    #[test]
+    fn terminal_snapshot_preserves_an_incomplete_escape_sequence() {
+        let mut terminal = TerminalState::new(2, 12);
+        terminal.process(b"\x1b[?1049h\x1b[Hready\x1b[");
+        let snapshot = terminal.snapshot();
+
+        let mut restored = vt100::Parser::new(2, 12, 0);
+        restored.process(snapshot.as_bytes());
+        restored.process(b"2;1Hdone");
+
+        assert_eq!(restored.screen().contents(), "ready\ndone");
+    }
 
     #[tokio::test]
     async fn completion_waits_until_marked_and_remains_ready() {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import terminalSurfaceSource from "./TerminalSurface.tsx?raw";
 import { shouldCopyTerminalSelection, terminalKeyInput, terminalSocketPath } from "./socketConnection";
 import { applyTerminalTheme } from "./terminalThemes";
 
@@ -39,6 +40,19 @@ describe("terminal transport", () => {
     expect(terminalKeyInput(null, shiftEnter)).toBeNull();
     expect(terminalKeyInput("opencode", { ...shiftEnter, shiftKey: false })).toBeNull();
     expect(terminalKeyInput("opencode", { ...shiftEnter, type: "keyup" })).toBeNull();
+  });
+});
+
+describe("terminal renderer recovery", () => {
+  it("refits, rebuilds the texture atlas, and repaints every row after reveal", () => {
+    expect(terminalSurfaceSource).toContain("function refreshTerminalRenderer(");
+    expect(terminalSurfaceSource).toContain("fit.fit();\n  terminal.clearTextureAtlas();\n  terminal.refresh(0, Math.max(0, terminal.rows - 1));");
+    expect(terminalSurfaceSource).toContain("activateRef.current = () => {\n      recoverRenderer();");
+  });
+
+  it("disposes WebGL and repaints with the fallback renderer after context loss", () => {
+    expect(terminalSurfaceSource).toContain("addon.onContextLoss(() => {");
+    expect(terminalSurfaceSource).toContain("addon?.dispose();\n      addon = null;\n      terminal.refresh(0, Math.max(0, terminal.rows - 1));");
   });
 });
 
