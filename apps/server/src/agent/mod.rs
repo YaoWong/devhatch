@@ -1,3 +1,4 @@
+mod activity_socket;
 mod api;
 mod install;
 mod kind;
@@ -5,6 +6,7 @@ mod launch;
 mod runtime;
 mod runtime_input;
 
+pub(crate) use activity_socket::socket as activity_socket;
 pub(crate) use api::{agents, create, list, paste_image, remove, rename, socket};
 pub(crate) use install::install;
 pub(crate) use kind::{
@@ -12,4 +14,5 @@ pub(crate) use kind::{
     TRAECLI_NAME, supported,
 };
 pub(crate) use launch::verified_executable;
+pub(crate) use runtime::activity::{append_opencode_plugin, run_hook};
 pub(crate) use runtime_input::MAX_IMAGE_UPLOAD_BYTES;

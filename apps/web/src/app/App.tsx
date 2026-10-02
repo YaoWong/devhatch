@@ -7,6 +7,8 @@ import { AppDialogs } from "./AppDialogs";
 import { AppNavigationRail } from "./AppNavigationRail";
 import { AppWorkspaceContent } from "./AppWorkspaceContent";
 import { useInitialWorkspaceData } from "./useInitialWorkspaceData";
+import { agentActivityNotification, agentNotificationState, isNewerAgentActivity, sameAgentNotificationActivity, type AgentNotificationState } from "../features/agents/agentActivityNotifications";
+import { useAgentActivitySocket, type AgentActivityEvent } from "../features/agents/hooks/useAgentActivitySocket";
 import { useAgentWorkspace } from "../features/agents/hooks/useAgentWorkspace";
 import { useNavigation } from "../features/navigation/useNavigation";
 import { readCanvasSidebarPinned, writeCanvasSidebarPinned } from "../features/navigation/canvasSidebarPreference";
@@ -38,7 +40,7 @@ import {
   isCustomSelectOwnedBy,
 } from "../shared/ui/customSelectPortal";
 import { resolveDialogNavigationState, subscribeMobileNavigationLifecycle, type ConfirmAction, type DeleteTarget, type LaunchPathDisplay } from "../types/app";
-import type { AgentActivity, AgentSession } from "../types/agents";
+import type { AgentActivity } from "../types/agents";
 import type { ConnectionPhase } from "../types/terminals";
 import { sessionKey, type WorkspaceSession } from "../types/workspaces";
 
@@ -54,11 +56,6 @@ const TERMINAL_PATH_DISPLAY_STORAGE_KEY = "devhatch-terminal-path-display";
 const AGENT_PATH_DISPLAY_STORAGE_KEY = "devhatch-agent-path-display";
 const AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY = "devhatch-agent-system-notifications";
 type TerminalThumbnailSide = "left" | "right";
-
-type AgentNotificationState = {
-  lastStatus: AgentActivity["status"] | null;
-  hasBeenBusy: boolean;
-};
 
 function readAgentSystemNotifications() {
   try {
@@ -82,15 +79,6 @@ function initialThumbnailSide(): TerminalThumbnailSide {
   } catch {
     return "left";
   }
-}
-
-function agentActivityNotification(session: AgentSession | undefined, activity: AgentActivity, state: AgentNotificationState) {
-  const name = session ? `${session.agentName} · ${session.name}` : "Agent";
-  if (activity.status === "waiting") return { title: `${name} needs input`, body: activity.detail ?? "Waiting for you" };
-  if (activity.status === "retry") return { title: `${name} is retrying`, body: activity.detail ?? "Retrying request" };
-  if (activity.status === "error") return { title: `${name} hit an error`, body: activity.detail ?? "Check DevHatch" };
-  if (activity.status === "idle" && state.hasBeenBusy && state.lastStatus !== "idle") return { title: `${name} finished`, body: "Agent is idle" };
-  return null;
 }
 
 function isCanvasRailOwnedTarget(rail: Element | null, target: EventTarget | null) {
@@ -211,8 +199,12 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
   const [homePaths, setHomePaths] = useState<{ home: string; resolvedHome: string } | null>(null);
   const [phases, setPhases] = useState<Record<string, ConnectionPhase>>({});
   const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>({});
+  const agentActivitiesRef = useRef<Record<string, AgentActivity>>({});
+  const agentActivityDisplayUpdatedAtRef = useRef<Record<string, number>>({});
+  const agentActivityStreamUpdatedAtRef = useRef<Record<string, number>>({});
   const [agentSystemNotifications, setAgentSystemNotificationsState] = useState(readAgentSystemNotifications);
   const agentNotificationStateRef = useRef<Record<string, AgentNotificationState>>({});
+  const agentSystemNotificationRef = useRef<Record<string, Notification>>({});
   const agentSystemNotificationsRef = useRef(agentSystemNotifications);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -506,6 +498,8 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
     refreshLaunchPaths: workspace.refreshLaunchPaths,
   });
   const webApps = useWebApps(navigation.workspaceMode === "webapp", reportError);
+  const agentSessionsRef = useRef(agent.displaySessions);
+  agentSessionsRef.current = agent.displaySessions;
   const skills = useSkillsWorkspace(
     navigation.workspaceMode === "skills" || navigation.workspaceMode === "terminal",
     reportError,
@@ -534,34 +528,92 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
       try { localStorage.setItem(AGENT_SYSTEM_NOTIFICATIONS_STORAGE_KEY, "0"); } catch { return; }
     }
   }, [agentSystemNotifications]);
-  useEffect(() => {
-    const liveKeys = new Set(workspace.agentSessions.map((session) => sessionKey(session)));
-    for (const key of Object.keys(agentNotificationStateRef.current)) {
-      if (!liveKeys.has(key)) delete agentNotificationStateRef.current[key];
-    }
-  }, [workspace.agentSessions]);
-
   const setPhase = useCallback((key: string, phase: ConnectionPhase) => {
     setPhases((current) => (current[key] === phase ? current : { ...current, [key]: phase }));
   }, []);
 
   const setAgentActivity = useCallback((key: string, activity: AgentActivity) => {
-    setAgentActivities((current) => current[key]?.updatedAt === activity.updatedAt ? current : { ...current, [key]: activity });
-    const previous = agentNotificationStateRef.current[key] ?? { lastStatus: null, hasBeenBusy: false };
-    const next: AgentNotificationState = {
-      lastStatus: activity.status,
-      hasBeenBusy: previous.hasBeenBusy || activity.status === "busy" || activity.status === "retry" || activity.status === "waiting",
-    };
-    agentNotificationStateRef.current[key] = next;
-    if (previous.lastStatus === activity.status) return;
-    const notification = agentActivityNotification(agent.displaySessions.find((session) => sessionKey(session) === key), activity, previous);
-    if (!notification || !agentSystemNotificationsRef.current || !("Notification" in window) || Notification.permission !== "granted") return;
-    const systemNotification = new Notification(notification.title, {
-      body: notification.body,
-      tag: `devhatch-${key}-${activity.status}`,
-    });
-    systemNotification.onclick = () => window.focus();
-  }, [agent.displaySessions]);
+    if (!isNewerAgentActivity(agentActivityDisplayUpdatedAtRef.current[key], activity.updatedAt)) return;
+    agentActivityDisplayUpdatedAtRef.current[key] = activity.updatedAt;
+    agentActivitiesRef.current = { ...agentActivitiesRef.current, [key]: activity };
+    setAgentActivities(agentActivitiesRef.current);
+  }, []);
+
+  const applyAgentActivitySnapshot = useCallback((events: AgentActivityEvent[]) => {
+    const snapshotKeys = new Set(events.map((event) => sessionKey({ sessionId: event.sessionId, kind: "agent" })));
+    const nextActivities = Object.fromEntries(Object.entries(agentActivitiesRef.current).filter(([key]) => !key.startsWith("agent:") || snapshotKeys.has(key)));
+    for (const event of events) {
+      const key = sessionKey({ sessionId: event.sessionId, kind: "agent" });
+      if (!isNewerAgentActivity(agentActivityStreamUpdatedAtRef.current[key], event.updatedAt)) continue;
+      agentActivityStreamUpdatedAtRef.current[key] = event.updatedAt;
+      if (event.activity) agentNotificationStateRef.current[key] = agentNotificationState(event.activity);
+      else {
+        delete agentNotificationStateRef.current[key];
+        agentSystemNotificationRef.current[key]?.close();
+        delete agentSystemNotificationRef.current[key];
+      }
+      const displayUpdatedAt = agentActivityDisplayUpdatedAtRef.current[key];
+      if (displayUpdatedAt !== undefined && event.updatedAt <= displayUpdatedAt) continue;
+      agentActivityDisplayUpdatedAtRef.current[key] = event.updatedAt;
+      if (event.activity) nextActivities[key] = event.activity;
+      else delete nextActivities[key];
+    }
+    for (const key of Object.keys(agentNotificationStateRef.current)) {
+      if (!key.startsWith("agent:") || snapshotKeys.has(key)) continue;
+      delete agentNotificationStateRef.current[key];
+      agentSystemNotificationRef.current[key]?.close();
+      delete agentSystemNotificationRef.current[key];
+    }
+    for (const key of Object.keys(agentActivityDisplayUpdatedAtRef.current)) {
+      if (!key.startsWith("agent:") || snapshotKeys.has(key)) continue;
+      delete agentActivityDisplayUpdatedAtRef.current[key];
+      delete agentActivityStreamUpdatedAtRef.current[key];
+    }
+    agentActivitiesRef.current = nextActivities;
+    setAgentActivities(nextActivities);
+  }, []);
+
+  const applyAgentActivityEvent = useCallback((event: AgentActivityEvent) => {
+    const key = sessionKey({ sessionId: event.sessionId, kind: "agent" });
+    if (!isNewerAgentActivity(agentActivityStreamUpdatedAtRef.current[key], event.updatedAt)) return;
+    agentActivityStreamUpdatedAtRef.current[key] = event.updatedAt;
+    if (event.activity) {
+      const previous = agentNotificationStateRef.current[key] ?? { lastStatus: null, lastPhase: null, lastDetail: null, hasBeenBusy: false };
+      agentNotificationStateRef.current[key] = agentNotificationState(event.activity, previous);
+      setAgentActivity(key, event.activity);
+      if (sameAgentNotificationActivity(previous, event.activity)) return;
+      agentSystemNotificationRef.current[key]?.close();
+      delete agentSystemNotificationRef.current[key];
+      const notification = agentActivityNotification(agentSessionsRef.current.find((session) => sessionKey(session) === key), event.activity, previous);
+      if (!notification || !agentSystemNotificationsRef.current || !("Notification" in window) || Notification.permission !== "granted") return;
+      const systemNotification = new Notification(notification.title, {
+        body: notification.body,
+        tag: `devhatch-${key}`,
+      });
+      agentSystemNotificationRef.current[key] = systemNotification;
+      systemNotification.onclick = () => window.focus();
+      systemNotification.onclose = () => {
+        if (agentSystemNotificationRef.current[key] === systemNotification) delete agentSystemNotificationRef.current[key];
+      };
+      return;
+    }
+    const displayUpdatedAt = agentActivityDisplayUpdatedAtRef.current[key];
+    if (displayUpdatedAt === undefined || event.updatedAt >= displayUpdatedAt) {
+      agentActivityDisplayUpdatedAtRef.current[key] = event.updatedAt;
+      const nextActivities = { ...agentActivitiesRef.current };
+      delete nextActivities[key];
+      agentActivitiesRef.current = nextActivities;
+      setAgentActivities(nextActivities);
+    }
+    delete agentNotificationStateRef.current[key];
+    agentSystemNotificationRef.current[key]?.close();
+    delete agentSystemNotificationRef.current[key];
+  }, [setAgentActivity]);
+
+  useAgentActivitySocket({
+    onSnapshot: applyAgentActivitySnapshot,
+    onActivity: applyAgentActivityEvent,
+  });
 
   const deleteSession = useCallback(async (target: DeleteTarget) => {
     setDeleting(true);
@@ -573,13 +625,16 @@ function App({ onLogout, logoutBusy, logoutError }: { onLogout: () => Promise<vo
         delete next[sessionKey({ sessionId: target.id, kind: target.kind })];
         return next;
       });
-      setAgentActivities((current) => {
-        const next = { ...current };
-        const key = sessionKey({ sessionId: target.id, kind: target.kind });
-        delete next[key];
-        delete agentNotificationStateRef.current[key];
-        return next;
-      });
+      const key = sessionKey({ sessionId: target.id, kind: target.kind });
+      const nextActivities = { ...agentActivitiesRef.current };
+      delete nextActivities[key];
+      agentActivitiesRef.current = nextActivities;
+      delete agentActivityDisplayUpdatedAtRef.current[key];
+      delete agentActivityStreamUpdatedAtRef.current[key];
+      delete agentNotificationStateRef.current[key];
+      agentSystemNotificationRef.current[key]?.close();
+      delete agentSystemNotificationRef.current[key];
+      setAgentActivities(nextActivities);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

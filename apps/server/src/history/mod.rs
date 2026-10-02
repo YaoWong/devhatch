@@ -11,9 +11,6 @@ pub(crate) use api::{list, prepare_error_response, remove};
 pub(crate) use model::{
     DeleteError, HistoryBackend, HistoryError, HistoryItem, PreparedLaunch, Presence,
 };
-pub(crate) use opencode::{
-    fork_successor, fork_successor_id, new_session_candidates, unique_unclaimed_session,
-};
 pub(crate) use process::command_output_with_timeout;
 
 #[cfg(test)]

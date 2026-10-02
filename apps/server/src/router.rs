@@ -28,6 +28,7 @@ pub(crate) fn build(state: Arc<AppState>, web_dist: Option<PathBuf>) -> Router {
         .route("/api/filesystem/directories", get(filesystem::directories))
         .route("/api/settings", get(settings::get).patch(settings::update))
         .route("/api/agents", get(agent::agents))
+        .route("/api/agents/activity", get(agent::activity_socket))
         .route(
             "/api/agents/{agentId}/install",
             axum::routing::post(agent::install),

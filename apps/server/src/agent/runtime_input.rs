@@ -48,14 +48,9 @@ pub(super) fn prepare_opencode(
 }
 
 pub(super) fn configure_pi_endpoint(
-    run_dir: &Path,
     command: &mut CommandBuilder,
 ) -> std::io::Result<crate::session::RuntimeEndpoint> {
     let password = Uuid::new_v4().to_string();
-    command.env(
-        "DEVHATCH_PI_IMAGE_ENDPOINT",
-        run_dir.join("pi-image-endpoint.json"),
-    );
     command.env("DEVHATCH_PI_IMAGE_PASSWORD", &password);
     Ok(crate::session::RuntimeEndpoint { port: 0, password })
 }
@@ -178,48 +173,30 @@ async fn paste_pi_image(
         return Err(PasteImageError::Unavailable);
     }
     let endpoint = session
-        .runtime_endpoint()
+        .ready_runtime_endpoint(std::time::Duration::from_secs(5))
+        .await
         .ok_or(PasteImageError::Unavailable)?;
-    let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
-    let endpoint_file = run_dir.join("pi-image-endpoint.json");
     let request_id = Uuid::new_v4().simple().to_string();
-    for _ in 0..50 {
-        if !session.is_live() {
-            return Err(PasteImageError::Unavailable);
+    let url = format!("http://127.0.0.1:{}/image-paste", endpoint.port);
+    match client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(18))
+        .basic_auth("pi", Some(&endpoint.password))
+        .header(reqwest::header::CONTENT_TYPE, "image/png")
+        .header("x-devhatch-request-id", &request_id)
+        .body(bytes)
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => Ok(()),
+        Ok(response) if response.status() == reqwest::StatusCode::CONFLICT => {
+            Err(PasteImageError::Busy)
         }
-        let port = std::fs::read(&endpoint_file)
-            .ok()
-            .filter(|bytes| bytes.len() <= 128)
-            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .and_then(|value| value.get("port")?.as_u64())
-            .and_then(|port| u16::try_from(port).ok())
-            .filter(|port| *port != 0);
-        let Some(port) = port else {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            continue;
-        };
-        let url = format!("http://127.0.0.1:{port}/image-paste");
-        match client
-            .post(&url)
-            .timeout(std::time::Duration::from_secs(18))
-            .basic_auth("pi", Some(&endpoint.password))
-            .header(reqwest::header::CONTENT_TYPE, "image/png")
-            .header("x-devhatch-request-id", &request_id)
-            .body(bytes.clone())
-            .send()
-            .await
-        {
-            Ok(response) if response.status().is_success() => return Ok(()),
-            Ok(response) if response.status() == reqwest::StatusCode::CONFLICT => {
-                return Err(PasteImageError::Busy);
-            }
-            Ok(response) if response.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY => {
-                return Err(PasteImageError::InvalidImage);
-            }
-            _ => return Err(PasteImageError::Unavailable),
+        Ok(response) if response.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY => {
+            Err(PasteImageError::InvalidImage)
         }
+        _ => Err(PasteImageError::Unavailable),
     }
-    Err(PasteImageError::Unavailable)
 }
 
 async fn paste_opencode_image(
@@ -288,17 +265,13 @@ async fn paste_opencode_image(
     if !published {
         return Err(PasteImageError::Unavailable);
     }
-    for _ in 0..50 {
-        if !session.is_live() {
-            return Err(PasteImageError::Unavailable);
-        }
-        if !staged.path().exists() {
-            staged.disarm();
-            return Ok(());
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    Err(PasteImageError::Unavailable)
+    let cleanup = staged.path().to_path_buf();
+    staged.disarm();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let _ = tokio::fs::remove_file(cleanup).await;
+    });
+    Ok(())
 }
 
 fn write_private_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -536,9 +509,8 @@ mod tests {
 
     #[test]
     fn configures_private_pi_image_endpoint() {
-        let temp = tempfile::tempdir().unwrap();
         let mut command = CommandBuilder::new("pi");
-        let endpoint = configure_pi_endpoint(temp.path(), &mut command).unwrap();
+        let endpoint = configure_pi_endpoint(&mut command).unwrap();
         assert_eq!(endpoint.port, 0);
         assert!(!endpoint.password.is_empty());
     }

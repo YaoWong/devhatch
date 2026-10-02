@@ -3,10 +3,7 @@ use std::{
     error::Error,
     fmt,
     net::IpAddr,
-    sync::{
-        Arc, LazyLock, Mutex, Weak,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, LazyLock, Mutex, Weak},
     time::Duration,
 };
 
@@ -39,8 +36,41 @@ pub struct AuthState {
     setup_token_hash: Option<String>,
     login_attempts: Mutex<HashMap<IpAddr, VecDeque<u64>>>,
     session_lifecycle: tokio::sync::RwLock<()>,
-    session_leases: Mutex<HashMap<String, Weak<AtomicBool>>>,
+    session_leases: Mutex<HashMap<String, Weak<AuthSessionLease>>>,
     secure_cookie: bool,
+}
+
+pub(crate) struct AuthSessionLease {
+    valid: std::sync::atomic::AtomicBool,
+    revoked: tokio::sync::Notify,
+}
+
+impl AuthSessionLease {
+    fn new(valid: bool) -> Self {
+        Self {
+            valid: std::sync::atomic::AtomicBool::new(valid),
+            revoked: tokio::sync::Notify::new(),
+        }
+    }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        self.valid.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn revoke(&self) {
+        if self.valid.swap(false, std::sync::atomic::Ordering::AcqRel) {
+            self.revoked.notify_waiters();
+        }
+    }
+
+    pub(crate) async fn revoked(&self) {
+        let revoked = self.revoked.notified();
+        tokio::pin!(revoked);
+        revoked.as_mut().enable();
+        if self.is_valid() {
+            revoked.await;
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -136,7 +166,7 @@ impl AuthState {
         &self.session_lifecycle
     }
 
-    pub(crate) fn session_lease(&self, identity: &AuthIdentity) -> Arc<AtomicBool> {
+    pub(crate) fn session_lease(&self, identity: &AuthIdentity) -> Arc<AuthSessionLease> {
         let mut leases = self
             .session_leases
             .lock()
@@ -145,7 +175,7 @@ impl AuthState {
         if let Some(lease) = leases.get(&identity.session_id).and_then(Weak::upgrade) {
             return lease;
         }
-        let lease = Arc::new(AtomicBool::new(!identity.is_expired()));
+        let lease = Arc::new(AuthSessionLease::new(!identity.is_expired()));
         leases.insert(identity.session_id.clone(), Arc::downgrade(&lease));
         lease
     }
@@ -158,7 +188,7 @@ impl AuthState {
             .remove(session_id)
             .and_then(|lease| lease.upgrade())
         {
-            lease.store(false, Ordering::Release);
+            lease.revoke();
         }
     }
 }
@@ -429,6 +459,10 @@ impl AuthIdentity {
     pub(crate) fn is_expired(&self) -> bool {
         self.expires_at <= clock::now()
     }
+
+    pub(crate) fn expiration_delay(&self) -> Duration {
+        Duration::from_millis(self.expires_at.saturating_sub(clock::now()))
+    }
 }
 
 pub(crate) async fn validate_identity(
@@ -681,7 +715,7 @@ mod tests {
         let lease = auth.session_lease(&identity);
         let response = logout_response(&pool, &auth, &identity).await;
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert!(lease.load(std::sync::atomic::Ordering::Acquire));
+        assert!(lease.is_valid());
         assert!(response.headers().get(header::SET_COOKIE).is_none());
         assert_eq!(
             response_body(response).await,
@@ -734,16 +768,16 @@ mod tests {
         let first = auth.session_lease(&identity);
         let second = auth.session_lease(&identity);
         assert!(Arc::ptr_eq(&first, &second));
-        assert!(first.load(std::sync::atomic::Ordering::Acquire));
+        assert!(first.is_valid());
 
         let response = logout_response(&pool, &auth, &identity).await;
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        assert!(!first.load(std::sync::atomic::Ordering::Acquire));
-        assert!(
-            auth.session_lease(&identity)
-                .load(std::sync::atomic::Ordering::Acquire)
-        );
+        assert!(!first.is_valid());
+        tokio::time::timeout(std::time::Duration::from_millis(100), first.revoked())
+            .await
+            .unwrap();
+        assert!(auth.session_lease(&identity).is_valid());
     }
 
     #[test]

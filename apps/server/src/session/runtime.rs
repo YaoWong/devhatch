@@ -12,8 +12,8 @@ use portable_pty::{Child, NativePtySystem, PtySize, PtySystem};
 use uuid::Uuid;
 
 use super::model::{
-    Session, SessionCompletion, SessionEvent, SessionKind, SessionSpawn, SessionState,
-    SessionStatus, TerminalState,
+    AgentActivityEvent, Session, SessionCompletion, SessionEvent, SessionKind, SessionSpawn,
+    SessionState, SessionStatus, TerminalState,
 };
 use crate::{clock::now, filesystem::path_string, state::SessionRegistry};
 
@@ -79,7 +79,6 @@ impl Session {
         Self::spawn_inner(sessions, spawn, started, Uuid::new_v4().to_string())
     }
 
-    #[cfg(test)]
     pub(crate) fn spawn_with_id<F>(
         sessions: Arc<SessionRegistry>,
         spawn: SessionSpawn,
@@ -120,6 +119,8 @@ impl Session {
         let (input, input_receiver) = std::sync::mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
         let timestamp = now();
         let (events, _) = tokio::sync::broadcast::channel(1024);
+        let (agent_events, agent_event_sequence, agent_event_lock) =
+            sessions.agent_activity_channel();
         let session = Arc::new(Self {
             id,
             shell: spawn.shell,
@@ -152,10 +153,14 @@ impl Session {
             terminating: AtomicBool::new(false),
             completion: SessionCompletion::default(),
             events,
+            agent_events,
+            agent_event_sequence,
+            agent_event_lock,
             agent_id: spawn.agent_id,
             agent_name: spawn.agent_name,
             runtime_dir: cleanup_path.clone(),
-            runtime_endpoint: spawn.runtime_endpoint,
+            runtime_endpoint: std::sync::Mutex::new(spawn.runtime_endpoint),
+            runtime_endpoint_ready: tokio::sync::Notify::new(),
             runtime_input: Arc::new(tokio::sync::Mutex::new(())),
         });
         if !sessions.insert(session.clone()) {
@@ -202,7 +207,29 @@ impl Session {
     }
 
     pub(crate) fn mark_deleting(&self) {
-        self.deleting.store(true, Ordering::Release);
+        if self.kind == SessionKind::Agent {
+            let _event = self
+                .agent_event_lock
+                .lock()
+                .expect("agent activity event lock poisoned");
+            self.mark_deleting_with_agent_event_lock();
+        } else {
+            self.mark_deleting_with_agent_event_lock();
+        }
+    }
+
+    pub(crate) fn mark_deleting_with_agent_event_lock(&self) {
+        if !self.deleting.swap(true, Ordering::AcqRel) && self.kind == SessionKind::Agent {
+            let mut state = self.state.lock().expect("session lock poisoned");
+            state.agent_activity = None;
+            state.updated_at = now().max(state.updated_at.saturating_add(1));
+            let _ = self.agent_events.send(AgentActivityEvent {
+                sequence: self.agent_event_sequence.fetch_add(1, Ordering::AcqRel) + 1,
+                session_id: self.id.clone(),
+                activity: None,
+                updated_at: state.updated_at,
+            });
+        }
     }
 
     pub(crate) fn finish_exit(&self, code: Option<u32>) {
@@ -211,7 +238,7 @@ impl Session {
             let mut state = self.state.lock().expect("session lock poisoned");
             state.status = SessionStatus::Exited;
             state.exit_code = code;
-            state.updated_at = now();
+            state.updated_at = now().max(state.updated_at.saturating_add(1));
         }
         let _ = self.events.send(SessionEvent::Exit(code));
         self.mark_deleting();
@@ -235,7 +262,7 @@ impl Session {
             let mut state = self.state.lock().expect("session lock poisoned");
             state.cols = cols;
             state.rows = rows;
-            state.updated_at = now();
+            state.updated_at = now().max(state.updated_at.saturating_add(1));
             if let Some(terminal) = state.terminal.as_mut() {
                 terminal.resize(rows, cols);
             }
@@ -350,7 +377,7 @@ impl Session {
     fn publish_output(&self, bytes: &[u8]) {
         let data: Arc<str> = String::from_utf8_lossy(bytes).into_owned().into();
         let mut state = self.state.lock().expect("session lock poisoned");
-        state.updated_at = now();
+        state.updated_at = now().max(state.updated_at.saturating_add(1));
         state.output.push_str(&data);
         trim_output(&mut state.output);
         if let Some(terminal) = state.terminal.as_mut() {
@@ -402,7 +429,7 @@ impl Session {
                             let mut state = session.state.lock().expect("session lock poisoned");
                             state.status = SessionStatus::Exited;
                             state.exit_code = code;
-                            state.updated_at = now();
+                            state.updated_at = now().max(state.updated_at.saturating_add(1));
                         }
                         let _ = session.events.send(SessionEvent::Exit(code));
                     }

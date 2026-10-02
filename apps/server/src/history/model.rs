@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::path::PathBuf;
 
 use axum::http::StatusCode;
 use serde::Serialize;
@@ -15,7 +15,6 @@ pub(crate) enum HistoryBackend {
 pub(crate) enum PreparedLaunch {
     CodexNew {
         home: PathBuf,
-        baseline: HashSet<String>,
     },
     CodexResume {
         home: PathBuf,
@@ -23,9 +22,7 @@ pub(crate) enum PreparedLaunch {
         path: PathBuf,
         cwd: PathBuf,
     },
-    OpenCodeNew {
-        baseline: HashSet<String>,
-    },
+    OpenCodeNew,
     OpenCodeResume {
         id: String,
         cwd: String,

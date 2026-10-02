@@ -1,6 +1,11 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, atomic::AtomicBool, mpsc::SyncSender},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc::SyncSender,
+    },
+    time::Duration,
 };
 
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty};
@@ -52,15 +57,20 @@ pub(crate) struct Session {
     pub(super) terminating: AtomicBool,
     pub(super) completion: SessionCompletion,
     pub(super) events: broadcast::Sender<SessionEvent>,
+    pub(super) agent_events: broadcast::Sender<AgentActivityEvent>,
+    pub(super) agent_event_sequence: Arc<AtomicU64>,
+    pub(super) agent_event_lock: Arc<Mutex<()>>,
     pub(super) agent_id: Option<&'static str>,
     pub(super) agent_name: Option<&'static str>,
     pub(super) runtime_dir: Option<PathBuf>,
-    pub(super) runtime_endpoint: Option<RuntimeEndpoint>,
+    pub(super) runtime_endpoint: Mutex<Option<RuntimeEndpoint>>,
+    pub(super) runtime_endpoint_ready: tokio::sync::Notify,
     pub(crate) runtime_input: Arc<AsyncMutex<()>>,
 }
 
 pub(crate) type SessionExitCleanup = Box<dyn FnOnce(Arc<Session>, Option<u32>) + Send>;
 
+#[derive(Clone)]
 pub(crate) struct RuntimeEndpoint {
     pub(crate) port: u16,
     pub(crate) password: String,
@@ -317,6 +327,16 @@ pub(crate) struct AgentActivity {
     pub updated_at: u64,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentActivityEvent {
+    #[serde(skip)]
+    pub(crate) sequence: u64,
+    pub session_id: String,
+    pub activity: Option<AgentActivity>,
+    pub updated_at: u64,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AgentActivityStatus {
@@ -403,8 +423,46 @@ impl Session {
         self.runtime_dir.clone()
     }
 
-    pub(crate) fn runtime_endpoint(&self) -> Option<&RuntimeEndpoint> {
-        self.runtime_endpoint.as_ref()
+    pub(crate) fn runtime_endpoint(&self) -> Option<RuntimeEndpoint> {
+        self.runtime_endpoint
+            .lock()
+            .expect("runtime endpoint lock poisoned")
+            .clone()
+    }
+
+    pub(crate) async fn ready_runtime_endpoint(
+        &self,
+        timeout: Duration,
+    ) -> Option<RuntimeEndpoint> {
+        let ready = self.runtime_endpoint_ready.notified();
+        tokio::pin!(ready);
+        ready.as_mut().enable();
+        if let Some(endpoint) = self
+            .runtime_endpoint()
+            .filter(|endpoint| endpoint.port != 0)
+        {
+            return Some(endpoint);
+        }
+        tokio::time::timeout(timeout, ready).await.ok()?;
+        self.runtime_endpoint()
+            .filter(|endpoint| endpoint.port != 0)
+    }
+
+    pub(crate) fn update_pi_port(&self, port: u16) {
+        if self.agent_id != Some(crate::agent::PI_ID) {
+            return;
+        }
+        if let Some(endpoint) = self
+            .runtime_endpoint
+            .lock()
+            .expect("runtime endpoint lock poisoned")
+            .as_mut()
+        {
+            endpoint.port = port;
+            if port != 0 {
+                self.runtime_endpoint_ready.notify_waiters();
+            }
+        }
     }
 
     pub(crate) fn process_id(&self) -> u32 {
@@ -454,31 +512,6 @@ impl Session {
         (cwd, created_at)
     }
 
-    pub(crate) fn compare_and_update_upstream_session_id(
-        &self,
-        expected: Option<&str>,
-        id: String,
-    ) -> bool {
-        let mut identity = self
-            .identity
-            .lock()
-            .expect("session identity lock poisoned");
-        if identity.upstream_session_id.as_deref() != expected {
-            return false;
-        }
-        if identity.upstream_session_id.as_deref() == Some(&id) {
-            return true;
-        }
-        identity.upstream_session_id = Some(id.clone());
-        let cwd = identity.cwd.clone();
-        drop(identity);
-        self.state.lock().expect("session lock poisoned").updated_at = crate::clock::now();
-        let _ = self
-            .events
-            .send(SessionEvent::UpstreamSessionChanged { id, cwd });
-        true
-    }
-
     pub(crate) fn update_runtime_identity(
         &self,
         id: String,
@@ -490,25 +523,39 @@ impl Session {
             .identity
             .lock()
             .expect("session identity lock poisoned");
-        let mut upstream = identity.upstream_session_id.clone();
-        let mut current_cwd = identity.cwd.clone();
-        let identity_changed =
-            merge_runtime_identity(&mut upstream, &mut current_cwd, &id, cwd.as_deref());
-        let file_changed = file
-            .as_ref()
-            .is_some_and(|file| identity.upstream_session_file.as_ref() != Some(file));
-        if !identity_changed && !file_changed {
+        let id_changed = identity.upstream_session_id.as_deref() != Some(&id);
+        let cwd_changed = cwd.as_deref().is_some_and(|cwd| identity.cwd != cwd);
+        let file_changed = identity.upstream_session_file != file;
+        if !id_changed && !cwd_changed && !file_changed {
             return;
         }
-        identity.upstream_session_id = upstream;
+        identity.upstream_session_id = Some(id.clone());
         identity.pending_upstream_session_id = None;
-        if let Some(file) = file {
-            identity.upstream_session_file = Some(file);
+        identity.upstream_session_file = file;
+        if let Some(cwd) = cwd {
+            identity.cwd = cwd;
         }
-        identity.cwd = current_cwd;
         let cwd = identity.cwd.clone();
         drop(identity);
-        self.state.lock().expect("session lock poisoned").updated_at = crate::clock::now();
+        let _event = id_changed.then(|| {
+            self.agent_event_lock
+                .lock()
+                .expect("agent activity event lock poisoned")
+        });
+        let mut state = self.state.lock().expect("session lock poisoned");
+        if id_changed {
+            state.agent_activity = None;
+        }
+        state.updated_at = crate::clock::now().max(state.updated_at.saturating_add(1));
+        if id_changed {
+            let _ = self.agent_events.send(AgentActivityEvent {
+                sequence: self.agent_event_sequence.fetch_add(1, Ordering::AcqRel) + 1,
+                session_id: self.id.clone(),
+                activity: None,
+                updated_at: state.updated_at,
+            });
+        }
+        drop(state);
         let _ = self
             .events
             .send(SessionEvent::UpstreamSessionChanged { id, cwd });
@@ -520,14 +567,21 @@ impl Session {
         phase: AgentActivityPhase,
         detail: Option<String>,
     ) {
-        let activity = AgentActivity {
-            status,
-            phase,
-            detail,
-            updated_at: crate::clock::now(),
-        };
-        {
+        let activity = {
+            let _event = self
+                .agent_event_lock
+                .lock()
+                .expect("agent activity event lock poisoned");
             let mut state = self.state.lock().expect("session lock poisoned");
+            if self.deleting.load(Ordering::Acquire) {
+                return;
+            }
+            let activity = AgentActivity {
+                status,
+                phase,
+                detail,
+                updated_at: crate::clock::now().max(state.updated_at.saturating_add(1)),
+            };
             if state.agent_activity.as_ref().is_some_and(|current| {
                 current.status == activity.status
                     && current.phase == activity.phase
@@ -537,14 +591,35 @@ impl Session {
             }
             state.agent_activity = Some(activity.clone());
             state.updated_at = activity.updated_at;
-        }
+            let _ = self.agent_events.send(AgentActivityEvent {
+                sequence: self.agent_event_sequence.fetch_add(1, Ordering::AcqRel) + 1,
+                session_id: self.id.clone(),
+                updated_at: activity.updated_at,
+                activity: Some(activity.clone()),
+            });
+            activity
+        };
         let _ = self.events.send(SessionEvent::AgentActivity(activity));
+    }
+
+    pub(crate) fn agent_activity_event(&self, sequence: u64) -> AgentActivityEvent {
+        let state = self.state.lock().expect("session lock poisoned");
+        let activity = state.agent_activity.clone();
+        let updated_at = activity
+            .as_ref()
+            .map_or(state.updated_at, |activity| activity.updated_at);
+        AgentActivityEvent {
+            sequence,
+            session_id: self.id.clone(),
+            activity,
+            updated_at,
+        }
     }
 
     pub(crate) fn rename(&self, name: String) {
         let mut state = self.state.lock().expect("session lock poisoned");
         state.name = name;
-        state.updated_at = crate::clock::now();
+        state.updated_at = crate::clock::now().max(state.updated_at.saturating_add(1));
     }
 
     pub(crate) fn view(&self) -> SessionView {
@@ -626,33 +701,11 @@ impl Session {
     }
 }
 
-fn merge_runtime_identity(
-    upstream: &mut Option<String>,
-    current_cwd: &mut String,
-    id: &str,
-    cwd: Option<&str>,
-) -> bool {
-    let mut changed = false;
-    if upstream.as_deref() != Some(id) {
-        *upstream = Some(id.to_string());
-        changed = true;
-    }
-    if let Some(cwd) = cwd
-        && current_cwd != cwd
-    {
-        cwd.clone_into(current_cwd);
-        changed = true;
-    }
-    changed
-}
-
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use super::{
-        SessionCompletion, SessionEvent, TerminalModes, TerminalState, merge_runtime_identity,
-    };
+    use super::{SessionCompletion, SessionEvent, TerminalModes, TerminalState};
 
     #[test]
     fn terminal_snapshot_restores_alternate_screen_and_input_modes() {
@@ -736,20 +789,5 @@ mod tests {
             panic!("expected output event");
         };
         assert!(Arc::ptr_eq(&first_data, &second_data));
-    }
-
-    #[test]
-    fn runtime_identity_updates_id_and_cwd() {
-        let mut id = Some("old".to_string());
-        let mut cwd = "/old".to_string();
-        assert!(merge_runtime_identity(
-            &mut id,
-            &mut cwd,
-            "new",
-            Some("/new")
-        ));
-        assert_eq!(id.as_deref(), Some("new"));
-        assert_eq!(cwd, "/new");
-        assert!(!merge_runtime_identity(&mut id, &mut cwd, "new", None));
     }
 }

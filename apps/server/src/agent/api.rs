@@ -24,7 +24,6 @@ use super::{
         installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
         supports_image_paste, verified_executable,
     },
-    runtime::reconcile::{start_codex_reconciler, start_fork_reconciler, start_history_reconciler},
     runtime_input::{PasteImageError, paste_image as paste_runtime_image},
 };
 
@@ -126,7 +125,7 @@ pub async fn create(
     if request.skill_profile_id.is_some() && !agent.supports_skills {
         return error(StatusCode::BAD_REQUEST, "AGENT_SKILLS_UNSUPPORTED");
     }
-    let Some((executable, _)) = verified_executable(state.data_dir(), kind).await else {
+    let Some((executable, version)) = verified_executable(state.data_dir(), kind).await else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     };
     let workspace_id = request.workspace_id.clone();
@@ -172,15 +171,15 @@ pub async fn create(
         }
     };
     match prepared {
-        PreparedLaunch::CodexNew { home, baseline } => {
+        PreparedLaunch::CodexNew { home, .. } => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
             let session = match spawn_codex(
                 state.clone(),
-                executable,
+                (executable, version),
                 terminal_request,
-                home.clone(),
+                home,
                 None,
                 launch_config,
                 skill_generation.as_deref(),
@@ -188,7 +187,6 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            start_codex_reconciler(&session, state.clone(), home, baseline);
             created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::CodexResume {
@@ -202,7 +200,7 @@ pub async fn create(
             ));
             let session = match spawn_codex(
                 state.clone(),
-                executable,
+                (executable, version),
                 terminal_request,
                 home,
                 Some((id, path)),
@@ -220,7 +218,7 @@ pub async fn create(
             }
             let session = match spawn_traecli(
                 state.clone(),
-                executable,
+                (executable, version),
                 terminal_request,
                 thread_name,
                 None,
@@ -238,7 +236,7 @@ pub async fn create(
             ));
             let session = match spawn_traecli(
                 state.clone(),
-                executable,
+                (executable, version),
                 terminal_request,
                 id,
                 Some(&path),
@@ -286,7 +284,7 @@ pub async fn create(
             };
             created_session(&state, workspace_id.as_deref(), session).await
         }
-        PreparedLaunch::OpenCodeNew { baseline } => {
+        PreparedLaunch::OpenCodeNew => {
             if invalid_cwd(terminal_request.cwd.as_ref()) {
                 return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
             }
@@ -301,8 +299,6 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            start_history_reconciler(&session, state.clone(), baseline);
-            start_fork_reconciler(&session, state.clone());
             created_session(&state, workspace_id.as_deref(), session).await
         }
         PreparedLaunch::OpenCodeResume { id, cwd } => {
@@ -321,7 +317,6 @@ pub async fn create(
                 Ok(session) => session,
                 Err(error) => return spawn_error(error),
             };
-            start_fork_reconciler(&session, state.clone());
             created_session(&state, workspace_id.as_deref(), session).await
         }
     }

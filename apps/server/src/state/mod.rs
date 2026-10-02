@@ -93,6 +93,10 @@ impl AppState {
         self.sessions.active_agent_cwds_for(agent_id)
     }
 
+    pub fn unidentified_agent_cwds_for(&self, agent_id: &str) -> HashSet<PathBuf> {
+        self.sessions.unidentified_agent_cwds_for(agent_id)
+    }
+
     pub fn owned_process_ids(&self) -> HashSet<u32> {
         self.sessions.owned_process_ids()
     }

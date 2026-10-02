@@ -72,6 +72,38 @@ pub(crate) fn process_starttime(pid: u32) -> Option<u64> {
 }
 
 #[cfg(unix)]
+pub(crate) fn process_is_or_descends_from(mut pid: u32, ancestor: u32) -> bool {
+    if pid == 0 || ancestor == 0 {
+        return false;
+    }
+    for _ in 0..128 {
+        if pid == ancestor {
+            return true;
+        }
+        let Some(parent) = process_parent(pid) else {
+            return false;
+        };
+        if parent == 0 || parent == pid {
+            return false;
+        }
+        pid = parent;
+    }
+    false
+}
+
+#[cfg(unix)]
+fn process_parent(pid: u32) -> Option<u32> {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()?
+        .rsplit_once(") ")?
+        .1
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()
+}
+
+#[cfg(unix)]
 fn process_group(pid: u32) -> Option<u32> {
     std::fs::read_to_string(format!("/proc/{pid}/stat"))
         .ok()?
@@ -302,9 +334,17 @@ pub(crate) fn io_error(error: String) -> io::Error {
 mod tests {
     use super::{
         ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_FILE_ENV, BYTE_API_KEY_ENV, ChildIdentity,
-        command_output, configure_std_command, signal_owned,
+        command_output, configure_std_command, process_is_or_descends_from, signal_owned,
     };
     use std::{process::Command, time::Duration};
+
+    #[test]
+    fn recognizes_current_process_ancestry() {
+        let pid = std::process::id();
+        assert!(process_is_or_descends_from(pid, pid));
+        assert!(!process_is_or_descends_from(0, pid));
+        assert!(!process_is_or_descends_from(pid, 0));
+    }
 
     #[tokio::test]
     async fn command_output_times_out_while_draining_inherited_stdout() {

@@ -1,10 +1,4 @@
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::sync::Arc;
 
 use axum::{
     extract::{
@@ -18,7 +12,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 
 use crate::{
-    auth::{AuthIdentity, validate_identity},
+    auth::{AuthIdentity, AuthSessionLease, validate_identity},
     session::{Session, SessionEvent, SessionKind, SessionStatus, dimension},
     state::AppState,
 };
@@ -126,21 +120,22 @@ async fn handle_socket(
     {
         return;
     }
-    let mut auth_check = tokio::time::interval(Duration::from_secs(30));
-    auth_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    auth_check.tick().await;
+    let expiration = tokio::time::sleep(identity.expiration_delay());
+    tokio::pin!(expiration);
     loop {
         tokio::select! {
+            _ = identity_lease.revoked() => {
+                close_unauthorized(&mut sender).await;
+                break;
+            }
+            _ = &mut expiration => {
+                identity_lease.revoke();
+                close_unauthorized(&mut sender).await;
+                break;
+            }
             message = receiver.next() => {
                 let Some(Ok(message)) = message else { break };
                 if !handle_client_message(&session, &app_state, &identity, &identity_lease, &mut sender, message).await {
-                    break;
-                }
-            }
-            _ = auth_check.tick() => {
-                if !identity_lease.load(Ordering::Acquire) || !identity_valid(&app_state, &identity).await {
-                    identity_lease.store(false, Ordering::Release);
-                    close_unauthorized(&mut sender).await;
                     break;
                 }
             }
@@ -203,7 +198,7 @@ async fn handle_client_message(
     session: &Arc<Session>,
     app_state: &AppState,
     identity: &AuthIdentity,
-    identity_lease: &AtomicBool,
+    identity_lease: &AuthSessionLease,
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     message: Message,
 ) -> bool {
@@ -218,8 +213,8 @@ async fn handle_client_message(
         ClientMessage::Input { .. } | ClientMessage::Resize { .. }
     ) {
         let lifecycle = app_state.auth().session_lifecycle().read().await;
-        if !identity_lease.load(Ordering::Acquire) || identity.is_expired() {
-            identity_lease.store(false, Ordering::Release);
+        if !identity_lease.is_valid() || identity.is_expired() {
+            identity_lease.revoke();
             drop(lifecycle);
             close_unauthorized(sender).await;
             return false;

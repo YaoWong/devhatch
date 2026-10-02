@@ -100,10 +100,13 @@ fn link_codex_entry(
     symlink(source, runtime_home.join(name.as_ref()))
 }
 
-const PI_IDENTITY_EXTENSION: &str = r#"import { open, rename, unlink } from "node:fs/promises"
+const PI_EXTENSION_PREFIX: &str = r#"import { readFileSync } from "node:fs"
 import { createServer } from "node:http"
+import { createConnection } from "node:net"
 import { resizeImage } from "@earendil-works/pi-coding-agent"
+"#;
 
+const PI_EXTENSION_BODY: &str = r#"
 const imageMarker = /\[\[devhatch-image:([0-9a-f]{32})\]\]/g
 const pendingImages = new Map()
 const activeRequests = new Set()
@@ -112,39 +115,45 @@ let imageServer
 let serverGeneration = 0
 let shuttingDown = false
 let uiPromptActive = false
+let currentActivity
+let lastError
+let upstreamId
+let upstreamCwd
+let upstreamFile
+const activeTools = new Map()
+function reportActivity(value) {
+  const reports = []
+  if (upstreamId && upstreamCwd) reports.push({ kind: "identity", upstreamId, cwd: upstreamCwd, ...(upstreamFile ? { file: upstreamFile } : {}) })
+  reports.push(value)
+  devhatchReport(reports)
+}
+function activity(status, phase, detail) {
+  currentActivity = { kind: "activity", upstreamId, status, phase, ...(detail ? { detail: devhatchText(detail) } : {}) }
+  if (!uiPromptActive) reportActivity(currentActivity)
+}
 
 export default function (pi) {
   pi.on("session_start", async (_event, ctx) => {
     const generation = ++serverGeneration
     shuttingDown = true
+    devhatchReport([{ kind: "runtime-ready", port: 0 }])
     if (imageServer) {
       imageServer.closeAllConnections()
       await new Promise((resolve) => imageServer.close(resolve))
       imageServer = undefined
     }
-    await unlink(process.env.DEVHATCH_PI_IMAGE_ENDPOINT ?? "").catch(() => {})
     activeRequests.clear()
     pendingImages.clear()
+    activeTools.clear()
     shuttingDown = false
-    const target = process.env.DEVHATCH_PI_STATE_FILE
-    if (target) {
-      const temporary = `${target}.${process.pid}.tmp`
-      const state = {
-        id: ctx.sessionManager.getSessionId(),
-        file: ctx.sessionManager.getSessionFile(),
-        cwd: ctx.cwd,
-      }
-      const handle = await open(temporary, "wx", 0o600)
-      try {
-        await handle.writeFile(JSON.stringify(state))
-      } finally {
-        await handle.close()
-      }
-      await rename(temporary, target)
-    }
-    const endpoint = process.env.DEVHATCH_PI_IMAGE_ENDPOINT
+    lastError = undefined
+    upstreamId = devhatchText(ctx.sessionManager.getSessionId(), 256)
+    upstreamFile = devhatchText(ctx.sessionManager.getSessionFile(), 4096)
+    upstreamCwd = devhatchText(ctx.cwd, 4096)
+    currentActivity = { kind: "activity", upstreamId, status: "idle", phase: "idle" }
+    if (upstreamId && upstreamCwd) reportActivity(currentActivity)
     const password = process.env.DEVHATCH_PI_IMAGE_PASSWORD
-    if (!endpoint || !password) return
+    if (!password) return
     const authorization = `Basic ${Buffer.from(`pi:${password}`).toString("base64")}`
     imageServer = createServer((request, response) => {
       void (async () => {
@@ -222,22 +231,70 @@ export default function (pi) {
       imageServer.listen(0, "127.0.0.1", resolve)
     })
     const port = imageServer.address().port
-    const temporaryEndpoint = `${endpoint}.${process.pid}.tmp`
-    const endpointHandle = await open(temporaryEndpoint, "wx", 0o600)
-    try {
-      await endpointHandle.writeFile(JSON.stringify({ port }))
-    } finally {
-      await endpointHandle.close()
-    }
-    await rename(temporaryEndpoint, endpoint)
+    devhatchReport([{ kind: "runtime-ready", port }])
   })
 
-  pi.on("ui_prompt_start", () => {
+  pi.on("agent_start", () => {
+    lastError = undefined
+    activeTools.clear()
+    activity("busy", "thinking")
+  })
+
+  pi.on("tool_execution_start", (event) => {
+    activeTools.set(event.toolCallId, devhatchText(event.toolName) ?? "tool")
+    activity("busy", "tool", `Running ${devhatchText(event.toolName) ?? "tool"}`)
+  })
+
+  pi.on("tool_execution_end", (event) => {
+    activeTools.delete(event.toolCallId)
+    const nextTool = activeTools.values().next().value
+    if (nextTool) activity("busy", "tool", `Running ${nextTool}`)
+    else activity("busy", "thinking")
+  })
+
+  pi.on("ui_prompt_start", (event) => {
     uiPromptActive = true
+    reportActivity({ kind: "activity", upstreamId, status: "waiting", phase: "question", detail: devhatchText(event.title) ?? "Waiting for answer" })
   })
 
   pi.on("ui_prompt_end", () => {
     uiPromptActive = false
+    if (currentActivity) reportActivity(currentActivity)
+  })
+
+  pi.on("session_before_compact", () => {
+    activity("busy", "thinking", "Compacting context")
+  })
+
+  pi.on("session_compact", (event) => {
+    lastError = undefined
+    if (event.reason === "manual") activity("idle", "idle")
+    else activity("busy", "thinking")
+  })
+
+  pi.on("session_compact_failed", (event) => {
+    lastError = devhatchText(event.errorMessage) ?? (event.aborted ? undefined : "Context compaction failed")
+    if (event.reason === "manual") {
+      if (lastError) activity("error", "error", lastError)
+      else activity("idle", "idle")
+    } else {
+      activity("busy", "thinking")
+    }
+  })
+
+  pi.on("agent_end", (event) => {
+    const assistant = [...(event.messages ?? [])].reverse().find((message) => message?.role === "assistant")
+    lastError = assistant?.stopReason === "error" ? devhatchText(assistant.errorMessage) ?? "Assistant error" : undefined
+  })
+
+  pi.on("agent_settled", () => {
+    activeTools.clear()
+    if (lastError) {
+      currentActivity = { kind: "activity", upstreamId, status: "error", phase: "error", detail: lastError }
+    } else {
+      currentActivity = { kind: "activity", upstreamId, status: "idle", phase: "idle" }
+    }
+    if (!uiPromptActive) reportActivity(currentActivity)
   })
 
   pi.on("input", async (event) => {
@@ -263,25 +320,34 @@ export default function (pi) {
   pi.on("session_shutdown", async () => {
     serverGeneration += 1
     shuttingDown = true
+    devhatchReport([{ kind: "runtime-ready", port: 0 }])
     uiPromptActive = false
     activeRequests.clear()
     pendingImages.clear()
+    activeTools.clear()
     if (imageServer) {
       imageServer.closeAllConnections()
       await new Promise((resolve) => imageServer.close(resolve))
     }
-    await unlink(process.env.DEVHATCH_PI_IMAGE_ENDPOINT ?? "").catch(() => {})
     imageServer = undefined
   })
 }
 "#;
 
-pub(super) fn write_pi_identity_extension(run_dir: &Path) -> std::io::Result<(PathBuf, PathBuf)> {
-    let extension = run_dir.join("devhatch-pi-identity.mjs");
-    let state = run_dir.join("pi-state.json");
-    std::fs::write(&extension, PI_IDENTITY_EXTENSION)?;
+fn pi_extension_source() -> String {
+    [
+        PI_EXTENSION_PREFIX,
+        crate::agent::runtime::activity::JS_REPORTER,
+        PI_EXTENSION_BODY,
+    ]
+    .concat()
+}
+
+pub(super) fn write_pi_extension(run_dir: &Path) -> std::io::Result<PathBuf> {
+    let extension = run_dir.join("devhatch-pi.mjs");
+    std::fs::write(&extension, pi_extension_source())?;
     std::fs::set_permissions(&extension, std::fs::Permissions::from_mode(0o600))?;
-    Ok((extension, state))
+    Ok(extension)
 }
 
 pub(super) fn prepare_trae_home(
@@ -365,7 +431,7 @@ fn wrapper_source(
     restore_codex_home: bool,
 ) -> String {
     let mut source = String::from("#!/bin/sh\nset -e\n");
-    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\ndevhatch_pi_image_endpoint=${DEVHATCH_PI_IMAGE_ENDPOINT:-}\nreadonly devhatch_pi_image_endpoint\ndevhatch_pi_image_password=${DEVHATCH_PI_IMAGE_PASSWORD:-}\nreadonly devhatch_pi_image_password\n");
+    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\ndevhatch_pi_image_password=${DEVHATCH_PI_IMAGE_PASSWORD:-}\nreadonly devhatch_pi_image_password\ndevhatch_activity_descriptor=${DEVHATCH_ACTIVITY_DESCRIPTOR:-}\nreadonly devhatch_activity_descriptor\ndevhatch_server_executable=${DEVHATCH_SERVER_EXECUTABLE:-}\nreadonly devhatch_server_executable\ndevhatch_opencode_plugin_url=${DEVHATCH_OPENCODE_PLUGIN_URL:-}\nreadonly devhatch_opencode_plugin_url\ndevhatch_opencode_session_id=${DEVHATCH_OPENCODE_SESSION_ID:-}\nreadonly devhatch_opencode_session_id\n");
     if restore_codex_home {
         source.push_str("devhatch_codex_home=$CODEX_HOME\nreadonly devhatch_codex_home\n");
     }
@@ -397,38 +463,44 @@ fn wrapper_source(
     }
     source.push_str("if [ -n \"$devhatch_runtime_bin\" ]; then export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\"; fi\n");
     source.push_str("if [ -n \"$devhatch_image_clipboard_dir\" ]; then export DEVHATCH_IMAGE_CLIPBOARD_DIR=\"$devhatch_image_clipboard_dir\"; fi\n");
-    source.push_str("if [ -n \"$devhatch_pi_image_endpoint\" ]; then export DEVHATCH_PI_IMAGE_ENDPOINT=\"$devhatch_pi_image_endpoint\"; fi\n");
     source.push_str("if [ -n \"$devhatch_pi_image_password\" ]; then export DEVHATCH_PI_IMAGE_PASSWORD=\"$devhatch_pi_image_password\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_activity_descriptor\" ]; then export DEVHATCH_ACTIVITY_DESCRIPTOR=\"$devhatch_activity_descriptor\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_server_executable\" ]; then export DEVHATCH_SERVER_EXECUTABLE=\"$devhatch_server_executable\"; fi\n");
+    source.push_str("if [ -n \"$devhatch_opencode_plugin_url\" ] && [ -n \"$devhatch_server_executable\" ]; then\n  if devhatch_opencode_config_content=$(OPENCODE_CONFIG_CONTENT=${OPENCODE_CONFIG_CONTENT:-} \"$devhatch_server_executable\" --append-opencode-plugin \"$devhatch_opencode_plugin_url\" 2>/dev/null); then\n    export OPENCODE_CONFIG_CONTENT=\"$devhatch_opencode_config_content\"\n  fi\nfi\n");
+    source.push_str("if [ -n \"$devhatch_opencode_session_id\" ]; then export DEVHATCH_OPENCODE_SESSION_ID=\"$devhatch_opencode_session_id\"; fi\n");
     source.push_str("exec \"$@\"\n");
     source
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        PI_IDENTITY_EXTENSION, prepare_codex_home, prepare_trae_home_from, wrapper_source,
-    };
+    use super::{pi_extension_source, prepare_codex_home, prepare_trae_home_from, wrapper_source};
     use crate::launch_config::AgentLaunchConfig;
     use std::os::unix::fs::PermissionsExt;
     use uuid::Uuid;
 
     #[test]
-    fn pi_identity_extension_is_trusted_and_local_only() {
-        assert!(PI_IDENTITY_EXTENSION.contains("session_start"));
-        assert!(PI_IDENTITY_EXTENSION.contains("pi.on(\"input\""));
-        assert!(PI_IDENTITY_EXTENSION.contains("devhatch-image:"));
-        assert!(PI_IDENTITY_EXTENSION.contains("pendingImages.set"));
-        assert!(PI_IDENTITY_EXTENSION.contains("createServer"));
-        assert!(PI_IDENTITY_EXTENSION.contains("ctx.ui.pasteToEditor"));
-        assert!(PI_IDENTITY_EXTENSION.contains("imageServer.listen(0, \"127.0.0.1\""));
-        assert!(PI_IDENTITY_EXTENSION.contains("resizeImage"));
-        assert!(PI_IDENTITY_EXTENSION.contains("pendingImages.clear"));
-        assert!(PI_IDENTITY_EXTENSION.contains("getSessionId()"));
-        assert!(PI_IDENTITY_EXTENSION.contains("getSessionFile()"));
-        assert!(PI_IDENTITY_EXTENSION.contains("open(temporary, \"wx\", 0o600)"));
-        assert!(PI_IDENTITY_EXTENSION.contains("rename(temporary, target)"));
-        assert!(!PI_IDENTITY_EXTENSION.contains("fetch("));
-        assert!(!PI_IDENTITY_EXTENSION.contains("console."));
+    fn pi_extension_is_event_driven_and_local_only() {
+        let source = pi_extension_source();
+        assert!(source.contains("session_start"));
+        assert!(source.contains("pi.on(\"input\""));
+        assert!(source.contains("devhatch-image:"));
+        assert!(source.contains("pendingImages.set"));
+        assert!(source.contains("createServer"));
+        assert!(source.contains("ctx.ui.pasteToEditor"));
+        assert!(source.contains("imageServer.listen(0, \"127.0.0.1\""));
+        assert!(source.contains("resizeImage"));
+        assert!(source.contains("pendingImages.clear"));
+        assert!(source.contains("getSessionId()"));
+        assert!(source.contains("getSessionFile()"));
+        assert!(source.contains("reportActivity(currentActivity)"));
+        assert!(source.contains("runtime-ready"));
+        assert!(source.contains("port: 0"));
+        assert!(source.contains("devhatchQueue.length >= 64"));
+        assert!(source.contains("agent_settled"));
+        assert!(!source.contains("fetch("));
+        assert!(!source.contains("console."));
+        assert!(!source.contains("setInterval"));
     }
 
     #[test]

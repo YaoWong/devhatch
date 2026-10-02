@@ -322,14 +322,10 @@ async fn prepare_from(
     requested_id: Option<&str>,
 ) -> Result<PreparedLaunch, HistoryError> {
     match requested_id {
-        None => {
-            let baseline = match eligible_ids(&home).await {
-                Ok(ids) => ids,
-                Err(BaselineError::Missing) => HashSet::new(),
-                Err(BaselineError::Unavailable) => return Err(HistoryError::Unavailable),
-            };
-            Ok(PreparedLaunch::CodexNew { baseline, home })
-        }
+        None => match eligible_ids(&home).await {
+            Ok(_) | Err(BaselineError::Missing) => Ok(PreparedLaunch::CodexNew { home }),
+            Err(BaselineError::Unavailable) => Err(HistoryError::Unavailable),
+        },
         Some(id) => {
             let record = lookup(home.clone(), id.to_string()).await?;
             let lock_home = home.clone();
@@ -455,6 +451,7 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn new_session_candidates(
     home: PathBuf,
     cwd: PathBuf,
@@ -509,6 +506,7 @@ pub(crate) async fn new_session_candidates(
     .map_err(|_| ())?
 }
 
+#[cfg(test)]
 pub(crate) fn unique_unclaimed_session(
     candidates: Vec<SessionRecord>,
     claimed: &HashSet<String>,
@@ -956,7 +954,7 @@ mod tests {
         let home = temporary_home();
         assert!(matches!(
             prepare_from(home.clone(), None).await.unwrap(),
-            PreparedLaunch::CodexNew { baseline, .. } if baseline.is_empty()
+            PreparedLaunch::CodexNew { home: prepared } if prepared == home
         ));
         fs::write(home.join("state_5.sqlite"), "not sqlite").unwrap();
         assert_eq!(

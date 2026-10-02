@@ -25,6 +25,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match arguments.as_slice() {
         [] => run_server(read_admin_password()?),
         [mode] if mode == std::ffi::OsStr::new("--systemd-server") => run_server(None),
+        [mode, descriptor, event] if mode == std::ffi::OsStr::new("--agent-hook") => {
+            agent::run_hook(std::path::Path::new(descriptor), &event.to_string_lossy());
+            Ok(())
+        }
+        [mode, plugin] if mode == std::ffi::OsStr::new("--append-opencode-plugin") => {
+            let content = agent::append_opencode_plugin(&plugin.to_string_lossy())?;
+            print!("{content}");
+            Ok(())
+        }
         [mode, path] if mode == std::ffi::OsStr::new("--systemd-handoff-wait") => {
             supervisor::run_handoff_helper(std::path::Path::new(path))
         }

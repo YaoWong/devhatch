@@ -2,18 +2,36 @@ use std::{
     collections::HashSet,
     ops::{Deref, DerefMut},
     path::PathBuf,
-    sync::{Arc, RwLock},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
 use futures_util::future::join_all;
 use indexmap::IndexMap;
+use tokio::sync::broadcast;
 
-use crate::session::{Session, SessionKind, SessionView};
+use crate::session::{AgentActivityEvent, Session, SessionKind, SessionView};
 
-#[derive(Default)]
 pub(crate) struct SessionRegistry {
     sessions: RwLock<RegistryState>,
+    agent_events: broadcast::Sender<AgentActivityEvent>,
+    agent_event_sequence: Arc<AtomicU64>,
+    agent_event_lock: Arc<std::sync::Mutex<()>>,
+}
+
+impl Default for SessionRegistry {
+    fn default() -> Self {
+        let (agent_events, _) = broadcast::channel(256);
+        Self {
+            sessions: RwLock::new(RegistryState::default()),
+            agent_events,
+            agent_event_sequence: Arc::new(AtomicU64::new(0)),
+            agent_event_lock: Arc::new(std::sync::Mutex::new(())),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -153,6 +171,21 @@ impl SessionRegistry {
             .collect()
     }
 
+    pub(crate) fn unidentified_agent_cwds_for(&self, agent_id: &str) -> HashSet<PathBuf> {
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        state
+            .sessions
+            .values()
+            .chain(state.terminating_agents.values())
+            .filter(|session| {
+                session.kind() == SessionKind::Agent
+                    && session.agent_id() == Some(agent_id)
+                    && session.upstream_session_id().is_none()
+            })
+            .map(|session| PathBuf::from(session.correlation_details().0))
+            .collect()
+    }
+
     pub(crate) fn owned_process_ids(&self) -> HashSet<u32> {
         let state = self.sessions.read().expect("sessions lock poisoned");
         state
@@ -180,6 +213,40 @@ impl SessionRegistry {
             .sessions
             .get(&SessionKey::borrowed(kind, id))
             .cloned()
+    }
+
+    pub(crate) fn subscribe_agent_activity(&self) -> broadcast::Receiver<AgentActivityEvent> {
+        self.agent_events.subscribe()
+    }
+
+    pub(crate) fn agent_activity_snapshot(&self) -> (u64, Vec<AgentActivityEvent>) {
+        let _events = self
+            .agent_event_lock
+            .lock()
+            .expect("agent activity event lock poisoned");
+        let sessions = self.sessions.read().expect("sessions lock poisoned");
+        let sequence = self.agent_event_sequence.load(Ordering::Acquire);
+        let events = sessions
+            .sessions
+            .iter()
+            .filter(|(key, session)| key.kind == SessionKind::Agent && session.is_live())
+            .map(|(_, session)| session.agent_activity_event(sequence))
+            .collect();
+        (sequence, events)
+    }
+
+    pub(crate) fn agent_activity_channel(
+        &self,
+    ) -> (
+        broadcast::Sender<AgentActivityEvent>,
+        Arc<AtomicU64>,
+        Arc<std::sync::Mutex<()>>,
+    ) {
+        (
+            self.agent_events.clone(),
+            self.agent_event_sequence.clone(),
+            self.agent_event_lock.clone(),
+        )
     }
 
     pub(crate) fn count(&self, kind: SessionKind) -> usize {
@@ -279,14 +346,22 @@ impl SessionRegistry {
     }
 
     pub(crate) fn remove(&self, id: &str, kind: SessionKind) -> Option<Arc<Session>> {
+        let _event = (kind == SessionKind::Agent).then(|| {
+            self.agent_event_lock
+                .lock()
+                .expect("agent activity event lock poisoned")
+        });
         let mut state = self.sessions.write().expect("sessions lock poisoned");
         let key = SessionKey::borrowed(kind, id);
         let removed = state.sessions.shift_remove(&key);
         if let Some(session) = &removed
             && kind == SessionKind::Agent
-            && session.is_live()
         {
-            state.terminating_agents.insert(key, session.clone());
+            let live = session.is_live();
+            session.mark_deleting_with_agent_event_lock();
+            if live {
+                state.terminating_agents.insert(key, session.clone());
+            }
         }
         removed
     }
@@ -318,7 +393,9 @@ mod tests {
     use portable_pty::CommandBuilder;
 
     use super::SessionRegistry;
-    use crate::session::{Session, SessionKind, SessionSpawn};
+    use crate::session::{
+        AgentActivityPhase, AgentActivityStatus, Session, SessionKind, SessionSpawn,
+    };
 
     #[test]
     fn empty_registry_queries_are_consistent() {
@@ -553,6 +630,70 @@ mod tests {
                 .is_some()
         );
         registry.remove(session.id(), SessionKind::Terminal);
+    }
+
+    #[tokio::test]
+    async fn broadcasts_agent_activity_and_removal() {
+        let registry = Arc::new(SessionRegistry::default());
+        let mut events = registry.subscribe_agent_activity();
+        let mut command = CommandBuilder::new("/bin/sh");
+        command.args(["-c", "sleep 30"]);
+        let session = Session::spawn(
+            registry.clone(),
+            SessionSpawn {
+                command,
+                shell: "/bin/sh".to_string(),
+                kind: SessionKind::Agent,
+                upstream_session_id: None,
+                pending_upstream_session_id: None,
+                cwd: std::env::temp_dir(),
+                name: "test".to_string(),
+                cols: 80,
+                rows: 24,
+                agent_id: Some("test"),
+                agent_name: Some("Test"),
+                cleanup_path: None,
+                runtime_endpoint: None,
+                exit_cleanup: None,
+            },
+            |_| {},
+        )
+        .unwrap();
+        let (snapshot_sequence, snapshot) = registry.agent_activity_snapshot();
+        assert_eq!(snapshot_sequence, 0);
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].sequence, snapshot_sequence);
+        assert_eq!(snapshot[0].session_id, session.id());
+        assert!(snapshot[0].activity.is_none());
+
+        session.publish_agent_activity(
+            AgentActivityStatus::Waiting,
+            AgentActivityPhase::Question,
+            Some("Choose an option".to_string()),
+        );
+        let activity = events.recv().await.unwrap();
+        assert_eq!(activity.sequence, 1);
+        assert_eq!(activity.session_id, session.id());
+        assert_eq!(
+            activity.activity.as_ref().map(|activity| activity.status),
+            Some(AgentActivityStatus::Waiting)
+        );
+        assert_eq!(
+            registry.agent_activity_snapshot().1[0].updated_at,
+            activity.updated_at
+        );
+
+        session.mark_deleting();
+        let removed = events.recv().await.unwrap();
+        assert_eq!(removed.sequence, 2);
+        assert_eq!(removed.session_id, session.id());
+        assert!(removed.activity.is_none());
+        assert!(removed.updated_at > activity.updated_at);
+        assert!(registry.agent_activity_snapshot().1.is_empty());
+        session.terminate();
+        tokio::time::timeout(Duration::from_secs(5), session.wait_for_completion())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

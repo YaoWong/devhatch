@@ -77,25 +77,28 @@ pub(crate) async fn prepare(
     let handle = state.history_pool().await;
     let pool = handle.as_ref().map(|handle| &handle.pool);
     let Some(id) = requested_id else {
-        let baseline = match root_session_ids(pool).await {
-            Ok(baseline) => baseline,
-            Err(()) => {
-                if let Some(handle) = &handle {
-                    state.invalidate_history_pool(handle).await;
-                }
-                HashSet::new()
-            }
-        };
-        return Ok(PreparedLaunch::OpenCodeNew { baseline });
+        return Ok(PreparedLaunch::OpenCodeNew);
     };
     if !valid_session_id(id) {
         return Err(HistoryError::InvalidId);
     }
     match resumable_session(pool, id).await {
-        Ok(Some(cwd)) => Ok(PreparedLaunch::OpenCodeResume {
-            id: id.to_string(),
-            cwd,
-        }),
+        Ok(Some(cwd)) => {
+            let canonical_directory = canonical_identity(&cwd);
+            if state
+                .unidentified_agent_cwds_for(OPENCODE_ID)
+                .iter()
+                .any(|active| {
+                    canonical_identity(active.to_string_lossy().as_ref()) == canonical_directory
+                })
+            {
+                return Err(HistoryError::Active);
+            }
+            Ok(PreparedLaunch::OpenCodeResume {
+                id: id.to_string(),
+                cwd,
+            })
+        }
         Ok(None) => Err(HistoryError::NotFound),
         Err(()) => {
             if let Some(handle) = &handle {
@@ -127,9 +130,17 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
             return Err(DeleteError::History(HistoryError::Unavailable));
         }
     };
+    let canonical_directory = canonical_identity(&directory);
+    if state
+        .unidentified_agent_cwds_for(OPENCODE_ID)
+        .iter()
+        .any(|cwd| canonical_identity(cwd.to_string_lossy().as_ref()) == canonical_directory)
+    {
+        return Err(DeleteError::History(HistoryError::Active));
+    }
     if external_opencode_directories(state.owned_process_ids())
         .await
-        .contains(&canonical_identity(&directory))
+        .contains(&canonical_directory)
     {
         return Err(DeleteError::History(HistoryError::ExternalActive));
     }
@@ -158,6 +169,7 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSet<String>, ()> {
     let Some(pool) = pool else {
         return Ok(HashSet::new());
@@ -172,6 +184,7 @@ pub(crate) async fn root_session_ids(pool: Option<&SqlitePool>) -> Result<HashSe
     .map_err(|_| ())
 }
 
+#[cfg(test)]
 pub(crate) async fn new_session_candidates(
     pool: Option<&SqlitePool>,
     directory: &str,
@@ -198,6 +211,7 @@ pub(crate) async fn new_session_candidates(
         .map_err(|_| ())
 }
 
+#[cfg(test)]
 pub(crate) fn unique_unclaimed_session(
     candidates: Vec<String>,
     claimed: &HashSet<String>,
@@ -207,6 +221,7 @@ pub(crate) fn unique_unclaimed_session(
     candidate.filter(|_| candidates.next().is_none())
 }
 
+#[cfg(test)]
 pub(crate) async fn fork_successor_id(
     pool: Option<&SqlitePool>,
     current_id: &str,
@@ -244,32 +259,7 @@ pub(crate) async fn fork_successor_id(
         .map(|(id, _)| id))
 }
 
-pub(crate) async fn fork_successor(
-    pool: Option<&SqlitePool>,
-    current_id: &str,
-    candidate_id: &str,
-    directory: &str,
-) -> Result<bool, ()> {
-    let Some(pool) = pool else { return Ok(false) };
-    validate_schema(pool).await.map_err(|_| ())?;
-    let directory = canonical_identity(directory);
-    let rows = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT id, title, directory FROM session WHERE id IN (?, ?) AND parent_id IS NULL AND time_archived IS NULL",
-    )
-    .bind(current_id)
-    .bind(candidate_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|_| ())?;
-    let current = rows.iter().find(|row| row.0 == current_id);
-    let candidate = rows.iter().find(|row| row.0 == candidate_id);
-    Ok(current.zip(candidate).is_some_and(|(current, candidate)| {
-        canonical_identity(&current.2) == directory
-            && canonical_identity(&candidate.2) == directory
-            && candidate.1 == next_fork_title(&current.1)
-    }))
-}
-
+#[cfg(test)]
 fn next_fork_title(title: &str) -> String {
     let Some(prefix) = title.strip_suffix(')') else {
         return format!("{title} (fork #1)");
@@ -290,7 +280,7 @@ async fn resumable_session(pool: Option<&SqlitePool>, id: &str) -> Result<Option
         .bind(id).fetch_optional(pool).await.map_err(|_| ())
 }
 
-fn valid_session_id(value: &str) -> bool {
+pub(crate) fn valid_session_id(value: &str) -> bool {
     let suffix = value.strip_prefix("ses_");
     matches!(suffix, Some(value) if !value.is_empty() && value.len() <= 124 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'))
 }
@@ -394,8 +384,8 @@ fn canonical_identity(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        HistoryRow, Presence, canonical_identity, fork_successor, fork_successor_id,
-        new_session_candidates, next_fork_title, presence_for, unique_unclaimed_session,
+        HistoryRow, Presence, canonical_identity, fork_successor_id, new_session_candidates,
+        next_fork_title, presence_for, unique_unclaimed_session,
     };
     use sqlx::{
         SqlitePool,
@@ -498,16 +488,6 @@ mod tests {
             .await
             .unwrap(),
             Some("ses_successor".to_string())
-        );
-        assert!(
-            fork_successor(
-                Some(&pool),
-                "ses_current",
-                "ses_successor",
-                alias.to_string_lossy().as_ref(),
-            )
-            .await
-            .unwrap()
         );
     }
 
