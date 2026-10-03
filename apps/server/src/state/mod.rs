@@ -13,7 +13,9 @@ use crate::{
     web_app::WebAppManager,
 };
 
-pub(crate) use history::{HistoryCoordinator, HistoryPoolHandle, OpenCodeHistoryPool};
+pub(crate) use history::{
+    HistoryCoordinator, HistoryDeletionGuard, HistoryPoolHandle, OpenCodeHistoryPool,
+};
 pub(crate) use sessions::SessionRegistry;
 pub(crate) use skill_repository_operation::{
     SkillRepositoryOperationCoordinator, SkillRepositoryOperationKind,
@@ -103,6 +105,18 @@ impl AppState {
 
     pub(crate) fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    pub(crate) fn opencode_database_path(&self) -> PathBuf {
+        self.history_pool.path()
+    }
+
+    pub(crate) async fn rebind_opencode_database(&self, path: PathBuf) {
+        self.history_pool.rebind(path).await;
+    }
+
+    pub(crate) fn opencode_history_handle_is_current(&self, handle: &HistoryPoolHandle) -> bool {
+        self.history_pool.handle_is_current(handle)
     }
 
     pub(crate) async fn history_pool(&self) -> Option<HistoryPoolHandle> {

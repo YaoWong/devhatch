@@ -417,7 +417,7 @@ pub(crate) async fn delete(state: &AppState, id: String) -> Result<(), DeleteErr
     }
     let executable = agent::verified_executable(state.data_dir(), crate::agent::AgentKind::Codex)
         .await
-        .map(|(executable, _)| executable)
+        .map(|verified| verified.path)
         .ok_or(DeleteError::Failed {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "CODEX_UNAVAILABLE",

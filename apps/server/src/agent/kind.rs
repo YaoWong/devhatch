@@ -90,7 +90,7 @@ pub(super) const AGENTS: [AgentDefinition; 4] = [
     },
     AgentDefinition {
         kind: AgentKind::OpenCode,
-        supports_resume: true,
+        supports_resume: false,
         supports_skills: true,
     },
     AgentDefinition {

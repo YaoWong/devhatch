@@ -417,10 +417,18 @@ pub(super) fn write_wrapper(
     config: &AgentLaunchConfig,
     use_managed_skills: bool,
     restore_codex_home: bool,
+    private_runtime_files: bool,
+    inject_opencode_plugin: bool,
 ) -> std::io::Result<()> {
     std::fs::write(
         path,
-        wrapper_source(config, use_managed_skills, restore_codex_home),
+        wrapper_source(
+            config,
+            use_managed_skills,
+            restore_codex_home,
+            private_runtime_files,
+            inject_opencode_plugin,
+        ),
     )?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
 }
@@ -429,9 +437,11 @@ fn wrapper_source(
     config: &AgentLaunchConfig,
     use_managed_skills: bool,
     restore_codex_home: bool,
+    private_runtime_files: bool,
+    inject_opencode_plugin: bool,
 ) -> String {
     let mut source = String::from("#!/bin/sh\nset -e\n");
-    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\ndevhatch_pi_image_password=${DEVHATCH_PI_IMAGE_PASSWORD:-}\nreadonly devhatch_pi_image_password\ndevhatch_activity_descriptor=${DEVHATCH_ACTIVITY_DESCRIPTOR:-}\nreadonly devhatch_activity_descriptor\ndevhatch_server_executable=${DEVHATCH_SERVER_EXECUTABLE:-}\nreadonly devhatch_server_executable\ndevhatch_opencode_plugin_url=${DEVHATCH_OPENCODE_PLUGIN_URL:-}\nreadonly devhatch_opencode_plugin_url\ndevhatch_opencode_session_id=${DEVHATCH_OPENCODE_SESSION_ID:-}\nreadonly devhatch_opencode_session_id\n");
+    source.push_str("devhatch_runtime_bin=${DEVHATCH_RUNTIME_BIN:-}\nreadonly devhatch_runtime_bin\ndevhatch_image_clipboard_dir=${DEVHATCH_IMAGE_CLIPBOARD_DIR:-}\nreadonly devhatch_image_clipboard_dir\ndevhatch_pi_image_password=${DEVHATCH_PI_IMAGE_PASSWORD:-}\nreadonly devhatch_pi_image_password\ndevhatch_activity_descriptor=${DEVHATCH_ACTIVITY_DESCRIPTOR:-}\nreadonly devhatch_activity_descriptor\ndevhatch_server_executable=${DEVHATCH_SERVER_EXECUTABLE:-}\nreadonly devhatch_server_executable\ndevhatch_opencode_plugin_url=${DEVHATCH_OPENCODE_PLUGIN_URL:-}\nreadonly devhatch_opencode_plugin_url\ndevhatch_opencode_plugin_key=${DEVHATCH_OPENCODE_PLUGIN_KEY:-plugin}\nreadonly devhatch_opencode_plugin_key\ndevhatch_opencode_db=${DEVHATCH_OPENCODE_DB:-}\nreadonly devhatch_opencode_db\n");
     if restore_codex_home {
         source.push_str("devhatch_codex_home=$CODEX_HOME\nreadonly devhatch_codex_home\n");
     }
@@ -466,8 +476,13 @@ fn wrapper_source(
     source.push_str("if [ -n \"$devhatch_pi_image_password\" ]; then export DEVHATCH_PI_IMAGE_PASSWORD=\"$devhatch_pi_image_password\"; fi\n");
     source.push_str("if [ -n \"$devhatch_activity_descriptor\" ]; then export DEVHATCH_ACTIVITY_DESCRIPTOR=\"$devhatch_activity_descriptor\"; fi\n");
     source.push_str("if [ -n \"$devhatch_server_executable\" ]; then export DEVHATCH_SERVER_EXECUTABLE=\"$devhatch_server_executable\"; fi\n");
-    source.push_str("if [ -n \"$devhatch_opencode_plugin_url\" ] && [ -n \"$devhatch_server_executable\" ]; then\n  if devhatch_opencode_config_content=$(OPENCODE_CONFIG_CONTENT=${OPENCODE_CONFIG_CONTENT:-} \"$devhatch_server_executable\" --append-opencode-plugin \"$devhatch_opencode_plugin_url\" 2>/dev/null); then\n    export OPENCODE_CONFIG_CONTENT=\"$devhatch_opencode_config_content\"\n  fi\nfi\n");
-    source.push_str("if [ -n \"$devhatch_opencode_session_id\" ]; then export DEVHATCH_OPENCODE_SESSION_ID=\"$devhatch_opencode_session_id\"; fi\n");
+    if inject_opencode_plugin {
+        source.push_str("if [ -n \"$devhatch_opencode_plugin_url\" ] && [ -n \"$devhatch_server_executable\" ]; then\n  if devhatch_opencode_config_content=$(OPENCODE_CONFIG_CONTENT=${OPENCODE_CONFIG_CONTENT:-} \"$devhatch_server_executable\" --append-opencode-plugin \"$devhatch_opencode_plugin_url\" \"$devhatch_opencode_plugin_key\" 2>/dev/null); then\n    export OPENCODE_CONFIG_CONTENT=\"$devhatch_opencode_config_content\"\n  fi\nfi\n");
+    }
+    source.push_str("if [ -n \"$devhatch_opencode_db\" ]; then export OPENCODE_DB=\"$devhatch_opencode_db\"; fi\n");
+    if private_runtime_files {
+        source.push_str("umask 077\n");
+    }
     source.push_str("exec \"$@\"\n");
     source
 }
@@ -600,11 +615,22 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        let source = wrapper_source(&config, false, false);
+        let source = wrapper_source(&config, false, false, false, false);
         assert!(source.starts_with("#!/bin/sh\nset -e\n"));
         assert!(source.contains("export A='one'\nprintf '%s\\n' \"$A\"\ncase x in x) :;; esac\n"));
         assert!(source.contains("export DEVHATCH_RUNTIME_BIN=\"$devhatch_runtime_bin\" PATH=\"$devhatch_runtime_bin:$PATH\""));
+        assert!(source.contains("OPENCODE_DB=\"$devhatch_opencode_db\""));
+        assert!(!source.contains("umask 077"));
         assert!(source.ends_with("exec \"$@\"\n"));
+
+        let private = wrapper_source(&config, false, false, true, false);
+        let umask = private.find("umask 077").unwrap();
+        let scripts = private.find("export A='one'").unwrap();
+        let exec = private.find("exec \"$@\"").unwrap();
+        assert!(scripts < umask && umask < exec);
+        assert!(!private.contains("--append-opencode-plugin"));
+        let v2 = wrapper_source(&config, false, false, true, true);
+        assert!(v2.contains("--append-opencode-plugin"));
     }
 
     #[test]
@@ -620,7 +646,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        let source = wrapper_source(&config, false, true);
+        let source = wrapper_source(&config, false, true, false, false);
         let save = source.find("devhatch_codex_home=$CODEX_HOME").unwrap();
         let readonly = source.find("readonly devhatch_codex_home").unwrap();
         let script = source.find("export CODEX_HOME=/changed").unwrap();
@@ -662,7 +688,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        let source = wrapper_source(&config, true, false);
+        let source = wrapper_source(&config, true, false, false, false);
         assert!(source.contains("devhatch_base_config_dir=${OPENCODE_CONFIG_DIR:-}"));
         assert!(source.contains("ln -s \"$devhatch_base_config_dir/$devhatch_entry\""));
         assert!(source.contains("export OPENCODE_CONFIG_DIR=\"$DEVHATCH_CONFIG_DIR\""));

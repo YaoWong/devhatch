@@ -37,8 +37,8 @@ pub(super) fn prepare_opencode(
     std::fs::write(&shim, CLIPBOARD_SCRIPT)?;
     std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700))?;
     let mut paths = vec![bin_dir.clone()];
-    if let Some(path) = std::env::var_os("PATH") {
-        paths.extend(std::env::split_paths(&path));
+    if let Some(path) = command.get_env("PATH") {
+        paths.extend(std::env::split_paths(path));
     }
     let path = std::env::join_paths(paths).map_err(std::io::Error::other)?;
     command.env("PATH", path);
@@ -204,6 +204,9 @@ async fn paste_opencode_image(
     session: &Session,
     bytes: Bytes,
 ) -> Result<(), PasteImageError> {
+    if session.runtime_endpoint().is_none() {
+        return paste_terminal_image(session, bytes).await;
+    }
     let runtime_input = session.runtime_input.clone().lock_owned().await;
     let run_dir = session.runtime_dir().ok_or(PasteImageError::Unavailable)?;
     let endpoint = session

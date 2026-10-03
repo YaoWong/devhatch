@@ -70,10 +70,20 @@ impl HistoryBackend {
         }
     }
 
-    pub(super) async fn delete(self, state: &AppState, id: String) -> Result<(), DeleteError> {
+    pub(super) async fn delete(
+        self,
+        state: &AppState,
+        id: String,
+        opencode_deletion: Option<&mut crate::state::HistoryDeletionGuard>,
+    ) -> Result<(), DeleteError> {
         match self {
             Self::Codex => codex::delete(state, id).await,
-            Self::OpenCode => opencode::delete(state, id).await,
+            Self::OpenCode => {
+                let Some(deletion) = opencode_deletion else {
+                    return Err(DeleteError::History(HistoryError::Unavailable));
+                };
+                opencode::delete(state, id, deletion).await
+            }
             Self::Pi => {
                 let mut workspaces = crate::launch_path::paths(state)
                     .await

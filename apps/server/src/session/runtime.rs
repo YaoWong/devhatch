@@ -163,7 +163,8 @@ impl Session {
             runtime_endpoint_ready: tokio::sync::Notify::new(),
             runtime_input: Arc::new(tokio::sync::Mutex::new(())),
         });
-        if !sessions.insert(session.clone()) {
+        let inserted = sessions.insert(session.clone());
+        if !inserted {
             return Err("server is shutting down".into());
         }
         if let Err(error) = Self::start_reader(&session, reader) {

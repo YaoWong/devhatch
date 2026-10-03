@@ -13,6 +13,8 @@ pub(crate) use kind::{
     AgentKind, CODEX_ID, CODEX_NAME, OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID,
     TRAECLI_NAME, supported,
 };
-pub(crate) use launch::verified_executable;
+#[cfg(test)]
+pub(crate) use launch::opencode_v2;
+pub(crate) use launch::{VerifiedExecutable, verified_executable};
 pub(crate) use runtime::activity::{append_opencode_plugin, run_hook};
 pub(crate) use runtime_input::MAX_IMAGE_UPLOAD_BYTES;

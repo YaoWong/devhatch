@@ -136,6 +136,7 @@ enum Report {
     RuntimeReady {
         port: u16,
     },
+    HistoryReady,
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -276,11 +277,10 @@ impl ActivityBridge {
                         readers.spawn(async move {
                             let _permit = permit;
                             let mut stream = stream;
-                            if let Some(bytes) = read_message(&mut stream).await {
-                                let _ = sender.send(bytes).await;
-                                use tokio::io::AsyncWriteExt;
-                                let _ = stream.write_all(&[1]).await;
-                            }
+                            let Some(bytes) = read_message(&mut stream).await else {
+                                return;
+                            };
+                            queue_message(&sender, bytes);
                         });
                     }
                     _ = readers.join_next(), if !readers.is_empty() => {}
@@ -292,6 +292,10 @@ impl ActivityBridge {
             let _ = std::fs::remove_file(&self.socket_path);
         });
     }
+}
+
+fn queue_message(sender: &mpsc::Sender<Vec<u8>>, bytes: Vec<u8>) {
+    let _ = sender.try_send(bytes);
 }
 
 fn session_stopped(event: Result<SessionEvent, broadcast::error::RecvError>) -> bool {
@@ -386,6 +390,11 @@ async fn process_messages(
                     }
                 }
                 Report::RuntimeReady { port } => session.update_pi_port(port),
+                Report::HistoryReady => {
+                    if matches!(source, IdentitySource::OpenCode) {
+                        let _ = crate::history::opencode::initialize_lineage(&state).await;
+                    }
+                }
             }
         }
     }
@@ -445,7 +454,7 @@ fn valid_report(report: &Report) -> bool {
                 && cwd.as_ref().is_none_or(|path| valid_path(path))
                 && file.as_ref().is_none_or(|path| valid_path(path))
         }
-        Report::RuntimeReady { .. } => true,
+        Report::RuntimeReady { .. } | Report::HistoryReady => true,
     }
 }
 
@@ -461,6 +470,24 @@ fn valid_path(path: &Path) -> bool {
 
 fn valid_detail(value: &str) -> bool {
     value.chars().count() <= MAX_DETAIL_CHARS && !value.chars().any(char::is_control)
+}
+
+pub(super) async fn apply_opencode_identity(
+    session: &Arc<Session>,
+    state: &AppState,
+    upstream_id: String,
+    cwd: String,
+) -> bool {
+    apply_identity(
+        session,
+        state,
+        &IdentitySource::OpenCode,
+        upstream_id,
+        Some(PathBuf::from(cwd)),
+        None,
+    )
+    .await
+    .is_some()
 }
 
 async fn apply_identity(
@@ -525,6 +552,7 @@ async fn apply_identity(
             if !crate::history::opencode::valid_session_id(&upstream_id) {
                 return None;
             }
+            let _ = crate::history::opencode::initialize_lineage_locked(state).await;
             let cwd = cwd.as_deref().and_then(safe_runtime_cwd)?;
             if !cwd_matches_session(session, &cwd) || !claim_available(session, state, &upstream_id)
             {
@@ -617,12 +645,14 @@ pub(crate) fn run_hook(descriptor_path: &Path, event: &str) {
     if message.len() > MAX_MESSAGE_BYTES {
         return;
     }
-    if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(descriptor.socket_path) {
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-        if stream.write_all(&message).is_ok() {
+    send_hook_message(&descriptor.socket_path, &message);
+}
+
+fn send_hook_message(socket_path: &Path, message: &[u8]) {
+    if let Ok(mut stream) = std::os::unix::net::UnixStream::connect(socket_path) {
+        let _ = stream.set_write_timeout(Some(Duration::from_millis(100)));
+        if stream.write_all(message).is_ok() {
             let _ = stream.shutdown(Shutdown::Write);
-            let mut acknowledged = [0_u8; 1];
-            let _ = stream.read_exact(&mut acknowledged);
         }
     }
 }
@@ -902,7 +932,7 @@ pub(in crate::agent) fn hook_override(
     let mut state_entries = Vec::new();
     for event in events {
         let handler = HookHandler {
-            r#async: false,
+            r#async: true,
             command: format!(
                 "{} --agent-hook {} {}",
                 shell_quote(server),
@@ -994,15 +1024,22 @@ fn toml_string(value: &str) -> String {
     serde_json::to_string(value).expect("TOML string must serialize")
 }
 
-pub(crate) fn append_opencode_plugin(file_url: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn append_opencode_plugin(
+    file_url: &str,
+    config_key: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let content = std::env::var("OPENCODE_CONFIG_CONTENT").unwrap_or_default();
-    append_opencode_plugin_content(&content, file_url)
+    append_opencode_plugin_content(&content, file_url, config_key)
 }
 
 fn append_opencode_plugin_content(
     content: &str,
     file_url: &str,
+    config_key: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    if !matches!(config_key, "plugin" | "plugins") {
+        return Err("invalid OpenCode plugin config key".into());
+    }
     let url = url::Url::parse(file_url)?;
     if url.scheme() != "file" {
         return Err("plugin URL must use the file scheme".into());
@@ -1017,7 +1054,7 @@ fn append_opencode_plugin_content(
         .as_object_mut()
         .ok_or("OpenCode config content must be an object")?;
     let plugins = object
-        .entry("plugin")
+        .entry(config_key)
         .or_insert_with(|| Value::Array(Vec::new()))
         .as_array_mut()
         .ok_or("OpenCode plugin config must be an array")?;
@@ -1034,9 +1071,51 @@ fn append_opencode_plugin_content(
     Ok(serde_json::to_string(&value)?)
 }
 
-pub(in crate::agent) fn write_opencode_plugin(run_dir: &Path) -> std::io::Result<PathBuf> {
+pub(in crate::agent) fn remove_opencode_plugin(
+    content: &str,
+    file_url: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if content.trim().is_empty() {
+        return Ok(String::new());
+    }
+    let mut value: Value = json5::from_str(content)?;
+    let object = value
+        .as_object_mut()
+        .ok_or("OpenCode config content must be an object")?;
+    for key in ["plugin", "plugins"] {
+        let Some(plugins) = object.get_mut(key) else {
+            continue;
+        };
+        let plugins = plugins
+            .as_array_mut()
+            .ok_or("OpenCode plugin config must be an array")?;
+        plugins.retain(|plugin| {
+            plugin.as_str() != Some(file_url)
+                && plugin
+                    .as_array()
+                    .and_then(|entry| entry.first())
+                    .and_then(Value::as_str)
+                    != Some(file_url)
+        });
+    }
+    Ok(serde_json::to_string(&value)?)
+}
+
+pub(in crate::agent) fn write_opencode_plugin(
+    run_dir: &Path,
+    v2: bool,
+) -> std::io::Result<PathBuf> {
+    if v2 {
+        let directory = run_dir.join("devhatch-opencode-plugin");
+        std::fs::create_dir(&directory)?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        let source = format!("{OPENCODE_PLUGIN}{OPENCODE_PLUGIN_V2_ENTRYPOINT}");
+        write_private_file(&directory.join("server.mjs"), source.as_bytes())?;
+        return Ok(directory);
+    }
     let path = run_dir.join("devhatch-opencode-plugin.mjs");
-    write_private_file(&path, OPENCODE_PLUGIN.as_bytes())?;
+    let source = format!("{OPENCODE_PLUGIN}{OPENCODE_PLUGIN_V1_ENTRYPOINT}");
+    write_private_file(&path, source.as_bytes())?;
     Ok(path)
 }
 
@@ -1141,7 +1220,7 @@ function devhatchFlush() {
   }
 }
 function sessionID(properties) {
-  return properties?.sessionID ?? properties?.sessionId ?? properties?.info?.id ?? properties?.info?.sessionID ?? properties?.info?.sessionId ?? properties?.part?.sessionID ?? properties?.part?.sessionId
+  return properties?.sessionID ?? properties?.sessionId ?? properties?.info?.id ?? properties?.info?.sessionID ?? properties?.info?.sessionId ?? properties?.part?.sessionID ?? properties?.part?.sessionId ?? properties?.form?.sessionID ?? properties?.form?.sessionId
 }
 function detail(properties, keys) {
   for (const key of keys) {
@@ -1163,71 +1242,116 @@ function identity(upstreamId, cwd) {
     activity(upstreamId, "idle", "idle"),
   ]
 }
-let currentSessionId = text(process.env.DEVHATCH_OPENCODE_SESSION_ID, 256)
+let currentSessionId
+let currentDirectory
+function handleEvent(event, directory) {
+  try {
+    const value = event?.payload ?? event
+    const type = value?.type
+    const properties = value?.data ?? value?.properties ?? {}
+    const eventDirectory = text(value?.location?.directory ?? properties?.location?.directory ?? properties?.info?.directory ?? directory ?? currentDirectory, 4096)
+    if (eventDirectory) currentDirectory = eventDirectory
+    if (type === "session.created") {
+      const info = properties.info ?? properties
+      if (info.parentID != null) return
+      const id = text(sessionID(properties), 256)
+      const cwd = text(info.directory ?? info.location?.directory ?? eventDirectory, 4096)
+      if (id && cwd) {
+        currentSessionId = id
+        report(identity(id, cwd))
+      }
+      return
+    }
+    if (type === "session.forked") {
+      const id = text(sessionID(properties), 256)
+      const cwd = eventDirectory
+      if (id && cwd) {
+        currentSessionId = id
+        report(identity(id, cwd))
+      }
+      return
+    }
+    if (type === "tui.session.select") {
+      const id = text(sessionID(properties), 256)
+      const cwd = eventDirectory
+      if (id && cwd) {
+        currentSessionId = id
+        report(identity(id, cwd))
+      }
+      return
+    }
+    const id = text(sessionID(properties), 256) ?? (["session.error", "session.execution.failed"].includes(type) ? currentSessionId : undefined)
+    if (!id || id !== currentSessionId) return
+    let update
+    if (type === "session.status") {
+      if (properties.status?.type === "busy") update = activity(id, "busy", "thinking")
+      if (properties.status?.type === "idle") update = activity(id, "idle", "idle")
+      if (properties.status?.type === "retry") update = activity(id, "retry", "retry", properties.status?.message)
+    } else if (["session.idle", "session.execution.succeeded", "session.execution.interrupted"].includes(type)) update = activity(id, "idle", "idle")
+    else if (type === "permission.asked" || type === "permission.v2.asked") update = activity(id, "waiting", "permission", "Waiting for permission")
+    else if (["question.asked", "question.v2.asked", "form.created"].includes(type)) update = activity(id, "waiting", "question", properties.form?.title ?? "Waiting for answer")
+    else if (["permission.replied", "permission.v2.replied", "question.replied", "question.v2.replied", "question.rejected", "question.v2.rejected", "form.replied", "form.cancelled"].includes(type)) update = activity(id, "busy", "thinking")
+    else if (["session.error", "session.next.step.failed", "session.execution.failed", "session.step.failed", "session.compaction.failed"].includes(type)) update = activity(id, "error", "error", errorDetail(properties))
+    else if (["session.next.retried", "session.retry.scheduled"].includes(type)) update = activity(id, "retry", "retry", errorDetail(properties.error ?? properties))
+    else if (["session.next.tool.input.started", "session.next.tool.called", "session.tool.input.started", "session.tool.called"].includes(type)) update = activity(id, "busy", "tool", `Running ${detail(properties, ["tool", "name"]) ?? "tool"}`)
+    else if (["session.next.shell.started", "session.shell.started"].includes(type)) update = activity(id, "busy", "tool", "Running shell")
+    else if (["session.next.tool.success", "session.next.shell.ended", "session.tool.success", "session.shell.ended"].includes(type)) update = activity(id, "busy", "thinking")
+    else if (["session.next.tool.failed", "session.tool.failed"].includes(type)) update = activity(id, "error", "error", errorDetail(properties.error ?? properties))
+    else if (["session.next.compaction.started", "session.compaction.started"].includes(type)) update = activity(id, "busy", "thinking", "Compacting context")
+    else if (["session.next.compaction.ended", "session.compacted", "session.compaction.ended"].includes(type)) update = activity(id, "busy", "thinking")
+    else if (["session.next.prompted", "session.next.step.started", "session.next.step.ended", "session.next.text.started", "session.next.text.ended", "session.next.reasoning.started", "session.next.reasoning.ended", "session.execution.started", "session.step.started", "session.step.ended", "session.text.started", "session.text.ended", "session.reasoning.started", "session.reasoning.ended"].includes(type)) update = activity(id, "busy", "thinking")
+    else if (type === "message.part.updated") {
+      const part = properties.part
+      if (part?.type === "tool") {
+        const status = part.state?.status
+        if (status === "pending" || status === "running") update = activity(id, "busy", "tool", `Running ${detail(part, ["title", "tool", "name", "description"]) ?? "tool"}`)
+        else if (status === "completed") update = activity(id, "busy", "thinking")
+        else if (status === "error") update = activity(id, "error", "error", text(part.state?.error))
+      } else if (part?.type === "retry") update = activity(id, "retry", "retry", errorDetail(part))
+      else if (part?.type === "compaction") update = activity(id, "busy", "thinking", "Compacting context")
+    }
+    if (update) report(eventDirectory ? [{ kind: "identity", upstreamId: id, cwd: eventDirectory }, update] : [update])
+  } catch {}
+}
+"#;
+
+const OPENCODE_PLUGIN_V1_ENTRYPOINT: &str = r#"
 export default async function ({ directory }) {
   return {
-    event: async ({ event }) => {
+    event: async ({ event }) => handleEvent(event, directory),
+  }
+}
+"#;
+
+const OPENCODE_PLUGIN_V2_ENTRYPOINT: &str = r#"
+export default {
+  id: "devhatch.activity",
+  async setup(context) {
+    currentDirectory = text(context?.location?.directory, 4096) ?? currentDirectory
+    try {
+      await context.session.hook("prompt", (event) => {
+        try {
+          const id = text(event?.sessionID, 256)
+          const cwd = text(context?.location?.directory ?? currentDirectory, 4096)
+          if (id && cwd) {
+            currentSessionId = id
+            currentDirectory = cwd
+            report(identity(id, cwd))
+          }
+        } catch {}
+      })
+    } catch {}
+    report([{ kind: "history-ready" }])
+    const controller = new AbortController()
+    void (async () => {
       try {
-        const value = event?.payload ?? event
-        const type = value?.type
-        const properties = value?.properties ?? {}
-        if (type === "session.created") {
-          const info = properties.info ?? {}
-          if (info.parentID != null) return
-          const id = text(sessionID(properties), 256)
-          const cwd = text(info.directory ?? directory, 4096)
-          if (id && cwd) {
-            currentSessionId = id
-            report(identity(id, cwd))
-          }
-          return
-        }
-        if (type === "tui.session.select") {
-          const id = text(sessionID(properties), 256)
-          const cwd = text(directory, 4096)
-          if (id && cwd) {
-            currentSessionId = id
-            report(identity(id, cwd))
-          }
-          return
-        }
-        const id = text(sessionID(properties), 256) ?? (type === "session.error" ? currentSessionId : undefined)
-        if (!id || id !== currentSessionId) return
-        let update
-        if (type === "session.status") {
-          if (properties.status?.type === "busy") update = activity(id, "busy", "thinking")
-          if (properties.status?.type === "idle") update = activity(id, "idle", "idle")
-          if (properties.status?.type === "retry") update = activity(id, "retry", "retry", properties.status?.message)
-        } else if (type === "session.idle") update = activity(id, "idle", "idle")
-        else if (type === "permission.asked" || type === "permission.v2.asked") update = activity(id, "waiting", "permission", "Waiting for permission")
-        else if (type === "question.asked" || type === "question.v2.asked") update = activity(id, "waiting", "question", "Waiting for answer")
-        else if (["permission.replied", "permission.v2.replied", "question.replied", "question.v2.replied", "question.rejected", "question.v2.rejected"].includes(type)) update = activity(id, "busy", "thinking")
-        else if (type === "session.error" || type === "session.next.step.failed") update = activity(id, "error", "error", errorDetail(properties))
-        else if (type === "session.next.retried") update = activity(id, "retry", "retry", errorDetail(properties.error ?? properties))
-        else if (type === "session.next.tool.input.started" || type === "session.next.tool.called") update = activity(id, "busy", "tool", `Running ${detail(properties, ["tool", "name"]) ?? "tool"}`)
-        else if (type === "session.next.shell.started") update = activity(id, "busy", "tool", "Running shell")
-        else if (["session.next.tool.success", "session.next.shell.ended"].includes(type)) update = activity(id, "busy", "thinking")
-        else if (type === "session.next.tool.failed") update = activity(id, "error", "error", errorDetail(properties.error ?? properties))
-        else if (type === "session.next.compaction.started") update = activity(id, "busy", "thinking", "Compacting context")
-        else if (type === "session.next.compaction.ended" || type === "session.compacted") update = activity(id, "busy", "thinking")
-        else if (["session.next.prompted", "session.next.step.started", "session.next.step.ended", "session.next.text.started", "session.next.text.ended", "session.next.reasoning.started", "session.next.reasoning.ended"].includes(type)) update = activity(id, "busy", "thinking")
-        else if (type === "message.part.updated") {
-          const part = properties.part
-          if (part?.type === "tool") {
-            const status = part.state?.status
-            if (status === "pending" || status === "running") update = activity(id, "busy", "tool", `Running ${detail(part, ["title", "tool", "name", "description"]) ?? "tool"}`)
-            else if (status === "completed") update = activity(id, "busy", "thinking")
-            else if (status === "error") update = activity(id, "error", "error", text(part.state?.error))
-          } else if (part?.type === "retry") update = activity(id, "retry", "retry", errorDetail(part))
-          else if (part?.type === "compaction") update = activity(id, "busy", "thinking", "Compacting context")
-        }
-        if (update) {
-          const cwd = text(directory, 4096)
-          report(cwd ? [{ kind: "identity", upstreamId: id, cwd }, update] : [update])
+        for await (const event of context.event.subscribe({ signal: controller.signal })) {
+          handleEvent(event, context?.location?.directory)
         }
       } catch {}
-    },
-  }
+    })()
+    return () => controller.abort()
+  },
 }
 "#;
 
@@ -1349,6 +1473,48 @@ mod tests {
         assert_eq!(next_hook_sequence(&descriptor.hook_sequence_path), Some(2));
     }
 
+    #[tokio::test]
+    async fn full_telemetry_queue_drops_without_waiting_for_a_consumer() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        queue_message(&sender, vec![1]);
+        queue_message(&sender, vec![2]);
+        assert_eq!(receiver.recv().await, Some(vec![1]));
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn hook_sender_does_not_wait_for_a_server_acknowledgement() {
+        let root = tempfile::tempdir().unwrap();
+        let socket_path = root.path().join("hook.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+        let (received, received_waiter) = std::sync::mpsc::channel();
+        let (release, release_waiter) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = Vec::new();
+            stream.read_to_end(&mut bytes).unwrap();
+            received.send(bytes).unwrap();
+            release_waiter.recv().unwrap();
+        });
+
+        let (completed, completed_waiter) = std::sync::mpsc::channel();
+        let sender = std::thread::spawn(move || {
+            send_hook_message(&socket_path, b"telemetry");
+            completed.send(()).unwrap();
+        });
+        let bytes = received_waiter
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        let completed_without_ack = completed_waiter
+            .recv_timeout(Duration::from_secs(1))
+            .is_ok();
+        release.send(()).unwrap();
+        sender.join().unwrap();
+        server.join().unwrap();
+        assert_eq!(bytes, b"telemetry");
+        assert!(completed_without_ack);
+    }
+
     #[test]
     fn maps_codex_and_trae_hooks() {
         let id = Uuid::new_v4().to_string();
@@ -1413,7 +1579,7 @@ mod tests {
         .unwrap();
         assert!(override_value.starts_with("hooks={SessionStart="));
         assert!(override_value.contains("PermissionRequest"));
-        assert!(override_value.contains("async=false"));
+        assert!(override_value.contains("async=true"));
         assert!(override_value.contains("dev'\\\"'\\\"'hatch"));
         let handler = HookHandler {
             r#async: true,
@@ -1436,46 +1602,93 @@ mod tests {
     }
 
     #[test]
+    fn removes_only_the_inherited_devhatch_opencode_plugin() {
+        let inherited = "file:///tmp/old-devhatch-plugin.mjs";
+        let content = format!(
+            "{{plugin: ['npm:user-plugin', ['{inherited}', {{enabled: true}}]], plugins: ['file:///tmp/user-plugin.mjs', '{inherited}']}}"
+        );
+        let sanitized = remove_opencode_plugin(&content, inherited).unwrap();
+        let value: Value = serde_json::from_str(&sanitized).unwrap();
+        assert_eq!(value["plugin"], serde_json::json!(["npm:user-plugin"]));
+        assert_eq!(
+            value["plugins"],
+            serde_json::json!(["file:///tmp/user-plugin.mjs"])
+        );
+    }
+
+    #[test]
     fn appends_opencode_plugin_without_discarding_existing_entries() {
         let url = "file:///tmp/devhatch-plugin.mjs";
-        let appended = append_opencode_plugin_content("", url).unwrap();
+        let appended = append_opencode_plugin_content("", url, "plugins").unwrap();
         assert_eq!(
-            serde_json::from_str::<Value>(&appended).unwrap()["plugin"][0],
+            serde_json::from_str::<Value>(&appended).unwrap()["plugins"][0],
             url
         );
         let preserved = append_opencode_plugin_content(
             "{ plugin: [['file:///tmp/devhatch-plugin.mjs', { enabled: true }], 'npm:test'] }",
             url,
+            "plugin",
         )
         .unwrap();
         let value = serde_json::from_str::<Value>(&preserved).unwrap();
         assert_eq!(value["plugin"].as_array().unwrap().len(), 2);
         assert_eq!(value["plugin"][0][0], url);
-        assert!(append_opencode_plugin_content("{}", "https://example.com/plugin").is_err());
+        assert!(
+            append_opencode_plugin_content("{}", "https://example.com/plugin", "plugins").is_err()
+        );
+        assert!(append_opencode_plugin_content("{}", url, "unknown").is_err());
     }
 
     #[test]
     fn generated_opencode_plugin_is_private_and_event_driven() {
         let root = tempfile::tempdir().unwrap();
-        let path = write_opencode_plugin(root.path()).unwrap();
+        let path = write_opencode_plugin(root.path(), false).unwrap();
         let source = std::fs::read_to_string(&path).unwrap();
         assert_eq!(
             std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
             0o600
         );
         assert!(source.contains("export default async function"));
+        assert!(source.contains("value?.data ?? value?.properties"));
+        assert!(source.contains("session.execution.started"));
+        assert!(source.contains("form.created"));
         assert!(source.contains("session.created"));
+        assert!(source.contains("session.forked"));
         assert!(source.contains("tui.session.select"));
         assert!(source.contains("properties?.info?.sessionID"));
         assert!(source.contains("properties?.part?.sessionID"));
-        assert!(source.contains("type === \"session.error\" ? currentSessionId"));
+        assert!(source.contains("session.execution.failed\"].includes(type) ? currentSessionId"));
         assert!(source.contains("id !== currentSessionId"));
-        assert!(source.contains("report(cwd ? [{ kind: \"identity\""));
+        assert!(source.contains("report(eventDirectory ? [{ kind: \"identity\""));
         assert!(source.contains("session.next.retried"));
         assert!(source.contains("createConnection"));
         assert!(source.contains("devhatchQueue.length >= 64"));
         assert!(source.contains("socket.unref()"));
         assert!(!source.contains("console."));
+        assert!(!source.contains("setInterval"));
+    }
+
+    #[test]
+    fn generated_opencode_v2_plugin_uses_setup_and_event_subscription() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = write_opencode_plugin(root.path(), true).unwrap();
+        assert!(directory.is_dir());
+        assert_eq!(
+            std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let path = directory.join("server.mjs");
+        let source = std::fs::read_to_string(path).unwrap();
+        assert!(source.contains("export default {"));
+        assert!(source.contains("id: \"devhatch.activity\""));
+        assert!(source.contains("setup(context)"));
+        assert!(source.contains("await context.session.hook(\"prompt\""));
+        assert!(source.contains("const id = text(event?.sessionID"));
+        assert!(!source.contains("event.prompt ="));
+        assert!(source.contains("context.event.subscribe"));
+        assert!(source.contains("history-ready"));
+        assert!(source.contains("controller.abort()"));
+        assert!(!source.contains("export default async function"));
         assert!(!source.contains("setInterval"));
     }
 

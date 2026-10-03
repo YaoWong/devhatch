@@ -21,7 +21,7 @@ use crate::{
 use super::{
     kind::{AgentDefinition, AgentKind, OPENCODE_ID, definition},
     launch::{
-        installed_version, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
+        VerifiedExecutable, spawn_codex, spawn_opencode, spawn_pi, spawn_traecli,
         supports_image_paste, verified_executable,
     },
     runtime_input::{PasteImageError, paste_image as paste_runtime_image},
@@ -62,13 +62,18 @@ pub async fn agents(State(state): State<Arc<AppState>>) -> Response {
         let state = state.clone();
         async move {
             let agent = definition(kind);
-            let (version, summary) = tokio::join!(
-                installed_version(state.data_dir(), agent.kind),
+            let (verified, summary) = tokio::join!(
+                verified_executable(state.data_dir(), agent.kind),
                 launch_config::summary(&state, agent.kind.as_str())
             );
             let (count, default) = summary.unwrap_or((0, None));
-            let supports_image_paste = supports_image_paste(agent.kind, version.as_deref());
-            agent_view(agent, version, count, default, supports_image_paste)
+            let supports_image_paste = supports_image_paste(
+                agent.kind,
+                verified
+                    .as_ref()
+                    .map(|executable| executable.version.as_str()),
+            );
+            agent_view(agent, verified, count, default, supports_image_paste)
         }
     }))
     .await;
@@ -77,14 +82,16 @@ pub async fn agents(State(state): State<Arc<AppState>>) -> Response {
 
 fn agent_view(
     agent: AgentDefinition,
-    version: Option<String>,
+    verified: Option<VerifiedExecutable>,
     launch_config_count: i64,
     default_launch_config_id: Option<String>,
     supports_image_paste: bool,
 ) -> serde_json::Value {
     let kind = agent.kind;
     let id = kind.as_str();
-    let available = version.is_some();
+    let available = verified.is_some();
+    let supports_resume = agent.supports_resume;
+    let version = verified.map(|executable| executable.version);
     serde_json::json!({
         "id": id,
         "name": kind.name(),
@@ -98,7 +105,7 @@ fn agent_view(
         "diagnostic": if available { serde_json::Value::Null } else { serde_json::Value::String(kind.diagnostic().into()) },
         "installable": kind.installable(),
         "supportsHistory": true,
-        "supportsResume": agent.supports_resume,
+        "supportsResume": supports_resume,
         "supportsSkills": agent.supports_skills,
         "supportsImagePaste": supports_image_paste
     })
@@ -122,10 +129,13 @@ pub async fn create(
         Err(()) => return error(StatusCode::BAD_REQUEST, "INVALID_AGENT_ID"),
     };
     let agent = definition(kind);
+    if kind == AgentKind::OpenCode && request.upstream_session_id.is_some() {
+        return error(StatusCode::BAD_REQUEST, "OPENCODE_RESUME_UNAVAILABLE");
+    }
     if request.skill_profile_id.is_some() && !agent.supports_skills {
         return error(StatusCode::BAD_REQUEST, "AGENT_SKILLS_UNSUPPORTED");
     }
-    let Some((executable, version)) = verified_executable(state.data_dir(), kind).await else {
+    let Some(initial_verified) = verified_executable(state.data_dir(), kind).await else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "AGENT_UNAVAILABLE");
     };
     let workspace_id = request.workspace_id.clone();
@@ -160,6 +170,16 @@ pub async fn create(
     let backend = kind.history_backend();
     let history_guard_state = state.clone();
     let _history_guard = history_guard_state.history_reconciliation().lock().await;
+    let verified_executable = if kind == AgentKind::OpenCode {
+        let path = crate::server::current_opencode_database_path(
+            Some(&initial_verified.version),
+            Some(initial_verified.opencode_v2),
+        );
+        state.rebind_opencode_database(path).await;
+        initial_verified
+    } else {
+        initial_verified
+    };
     let mut terminal_request = request.terminal_request();
     let prepared = match backend
         .prepare(&state, request.upstream_session_id.as_deref())
@@ -177,7 +197,7 @@ pub async fn create(
             }
             let session = match spawn_codex(
                 state.clone(),
-                (executable, version),
+                verified_executable,
                 terminal_request,
                 home,
                 None,
@@ -200,7 +220,7 @@ pub async fn create(
             ));
             let session = match spawn_codex(
                 state.clone(),
-                (executable, version),
+                verified_executable,
                 terminal_request,
                 home,
                 Some((id, path)),
@@ -218,7 +238,7 @@ pub async fn create(
             }
             let session = match spawn_traecli(
                 state.clone(),
-                (executable, version),
+                verified_executable,
                 terminal_request,
                 thread_name,
                 None,
@@ -236,7 +256,7 @@ pub async fn create(
             ));
             let session = match spawn_traecli(
                 state.clone(),
-                (executable, version),
+                verified_executable,
                 terminal_request,
                 id,
                 Some(&path),
@@ -254,7 +274,7 @@ pub async fn create(
             }
             let session = match spawn_pi(
                 state.clone(),
-                executable,
+                verified_executable,
                 terminal_request,
                 id,
                 None,
@@ -272,7 +292,7 @@ pub async fn create(
             ));
             let session = match spawn_pi(
                 state.clone(),
-                executable,
+                verified_executable,
                 terminal_request,
                 id,
                 Some(&path),
@@ -290,27 +310,9 @@ pub async fn create(
             }
             let session = match spawn_opencode(
                 state.clone(),
-                executable,
+                verified_executable,
                 terminal_request,
                 None,
-                launch_config,
-                skill_generation.as_deref(),
-            ) {
-                Ok(session) => session,
-                Err(error) => return spawn_error(error),
-            };
-            created_session(&state, workspace_id.as_deref(), session).await
-        }
-        PreparedLaunch::OpenCodeResume { id, cwd } => {
-            terminal_request.cwd = Some(serde_json::Value::String(cwd));
-            if invalid_cwd(terminal_request.cwd.as_ref()) {
-                return error(StatusCode::BAD_REQUEST, "INVALID_CWD");
-            }
-            let session = match spawn_opencode(
-                state.clone(),
-                executable,
-                terminal_request,
-                Some(id),
                 launch_config,
                 skill_generation.as_deref(),
             ) {
@@ -493,13 +495,17 @@ pub async fn socket(
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::{os::unix::fs::PermissionsExt, sync::Arc, time::Duration};
 
     use portable_pty::CommandBuilder;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{created_session, created_session_inner, remove};
+    use super::{
+        AgentCreateRequest, AgentKind, VerifiedExecutable, agent_view, create, created_session,
+        created_session_inner, definition, remove,
+    };
     use crate::{
+        agent::OPENCODE_ID,
         session::{Session, SessionEvent, SessionKind, SessionSpawn},
         state::{AppState, OpenCodeHistoryPool},
     };
@@ -550,6 +556,60 @@ mod tests {
             |_| {},
         )
         .unwrap()
+    }
+
+    #[test]
+    fn opencode_never_advertises_resume_support() {
+        let verified = |v2| VerifiedExecutable {
+            path: "/opencode".into(),
+            version: if v2 { "2.0.20" } else { "1.18.34" }.into(),
+            opencode_v2: v2,
+        };
+        for executable in [None, Some(verified(false)), Some(verified(true))] {
+            assert_eq!(
+                agent_view(definition(AgentKind::OpenCode), executable, 0, None, true,)["supportsResume"],
+                false
+            );
+        }
+        for kind in [AgentKind::Codex, AgentKind::TraeCli, AgentKind::Pi] {
+            assert_eq!(
+                agent_view(definition(kind), None, 0, None, false)["supportsResume"],
+                true
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn opencode_resume_is_rejected_before_executable_or_history_access() {
+        let (temp, state) = state().await;
+        let marker = temp.path().join("executable-ran");
+        let prefix = temp.path().join("agent-clis/opencode");
+        std::fs::create_dir_all(prefix.join("bin")).unwrap();
+        std::fs::set_permissions(&prefix, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let executable = prefix.join("bin/opencode");
+        std::fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\ntouch '{}'\nprintf '2.0.20\\n'\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let response = create(
+            axum::extract::State(state),
+            Ok(axum::Json(AgentCreateRequest {
+                agent_id: OPENCODE_ID.to_string(),
+                upstream_session_id: Some("ses_target".to_string()),
+                ..AgentCreateRequest::default()
+            })),
+        )
+        .await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert!(!marker.exists());
+        assert!(!temp.path().join("history.db").exists());
+        assert!(!temp.path().join("agent-runs").exists());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

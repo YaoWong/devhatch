@@ -8,7 +8,6 @@ use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::{
-    agent::OPENCODE_ID,
     session::{AgentActivityPhase, AgentActivityStatus, Session, SessionEvent},
     state::AppState,
 };
@@ -166,43 +165,7 @@ async fn update_created_session(
     let Some((directory, id)) = parse_created_session_value(value) else {
         return false;
     };
-    let current = session.upstream_session_id();
-    let belongs_to_session = match current.as_deref() {
-        None => true,
-        Some(current) => {
-            let handle = app_state.history_pool().await;
-            let result = crate::history::fork_successor(
-                handle.as_ref().map(|handle| &handle.pool),
-                current,
-                &id,
-                &directory,
-            )
-            .await;
-            if result.is_err()
-                && let Some(handle) = &handle
-            {
-                app_state.invalidate_history_pool(handle).await;
-            }
-            result.unwrap_or(false)
-        }
-    };
-    if !belongs_to_session {
-        return false;
-    }
-    let _reconciliation = app_state.history_reconciliation().lock().await;
-    let reconciled = session.upstream_session_id();
-    let identity_matches = match current.as_deref() {
-        None => reconciled.is_none() && session.correlation_details().0 == directory,
-        Some(expected) => reconciled.as_deref() == Some(expected),
-    };
-    if identity_matches
-        && app_state.contains_session(session)
-        && !session.is_deleting()
-        && !app_state.history_deletion_pending(OPENCODE_ID, &id)
-    {
-        return session.compare_and_update_upstream_session_id(current.as_deref(), id);
-    }
-    false
+    super::activity::apply_opencode_identity(session, app_state, id, directory).await
 }
 
 fn sse_event_end(pending: &[u8]) -> Option<(usize, usize)> {
