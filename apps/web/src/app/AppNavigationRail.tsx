@@ -229,6 +229,7 @@ export function AppNavigationRail({
               sessionCount={agent.selectedSessions.length}
               historyCount={agent.selectedAgent.supportsHistory ? agent.history.sessions.length : 0}
               supportsHistory={agent.selectedAgent.supportsHistory}
+              supportsResume={agent.selectedAgent.supportsResume}
               historyAvailable={agent.history.available}
               historyDiagnostic={agent.history.diagnostic}
               historyLoading={agent.historyLoading}

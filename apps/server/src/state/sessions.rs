@@ -202,6 +202,9 @@ impl SessionRegistry {
             return false;
         }
         let key = SessionKey::for_session(&session);
+        if state.sessions.contains_key(&key) {
+            return false;
+        }
         state.sessions.insert(key, session);
         true
     }
@@ -316,11 +319,11 @@ impl SessionRegistry {
     }
 
     pub(crate) fn contains(&self, session: &Arc<Session>) -> bool {
-        self.sessions
-            .read()
-            .expect("sessions lock poisoned")
+        let state = self.sessions.read().expect("sessions lock poisoned");
+        let key = SessionKey::for_session(session);
+        state
             .sessions
-            .get(&SessionKey::for_session(session))
+            .get(&key)
             .is_some_and(|current| Arc::ptr_eq(current, session))
     }
 

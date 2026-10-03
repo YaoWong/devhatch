@@ -25,7 +25,7 @@ pub(crate) enum PreparedLaunch {
     OpenCodeNew,
     OpenCodeResume {
         id: String,
-        cwd: String,
+        cwd: PathBuf,
     },
     PiNew {
         id: String,

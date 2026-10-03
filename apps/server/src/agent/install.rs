@@ -14,8 +14,10 @@ use axum::{
 };
 
 use super::{
-    AgentKind,
-    launch::{executable_in_prefix, installed_version, managed_agent_prefix},
+    AgentKind, VerifiedExecutable,
+    launch::{
+        executable_in_prefix, isolated_opencode_output, managed_agent_prefix, verified_executable,
+    },
 };
 use crate::{api::ApiError, auth, state::AppState};
 
@@ -42,10 +44,10 @@ const CODEX: InstallSpec = InstallSpec {
 };
 const OPENCODE: InstallSpec = InstallSpec {
     kind: AgentKind::OpenCode,
-    package: "opencode-ai@1.18.30",
-    version: "1.18.30",
+    package: "@opencode/cli@2.0.20",
+    version: "2.0.20",
     minimum_node: [16, 0, 0],
-    postinstall: Some("lib/node_modules/opencode-ai/postinstall.mjs"),
+    postinstall: Some("lib/node_modules/@opencode/cli/postinstall.mjs"),
 };
 const PI: InstallSpec = InstallSpec {
     kind: AgentKind::Pi,
@@ -178,13 +180,18 @@ pub(crate) async fn install(
             .into_response(),
         );
     };
-    if let Some(version) = installed_version(state.data_dir(), kind).await {
-        return install_response(StatusCode::OK, kind, version);
+    let installed = verified_executable(state.data_dir(), kind).await;
+    if installed_satisfies_spec(kind, installed.as_ref()) {
+        return install_response(StatusCode::OK, kind, installed.unwrap().version);
     }
     match install_managed(&state, spec).await {
         Ok(version) => install_response(StatusCode::CREATED, kind, version),
         Err(error) => error.into_response(),
     }
+}
+
+fn installed_satisfies_spec(kind: AgentKind, installed: Option<&VerifiedExecutable>) -> bool {
+    installed.is_some_and(|verified| kind != AgentKind::OpenCode || verified.opencode_v2)
 }
 
 fn install_response(status: StatusCode, kind: AgentKind, version: String) -> Response {
@@ -279,8 +286,18 @@ async fn install_managed(state: &AppState, spec: &InstallSpec) -> Result<String,
     let executable = executable_in_prefix(&staging, spec.kind.as_str())
         .ok_or_else(|| InstallError::Failed("the installed executable failed validation".into()))?;
     let version = validate_installed_version(state, &executable, spec, &environment).await?;
+    let _history_guard = if spec.kind == AgentKind::OpenCode {
+        Some(state.history_reconciliation().lock().await)
+    } else {
+        None
+    };
     publish(&root, &staging, &managed_agent_prefix(data_dir, spec.kind))?;
     staging_guard.disarm();
+    if spec.kind == AgentKind::OpenCode {
+        let path = crate::server::current_opencode_database_path(Some(&version), Some(true));
+        state.rebind_opencode_database(path).await;
+        let _ = crate::history::opencode::initialize_lineage_locked(state).await;
+    }
     Ok(version)
 }
 
@@ -386,20 +403,40 @@ async fn validate_installed_version(
     spec: &InstallSpec,
     environment: &InstallerEnvironment,
 ) -> Result<String, InstallError> {
-    let mut command = tokio::process::Command::new(executable);
-    command.arg("--version");
-    configure_installer_environment(&mut command, environment);
-    let output = tokio::select! {
-        result = crate::process::command_output(&mut command, CHECK_TIMEOUT, CHECK_OUTPUT_LIMIT) => result,
-        () = state.wait_for_shutdown() => Err("Server shutdown interrupted the installation".into()),
-    }
-        .map_err(|error| {
-            if error == "Command timed out" {
-                InstallError::Timeout(error)
-            } else {
-                InstallError::Failed(error)
+    let output = if spec.kind == AgentKind::OpenCode {
+        tokio::select! {
+            output = isolated_opencode_output(state.data_dir(), executable, &["--version"]) => {
+                output.ok_or_else(|| InstallError::Failed(
+                    "installed OpenCode validation could not be isolated".into(),
+                ))?
             }
-        })?;
+            () = state.wait_for_shutdown() => {
+                return Err(InstallError::Failed(
+                    "server shutdown interrupted the installation".into(),
+                ));
+            }
+        }
+    } else {
+        let mut command = tokio::process::Command::new(executable);
+        command.arg("--version");
+        configure_installer_environment(&mut command, environment);
+        tokio::select! {
+            result = crate::process::command_output(&mut command, CHECK_TIMEOUT, CHECK_OUTPUT_LIMIT) => {
+                result.map_err(|error| {
+                    if error == "Command timed out" {
+                        InstallError::Timeout(error)
+                    } else {
+                        InstallError::Failed(error)
+                    }
+                })?
+            }
+            () = state.wait_for_shutdown() => {
+                return Err(InstallError::Failed(
+                    "server shutdown interrupted the installation".into(),
+                ));
+            }
+        }
+    };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success()
@@ -517,10 +554,11 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::{
-        CODEX, OPENCODE, PI, ensure_private_directory, install, install_spec, version_at_least,
+        CODEX, InstallerEnvironment, OPENCODE, PI, ensure_private_directory, install, install_spec,
+        installed_satisfies_spec, validate_installed_version, version_at_least,
     };
     use crate::{
-        agent::{AgentKind, launch::executable_in_prefix},
+        agent::{AgentKind, VerifiedExecutable, launch::executable_in_prefix},
         state::{AppState, OpenCodeHistoryPool},
     };
 
@@ -587,8 +625,80 @@ mod tests {
         assert_eq!(install_spec(AgentKind::Pi), Some(&PI));
         assert_eq!(install_spec(AgentKind::TraeCli), None);
         assert_eq!(CODEX.package, "@openai/codex@0.153.4");
-        assert_eq!(OPENCODE.package, "opencode-ai@1.18.30");
+        assert_eq!(OPENCODE.package, "@opencode/cli@2.0.20");
         assert_eq!(PI.package, "@earendil-works/pi-coding-agent@0.85.1");
+    }
+
+    #[test]
+    fn opencode_install_accepts_any_v2_but_rejects_v1() {
+        let verified = |version: &str, v2| VerifiedExecutable {
+            path: std::path::PathBuf::from("/opencode"),
+            version: version.into(),
+            opencode_v2: v2,
+        };
+        assert!(!installed_satisfies_spec(AgentKind::OpenCode, None));
+        assert!(!installed_satisfies_spec(
+            AgentKind::OpenCode,
+            Some(&verified("1.18.30", false))
+        ));
+        assert!(installed_satisfies_spec(
+            AgentKind::OpenCode,
+            Some(&verified("2.0.0", true))
+        ));
+        assert!(installed_satisfies_spec(
+            AgentKind::OpenCode,
+            Some(&verified("2.3.4-beta.1", true))
+        ));
+        assert!(installed_satisfies_spec(
+            AgentKind::OpenCode,
+            Some(&verified("local", true))
+        ));
+        assert!(!installed_satisfies_spec(
+            AgentKind::OpenCode,
+            Some(&verified("local", false))
+        ));
+        assert!(installed_satisfies_spec(
+            AgentKind::Codex,
+            Some(&verified("0.1.0", false))
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn opencode_install_validation_uses_isolated_environment() {
+        let (temp, state) = state().await;
+        let executable = temp.path().join("staged-opencode");
+        let host_namespace = std::fs::read_link("/proc/self/ns/net").unwrap();
+        let marker = temp.path().join("host-network-namespace");
+        std::fs::write(&marker, host_namespace.as_os_str().as_encoded_bytes()).unwrap();
+        let script = format!(
+            "#!/bin/sh\nset -eu\ncase \"$HOME\" in {0}/agent-runs/*/home) ;; *) exit 1 ;; esac\nfor name in XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME XDG_STATE_HOME XDG_RUNTIME_DIR TMPDIR; do eval value=\"\\$$name\"; case \"$value\" in {0}/agent-runs/*) ;; *) exit 1 ;; esac; done\n[ -z \"${{CARGO_MANIFEST_DIR+x}}\" ]\n[ \"$(readlink /proc/self/ns/net)\" != \"$(cat {1})\" ]\nprintf '2.0.20\\n'\n",
+            temp.path().display(),
+            marker.display(),
+        );
+        std::fs::write(&executable, script).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let environment = InstallerEnvironment {
+            path: std::ffi::OsString::from("/usr/bin:/bin"),
+            home: temp.path().join("unused-home"),
+            cache: temp.path().join("unused-cache"),
+            temporary: temp.path().join("unused-tmp"),
+            user_config: temp.path().join("unused-user.npmrc"),
+            global_config: temp.path().join("unused-global.npmrc"),
+        };
+
+        assert_eq!(
+            validate_installed_version(&state, &executable, &OPENCODE, &environment)
+                .await
+                .unwrap(),
+            OPENCODE.version
+        );
+        assert!(
+            std::fs::read_dir(temp.path().join("agent-runs"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

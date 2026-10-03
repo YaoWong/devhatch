@@ -131,6 +131,8 @@ describe("navigation rail accessibility", () => {
     expect(agentSessionListSource).not.toContain("tw:w-[max(40px,calc(40px*var(--app-ui-scale)))]");
     expect(agentSessionListSource).not.toContain("tw:[@media(pointer:coarse)]:w-[max(44px,calc(44px*var(--app-ui-scale)))]");
     expect(agentSessionListSource).toContain("const resumeHistory = !live;");
+    expect(agentSessionListSource).toContain("(live || supportsResume) && (");
+    expect(appNavigationRailSource).toContain("supportsResume={agent.selectedAgent.supportsResume}");
     expect(agentSessionListSource).toContain('className={`${sessionActionsClass} session-actions-history`}');
     expect(agentSessionListSource).toContain("if (live) onActivate(live.id);");
     expect(agentSessionListSource).toContain('disabled={resumeHistory && launching}');

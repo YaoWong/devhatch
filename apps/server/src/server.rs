@@ -11,6 +11,7 @@ use axum::{
     extract::connect_info::Connected,
     serve::{IncomingStream, Listener},
 };
+use path_clean::PathClean;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use tokio::{
     net::TcpListener,
@@ -101,9 +102,16 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
     sqlx::migrate!().run(&pool).await?;
     secure_database_files(&database_path)?;
     let skillink = ::skillink::Skillink::open(Some(data_dir.join("skillink"))).await?;
-    let history_pool = crate::state::OpenCodeHistoryPool::new(
-        crate::filesystem::home_dir().join(".local/share/opencode/opencode.db"),
-    );
+    let opencode_version =
+        crate::agent::verified_executable(&data_dir, crate::agent::AgentKind::OpenCode)
+            .await
+            .map(|verified| (verified.version, verified.opencode_v2));
+    let history_pool = crate::state::OpenCodeHistoryPool::new(current_opencode_database_path(
+        opencode_version
+            .as_ref()
+            .map(|(version, _)| version.as_str()),
+        opencode_version.as_ref().map(|(_, v2)| *v2),
+    ));
     let mut initialized =
         sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM admin_credentials WHERE id = 1)")
             .fetch_one(&pool)
@@ -180,6 +188,7 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
     if let Some(supervisor) = supervisor {
         let _ = state.set_supervisor(supervisor);
     }
+    let _ = crate::history::opencode::initialize_lineage(&state).await;
     let app = crate::router::build(state.clone(), web_dist);
     let address = format!("{bind_host}:{PORT}");
     let listener = TcpListener::bind(&address).await?;
@@ -218,6 +227,97 @@ pub(crate) async fn run(admin_password: Option<String>) -> Result<(), Box<dyn st
     })
     .await?;
     Ok(())
+}
+
+pub(crate) fn current_opencode_database_path(version: Option<&str>, v2: Option<bool>) -> PathBuf {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    opencode_database_path(
+        &cwd,
+        &crate::filesystem::home_dir(),
+        env::var_os("XDG_DATA_HOME").as_deref(),
+        env::var_os("OPENCODE_DB").as_deref(),
+        env::var_os("OPENCODE_DISABLE_CHANNEL_DB").as_deref(),
+        version,
+        v2,
+    )
+}
+
+fn opencode_database_path(
+    cwd: &Path,
+    home: &Path,
+    xdg_data_home: Option<&std::ffi::OsStr>,
+    configured: Option<&std::ffi::OsStr>,
+    disable_channel_database: Option<&std::ffi::OsStr>,
+    version: Option<&str>,
+    v2: Option<bool>,
+) -> PathBuf {
+    let absolute = |path: PathBuf| {
+        if path.is_absolute() {
+            path.clean()
+        } else {
+            cwd.join(path).clean()
+        }
+    };
+    let default_data_home = || absolute(home.to_path_buf()).join(".local/share");
+    let data_home = xdg_data_home
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(absolute)
+        .unwrap_or_else(default_data_home);
+    let data_directory = data_home.join("opencode").clean();
+    let v2 = v2.unwrap_or(true);
+    if let Some(configured) = configured.filter(|value| v2 || !value.is_empty()) {
+        let configured = PathBuf::from(configured);
+        if configured == Path::new(":memory:") {
+            return configured;
+        }
+        return if configured.is_absolute() {
+            configured.clean()
+        } else {
+            data_directory.join(configured).clean()
+        };
+    }
+    let standard_channel = disable_channel_database.is_some_and(|value| {
+        value == std::ffi::OsStr::new("1") || value == std::ffi::OsStr::new("true")
+    });
+    let filename = if !v2 || standard_channel {
+        "opencode.db".to_string()
+    } else if let Some(channel) = version.and_then(opencode_channel_from_version) {
+        if matches!(
+            channel.as_str(),
+            "latest" | "dev" | "beta" | "next" | "prod"
+        ) {
+            "opencode.db".to_string()
+        } else {
+            format!(
+                "opencode-{}.db",
+                channel
+                    .chars()
+                    .map(|character| {
+                        if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+                        {
+                            character
+                        } else {
+                            '-'
+                        }
+                    })
+                    .collect::<String>()
+            )
+        }
+    } else {
+        "opencode.db".to_string()
+    };
+    data_directory.join(filename)
+}
+
+fn opencode_channel_from_version(version: &str) -> Option<String> {
+    let version = version.trim().trim_start_matches('v');
+    if version == "local" {
+        return Some("local".to_string());
+    }
+    let preview = version.strip_prefix("0.0.0-")?;
+    let (channel, build) = preview.rsplit_once('-')?;
+    (!channel.is_empty() && !build.is_empty()).then(|| channel.to_string())
 }
 
 fn resolve_web_dist(
@@ -333,7 +433,9 @@ async fn shutdown_signal() {
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 
-    use super::{prepare_data_dir, resolve_web_dist, secure_database_files};
+    use super::{
+        opencode_database_path, prepare_data_dir, resolve_web_dist, secure_database_files,
+    };
 
     #[tokio::test]
     async fn stop_acknowledgement_precedes_cleanup_signal() {
@@ -349,6 +451,149 @@ mod tests {
         assert!(!task.is_finished());
         stopped.send(()).unwrap();
         assert!(task.await.unwrap());
+    }
+
+    #[test]
+    fn resolves_opencode_database_from_cwd_xdg_version_and_override() {
+        let cwd = std::path::Path::new("/srv/devhatch");
+        let home = std::path::Path::new("/home/tester");
+        let resolve = |xdg, configured, disabled, version| {
+            opencode_database_path(
+                cwd,
+                home,
+                xdg,
+                configured,
+                disabled,
+                version,
+                version.map(|value| value == "local" || crate::agent::opencode_v2(value)),
+            )
+        };
+        assert_eq!(
+            resolve(None, None, None, Some("2.0.20")),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode.db")
+        );
+        assert_eq!(
+            resolve(Some(std::ffi::OsStr::new("")), None, None, Some("2.0.20")),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode.db")
+        );
+        assert_eq!(
+            resolve(
+                Some(std::ffi::OsStr::new("relative/./data")),
+                None,
+                None,
+                Some("2.0.20")
+            ),
+            std::path::Path::new("/srv/devhatch/relative/data/opencode/opencode.db")
+        );
+        assert_eq!(
+            resolve(
+                Some(std::ffi::OsStr::new("/private/data")),
+                Some(std::ffi::OsStr::new("../channel.db")),
+                None,
+                Some("2.0.20")
+            ),
+            std::path::Path::new("/private/data/channel.db")
+        );
+        assert_eq!(
+            resolve(
+                None,
+                Some(std::ffi::OsStr::new("/explicit/../opencode.db")),
+                None,
+                Some("2.0.20")
+            ),
+            std::path::Path::new("/opencode.db")
+        );
+        assert_eq!(
+            resolve(
+                None,
+                Some(std::ffi::OsStr::new(":memory:")),
+                None,
+                Some("2.0.20")
+            ),
+            std::path::Path::new(":memory:")
+        );
+    }
+
+    #[test]
+    fn preserves_versioned_opencode_database_semantics() {
+        let cwd = std::path::Path::new("/srv/devhatch");
+        let home = std::path::Path::new("/home/tester");
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                Some(std::ffi::OsStr::new("")),
+                None,
+                Some("2.0.20"),
+                Some(true),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode")
+        );
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                Some(std::ffi::OsStr::new("")),
+                None,
+                Some("1.18.30"),
+                Some(false),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode.db")
+        );
+        assert_eq!(
+            opencode_database_path(cwd, home, None, None, None, Some("local"), Some(true)),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode-local.db")
+        );
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                None,
+                None,
+                Some("0.0.0-local-202610031215"),
+                Some(true),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode-local.db")
+        );
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                None,
+                None,
+                Some("0.0.0-preview-a-1234.2"),
+                Some(true),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode-preview-a.db")
+        );
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                None,
+                None,
+                Some("0.0.0-beta-1234"),
+                Some(true),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode.db")
+        );
+        assert_eq!(
+            opencode_database_path(
+                cwd,
+                home,
+                None,
+                None,
+                Some(std::ffi::OsStr::new("true")),
+                Some("local"),
+                Some(true),
+            ),
+            std::path::Path::new("/home/tester/.local/share/opencode/opencode.db")
+        );
     }
 
     #[test]

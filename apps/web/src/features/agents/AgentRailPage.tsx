@@ -12,6 +12,7 @@ import type { Agent, LaunchConfig, LaunchConfigInput } from "../../types/agents"
 import type { ConfirmAction } from "../../types/app";
 import type { SkillProfile } from "../../types/skills";
 import { TERMINAL_LAUNCH_TARGET_ID } from "./launchSetupPreference";
+import { formatAgentVersion } from "./versionDisplay";
 import { AgentConfigDialog } from "./AgentConfigDialog";
 
 function readLaunchSetupCollapsed(key: string) {
@@ -260,7 +261,7 @@ function TargetOption({ target, fallback }: { target?: LaunchTargetOption; fallb
       ? "Coming soon"
       : agent.available
         ? agent.version
-          ? `v${agent.version}`
+          ? formatAgentVersion(agent.version)
           : "Installed"
         : "Not installed";
   return (

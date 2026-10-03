@@ -16,8 +16,12 @@ mod workspace;
 use super::{
     AgentKind, CODEX_ID, CODEX_NAME, OPENCODE_ID, OPENCODE_NAME, PI_ID, PI_NAME, TRAECLI_ID,
     TRAECLI_NAME,
-    runtime::activity::{
-        ActivityBridge, IdentitySource, hook_override, supports_hooks, write_opencode_plugin,
+    runtime::{
+        activity::{
+            ActivityBridge, IdentitySource, hook_override, remove_opencode_plugin, supports_hooks,
+            write_opencode_plugin,
+        },
+        events::start_event_watcher,
     },
     runtime_input::{configure_pi_endpoint, prepare_opencode},
 };
@@ -35,6 +39,13 @@ use workspace::{
 
 const DEFAULT_COLS: u16 = 120;
 const DEFAULT_ROWS: u16 = 32;
+
+#[derive(Debug)]
+pub(crate) struct VerifiedExecutable {
+    pub(crate) path: PathBuf,
+    pub(crate) version: String,
+    pub(crate) opencode_v2: bool,
+}
 
 struct RunDirCleanup(Option<PathBuf>);
 
@@ -70,32 +81,135 @@ fn resolve_agent_cwd(value: &str) -> std::io::Result<PathBuf> {
 pub(super) async fn installed_version(data_dir: &Path, kind: AgentKind) -> Option<String> {
     verified_executable(data_dir, kind)
         .await
-        .map(|(_, version)| version)
+        .map(|verified| verified.version)
 }
 
 pub(crate) async fn verified_executable(
     data_dir: &Path,
     kind: AgentKind,
-) -> Option<(PathBuf, String)> {
+) -> Option<VerifiedExecutable> {
+    let mut fallback = None;
     for executable in executable_candidates(data_dir, kind) {
-        let Ok(output) = crate::process::command_output(
+        let Some(verified) = verify_executable(data_dir, executable, kind).await else {
+            continue;
+        };
+        if kind != AgentKind::OpenCode || verified.opencode_v2 {
+            return Some(verified);
+        }
+        fallback = Some(verified);
+    }
+    fallback
+}
+
+async fn verify_executable(
+    data_dir: &Path,
+    executable: PathBuf,
+    kind: AgentKind,
+) -> Option<VerifiedExecutable> {
+    let output = if kind == AgentKind::OpenCode {
+        isolated_opencode_output(data_dir, &executable, &["--version"]).await?
+    } else {
+        crate::process::command_output(
             tokio::process::Command::new(&executable).arg("--version"),
             Duration::from_secs(2),
             16 * 1024,
         )
         .await
-        else {
-            continue;
-        };
-        if !output.status.success() {
-            continue;
-        }
-        let Some(version) = parse_version(kind, &output.stdout) else {
-            continue;
-        };
-        return Some((executable, version));
+        .ok()?
+    };
+    if !output.status.success() {
+        return None;
     }
+    let version = parse_version(kind, &output.stdout)?;
+    let opencode_v2 = if kind == AgentKind::OpenCode {
+        match opencode_generation(&version) {
+            Some(generation) => generation,
+            None => probe_local_opencode_v2(data_dir, &executable).await?,
+        }
+    } else {
+        false
+    };
+    Some(VerifiedExecutable {
+        path: executable,
+        version,
+        opencode_v2,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(super) async fn isolated_opencode_output(
+    data_dir: &Path,
+    executable: &Path,
+    arguments: &[&str],
+) -> Option<std::process::Output> {
+    let probe_dir = create_run_dir(data_dir).ok()?;
+    let _cleanup = RunDirCleanup::new(probe_dir.clone());
+    let directories = [
+        ("home", "HOME"),
+        ("data", "XDG_DATA_HOME"),
+        ("config", "XDG_CONFIG_HOME"),
+        ("cache", "XDG_CACHE_HOME"),
+        ("state", "XDG_STATE_HOME"),
+        ("runtime", "XDG_RUNTIME_DIR"),
+        ("tmp", "TMPDIR"),
+    ];
+    for (name, _) in directories {
+        let path = probe_dir.join(name);
+        std::fs::create_dir(&path).ok()?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).ok()?;
+    }
+    let mut command = tokio::process::Command::new("/usr/bin/unshare");
+    command
+        .args(["--user", "--map-root-user", "--net", "--"])
+        .arg(executable)
+        .args(arguments)
+        .env_clear()
+        .env(
+            "PATH",
+            env::var_os("PATH").unwrap_or_else(|| OsString::from("/usr/bin:/bin")),
+        )
+        .env("LANG", "C.UTF-8")
+        .env("TERM", "dumb");
+    for (name, variable) in directories {
+        command.env(variable, probe_dir.join(name));
+    }
+    crate::process::command_output(&mut command, Duration::from_secs(2), 16 * 1024)
+        .await
+        .ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(super) async fn isolated_opencode_output(
+    _: &Path,
+    _: &Path,
+    _: &[&str],
+) -> Option<std::process::Output> {
     None
+}
+
+async fn probe_local_opencode_v2(data_dir: &Path, executable: &Path) -> Option<bool> {
+    let output =
+        isolated_opencode_output(data_dir, executable, &["session", "delete", "--help"]).await?;
+    if !output.status.success() {
+        return None;
+    }
+    classify_opencode_help(&[output.stdout, output.stderr].concat())
+}
+
+fn classify_opencode_help(output: &[u8]) -> Option<bool> {
+    let help = String::from_utf8_lossy(output);
+    let has_option = |option: &str| {
+        help.lines().any(|line| {
+            line.trim_start()
+                .strip_prefix(option)
+                .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with(char::is_whitespace))
+        })
+    };
+    match (has_option("--standalone"), has_option("--pure")) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    }
 }
 
 fn parse_version(kind: AgentKind, output: &[u8]) -> Option<String> {
@@ -110,8 +224,8 @@ fn parse_version(kind: AgentKind, output: &[u8]) -> Option<String> {
         .strip_prefix(prefix)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or(&version)
-        .to_string();
+        .unwrap_or(&version);
+    let version = version.strip_prefix('v').unwrap_or(version).to_string();
     (!version.is_empty()).then_some(version)
 }
 
@@ -123,7 +237,26 @@ pub(super) fn supports_image_paste(kind: AgentKind, version: Option<&str>) -> bo
     }
 }
 
-pub(super) fn version_at_least(version: &str, minimum: [u64; 3]) -> bool {
+fn opencode_generation(version: &str) -> Option<bool> {
+    match version
+        .trim()
+        .trim_start_matches('v')
+        .split(['.', '-', '+'])
+        .next()
+        .and_then(|major| major.parse::<u64>().ok())
+    {
+        Some(major) if major >= 2 => Some(true),
+        Some(1) => Some(false),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn opencode_v2(version: &str) -> bool {
+    opencode_generation(version) == Some(true)
+}
+
+pub(crate) fn version_at_least(version: &str, minimum: [u64; 3]) -> bool {
     let version = version
         .strip_suffix("(internal edition)")
         .map(str::trim)
@@ -142,16 +275,26 @@ pub(crate) fn managed_agent_prefix(data_dir: &Path, kind: AgentKind) -> PathBuf 
     data_dir.join("agent-clis").join(kind.as_str())
 }
 
-fn executable_candidates(data_dir: &Path, kind: AgentKind) -> Vec<PathBuf> {
-    let mut candidates = path_executable(kind.as_str())
-        .into_iter()
-        .collect::<Vec<_>>();
-    if let Some(managed) = managed_executable_path(data_dir, kind)
-        && !candidates.contains(&managed)
-    {
-        candidates.push(managed);
-    }
+fn ordered_executable_candidates(
+    kind: AgentKind,
+    managed: Option<PathBuf>,
+    path: Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut candidates = if kind == AgentKind::OpenCode {
+        managed.into_iter().chain(path).collect::<Vec<_>>()
+    } else {
+        path.into_iter().chain(managed).collect::<Vec<_>>()
+    };
+    candidates.dedup();
     candidates
+}
+
+fn executable_candidates(data_dir: &Path, kind: AgentKind) -> Vec<PathBuf> {
+    ordered_executable_candidates(
+        kind,
+        managed_executable_path(data_dir, kind),
+        path_executable(kind.as_str()),
+    )
 }
 
 fn managed_executable_path(data_dir: &Path, kind: AgentKind) -> Option<PathBuf> {
@@ -195,14 +338,18 @@ fn path_executable(executable: &str) -> Option<PathBuf> {
 
 pub(super) fn spawn_codex(
     state: Arc<AppState>,
-    verified_executable: (PathBuf, String),
+    verified_executable: VerifiedExecutable,
     request: CreateRequest,
     home: PathBuf,
     resume: Option<(String, PathBuf)>,
     launch_config: AgentLaunchConfig,
     skill_generation: Option<&Path>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
-    let (executable, version) = verified_executable;
+    let VerifiedExecutable {
+        path: executable,
+        version,
+        ..
+    } = verified_executable;
     let fallback_cwd = default_cwd();
     let requested_cwd = request
         .cwd
@@ -239,7 +386,7 @@ pub(super) fn spawn_codex(
         home.clone()
     };
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, true) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, true, false, false) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -361,12 +508,17 @@ fn codex_args(
 
 pub(super) fn spawn_opencode(
     state: Arc<AppState>,
-    executable: PathBuf,
+    verified_executable: VerifiedExecutable,
     request: CreateRequest,
     upstream_session_id: Option<String>,
     launch_config: AgentLaunchConfig,
     skill_generation: Option<&Path>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
+    let VerifiedExecutable {
+        path: executable,
+        opencode_v2,
+        ..
+    } = verified_executable;
     let fallback_cwd = default_cwd();
     let requested_cwd = request
         .cwd
@@ -379,15 +531,7 @@ pub(super) fn spawn_opencode(
     let run_dir = create_run_dir(state.data_dir())?;
     let mut run_dir_cleanup = RunDirCleanup::new(run_dir.clone());
     let session_id = Uuid::new_v4().to_string();
-    let telemetry =
-        ActivityBridge::prepare(&run_dir, &session_id, OPENCODE_ID, IdentitySource::OpenCode)
-            .ok()
-            .and_then(|bridge| {
-                let plugin = write_opencode_plugin(&run_dir).ok()?;
-                let server = std::env::current_exe().ok()?;
-                let plugin_url = url::Url::from_file_path(plugin).ok()?;
-                Some((bridge, server, plugin_url.to_string()))
-            });
+    let telemetry = prepare_opencode_telemetry(&run_dir, &session_id, opencode_v2);
     if let Some(generation) = skill_generation
         && let Err(error) = copy_skills(&run_dir, generation)
     {
@@ -395,23 +539,36 @@ pub(super) fn spawn_opencode(
         return Err(error.into());
     }
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, skill_generation.is_some(), false) {
+    if let Err(error) = write_wrapper(
+        &wrapper,
+        &launch_config,
+        skill_generation.is_some(),
+        false,
+        true,
+        opencode_v2,
+    ) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
     let shell = executable.to_string_lossy().into_owned();
     let mut command = CommandBuilder::new("/bin/sh");
+    if let Err(error) = sanitize_opencode_environment(&mut command) {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(error.into());
+    }
     command.arg(&wrapper);
     command.arg(&executable);
-    let event_endpoint = match configure_command(&mut command, upstream_session_id.as_ref()) {
-        Ok(endpoint) => endpoint,
-        Err(error) => {
-            let _ = std::fs::remove_dir_all(&run_dir);
-            return Err(error.into());
-        }
-    };
+    let event_endpoint =
+        match configure_opencode_command(&mut command, opencode_v2, upstream_session_id.as_deref())
+        {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&run_dir);
+                return Err(error.into());
+            }
+        };
     configure_environment(&mut command, &cwd);
-    if let Err(error) = prepare_opencode(&run_dir, &mut command) {
+    if let Err(error) = prepare_opencode_runtime(&run_dir, &mut command, opencode_v2) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -420,6 +577,7 @@ pub(super) fn spawn_opencode(
     command.env("DEVHATCH_CONFIG_NAME", &launch_config.name);
     command.env("DEVHATCH_CWD", &cwd);
     command.env("DEVHATCH_CONFIG_DIR", &run_dir);
+    command.env("DEVHATCH_OPENCODE_DB", state.opencode_database_path());
     command.env_remove("OPENCODE_CONFIG");
     command.env_remove("OPENCODE_CONFIG_DIR");
     command.env_remove("BYTE_API_API_KEY");
@@ -429,9 +587,10 @@ pub(super) fn spawn_opencode(
         command.env("DEVHATCH_ACTIVITY_DESCRIPTOR", bridge.descriptor_path());
         command.env("DEVHATCH_SERVER_EXECUTABLE", server);
         command.env("DEVHATCH_OPENCODE_PLUGIN_URL", plugin_url);
-        if let Some(id) = &upstream_session_id {
-            command.env("DEVHATCH_OPENCODE_SESSION_ID", id);
-        }
+        command.env(
+            "DEVHATCH_OPENCODE_PLUGIN_KEY",
+            if opencode_v2 { "plugins" } else { "plugin" },
+        );
     }
     if skill_generation.is_some() {
         command.env("OPENCODE_CONFIG_DIR", &run_dir);
@@ -445,31 +604,33 @@ pub(super) fn spawn_opencode(
             });
     let bridge_state = state.clone();
     let cleanup_path = run_dir.clone();
-    let result = Session::spawn_with_id(
-        state.session_registry(),
-        SessionSpawn {
-            command,
-            shell,
-            kind: SessionKind::Agent,
-            upstream_session_id,
-            pending_upstream_session_id: None,
-            cwd,
-            name: OPENCODE_NAME.to_string(),
-            cols,
-            rows,
-            agent_id: Some(OPENCODE_ID),
-            agent_name: Some(OPENCODE_NAME),
-            cleanup_path: Some(cleanup_path),
-            runtime_endpoint,
-            exit_cleanup: Some(state.agent_exit_cleanup()),
-        },
-        move |session| {
+    let spawn = SessionSpawn {
+        command,
+        shell,
+        kind: SessionKind::Agent,
+        upstream_session_id,
+        pending_upstream_session_id: None,
+        cwd,
+        name: OPENCODE_NAME.to_string(),
+        cols,
+        rows,
+        agent_id: Some(OPENCODE_ID),
+        agent_name: Some(OPENCODE_NAME),
+        cleanup_path: Some(cleanup_path),
+        runtime_endpoint,
+        exit_cleanup: Some(state.agent_exit_cleanup()),
+    };
+    let started = move |session: &Arc<Session>| {
+        if opencode_v2 {
+            crate::history::opencode::watch_lineage_initialization(session, bridge_state.clone());
             if let Some((bridge, _, _)) = telemetry {
                 bridge.start(session, bridge_state);
             }
-        },
-        session_id,
-    );
+        } else if let Some((port, password)) = event_endpoint {
+            start_event_watcher(session, bridge_state, port, password);
+        }
+    };
+    let result = Session::spawn_with_id(state.session_registry(), spawn, started, session_id);
     if result.is_ok() {
         run_dir_cleanup.disarm();
     }
@@ -478,14 +639,18 @@ pub(super) fn spawn_opencode(
 
 pub(super) fn spawn_traecli(
     state: Arc<AppState>,
-    verified_executable: (PathBuf, String),
+    verified_executable: VerifiedExecutable,
     request: CreateRequest,
     upstream_session_id: String,
     history_path: Option<&Path>,
     launch_config: AgentLaunchConfig,
     skill_generation: Option<&Path>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
-    let (executable, version) = verified_executable;
+    let VerifiedExecutable {
+        path: executable,
+        version,
+        ..
+    } = verified_executable;
     let fallback_cwd = default_cwd();
     let requested_cwd = request
         .cwd
@@ -498,7 +663,7 @@ pub(super) fn spawn_traecli(
     let run_dir = create_run_dir(state.data_dir())?;
     let mut run_dir_cleanup = RunDirCleanup::new(run_dir.clone());
     let wrapper = run_dir.join("launch.sh");
-    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, false) {
+    if let Err(error) = write_wrapper(&wrapper, &launch_config, false, false, false, false) {
         let _ = std::fs::remove_dir_all(&run_dir);
         return Err(error.into());
     }
@@ -615,13 +780,14 @@ fn trae_args(
 
 pub(super) fn spawn_pi(
     state: Arc<AppState>,
-    executable: PathBuf,
+    verified_executable: VerifiedExecutable,
     request: CreateRequest,
     upstream_session_id: String,
     history_path: Option<&Path>,
     launch_config: AgentLaunchConfig,
     skill_generation: Option<&Path>,
 ) -> Result<Arc<Session>, Box<dyn std::error::Error>> {
+    let executable = verified_executable.path;
     let fallback_cwd = default_cwd();
     let requested_cwd = request
         .cwd
@@ -645,7 +811,7 @@ pub(super) fn spawn_pi(
         ActivityBridge::prepare(&run_dir, &devhatch_session_id, PI_ID, IdentitySource::Pi).ok();
     let extension = write_pi_extension(&run_dir).ok();
     let wrapper = run_dir.join("launch.sh");
-    write_wrapper(&wrapper, &launch_config, false, false)?;
+    write_wrapper(&wrapper, &launch_config, false, false, false, false)?;
     let shell = executable.to_string_lossy().into_owned();
     let mut command = CommandBuilder::new("/bin/sh");
     command.arg(&wrapper);
@@ -736,10 +902,95 @@ fn pi_args(
     arguments
 }
 
-fn configure_command(
+fn sanitize_opencode_environment(command: &mut CommandBuilder) -> std::io::Result<()> {
+    let inherited_runtime_bin = command.get_env("DEVHATCH_RUNTIME_BIN").map(PathBuf::from);
+    let inherited_plugin_url = command
+        .get_env("DEVHATCH_OPENCODE_PLUGIN_URL")
+        .and_then(|value| value.to_str())
+        .map(str::to_string);
+    if let Some(path) = command.get_env("PATH") {
+        let paths = env::split_paths(path)
+            .filter(|path| Some(path) != inherited_runtime_bin.as_ref())
+            .collect::<Vec<_>>();
+        command.env(
+            "PATH",
+            env::join_paths(paths).map_err(std::io::Error::other)?,
+        );
+    }
+    if let (Some(content), Some(plugin_url)) = (
+        command
+            .get_env("OPENCODE_CONFIG_CONTENT")
+            .and_then(|value| value.to_str()),
+        inherited_plugin_url.as_deref(),
+    ) {
+        let sanitized = remove_opencode_plugin(content, plugin_url).map_err(|error| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())
+        })?;
+        if sanitized.is_empty() {
+            command.env_remove("OPENCODE_CONFIG_CONTENT");
+        } else {
+            command.env("OPENCODE_CONFIG_CONTENT", sanitized);
+        }
+    }
+    for variable in [
+        "DEVHATCH_RUNTIME_BIN",
+        "DEVHATCH_IMAGE_CLIPBOARD_DIR",
+        "DEVHATCH_ACTIVITY_DESCRIPTOR",
+        "DEVHATCH_SERVER_EXECUTABLE",
+        "DEVHATCH_OPENCODE_PLUGIN_URL",
+        "DEVHATCH_OPENCODE_PLUGIN_KEY",
+        "DEVHATCH_OPENCODE_DB",
+        "DEVHATCH_OPENCODE_SESSION_ID",
+        "DEVHATCH_PI_IMAGE_PASSWORD",
+        "OPENCODE_SERVER_USERNAME",
+        "OPENCODE_SERVER_PASSWORD",
+    ] {
+        command.env_remove(variable);
+    }
+    Ok(())
+}
+
+fn prepare_opencode_telemetry(
+    run_dir: &Path,
+    session_id: &str,
+    v2: bool,
+) -> Option<(ActivityBridge, PathBuf, String)> {
+    if !v2 {
+        return None;
+    }
+    let bridge =
+        ActivityBridge::prepare(run_dir, session_id, OPENCODE_ID, IdentitySource::OpenCode).ok()?;
+    let plugin = write_opencode_plugin(run_dir, true).ok()?;
+    let server = std::env::current_exe().ok()?;
+    let plugin_url = url::Url::from_file_path(plugin).ok()?;
+    Some((bridge, server, plugin_url.to_string()))
+}
+
+fn prepare_opencode_runtime(
+    run_dir: &Path,
     command: &mut CommandBuilder,
-    upstream_session_id: Option<&String>,
+    v2: bool,
+) -> std::io::Result<()> {
+    if v2 {
+        return Ok(());
+    }
+    prepare_opencode(run_dir, command)
+}
+
+fn configure_opencode_command(
+    command: &mut CommandBuilder,
+    v2: bool,
+    upstream_session_id: Option<&str>,
 ) -> std::io::Result<Option<(u16, String)>> {
+    command.arg("--auto");
+    if v2 {
+        command.arg("--standalone");
+        if let Some(id) = upstream_session_id {
+            command.arg("--session");
+            command.arg(id);
+        }
+        return Ok(None);
+    }
     if let Some(id) = upstream_session_id {
         command.arg("-s");
         command.arg(id);
@@ -765,7 +1016,12 @@ fn available_loopback_port() -> std::io::Result<u16> {
 mod tests {
     use std::{ffi::OsString, path::Path};
 
-    use super::{codex_args, pi_args, resolve_agent_cwd, supports_image_paste, trae_args};
+    use super::{
+        classify_opencode_help, codex_args, configure_opencode_command, opencode_generation,
+        opencode_v2, ordered_executable_candidates, parse_version, pi_args,
+        prepare_opencode_runtime, prepare_opencode_telemetry, probe_local_opencode_v2,
+        resolve_agent_cwd, sanitize_opencode_environment, supports_image_paste, trae_args,
+    };
     use crate::agent::AgentKind;
 
     #[cfg(unix)]
@@ -783,6 +1039,251 @@ mod tests {
             resolve_agent_cwd(alias.to_str().unwrap()).unwrap(),
             canonical
         );
+    }
+
+    #[test]
+    fn prioritizes_managed_opencode_without_changing_other_agents() {
+        let managed = std::path::PathBuf::from("/managed/opencode");
+        let path = std::path::PathBuf::from("/path/opencode");
+        assert_eq!(
+            ordered_executable_candidates(
+                AgentKind::OpenCode,
+                Some(managed.clone()),
+                Some(path.clone()),
+            ),
+            vec![managed.clone(), path.clone()]
+        );
+        assert_eq!(
+            ordered_executable_candidates(AgentKind::Codex, Some(managed), Some(path.clone())),
+            vec![path, std::path::PathBuf::from("/managed/opencode")]
+        );
+    }
+
+    #[test]
+    fn classifies_opencode_prerelease_and_unknown_versions() {
+        assert_eq!(opencode_generation("1.18.34"), Some(false));
+        assert_eq!(opencode_generation("2.3.4-beta.1"), Some(true));
+        assert_eq!(opencode_generation("v2.0.20+local"), Some(true));
+        assert_eq!(opencode_generation("3-dev"), Some(true));
+        assert_eq!(opencode_generation("local"), None);
+        assert_eq!(opencode_generation("0.0.0-preview-a-1234"), None);
+        assert_eq!(opencode_generation("unknown"), None);
+        assert!(!opencode_v2("0.0.0-preview-a-1234"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn probes_unknown_opencode_in_private_environment_and_network_namespace() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let host_namespace = std::fs::read_link("/proc/self/ns/net").unwrap();
+        let marker = root.path().join("host-network-namespace");
+        std::fs::write(&marker, host_namespace.as_os_str().as_encoded_bytes()).unwrap();
+        let executable = root.path().join("opencode");
+        let data_dir = root.path().join("data");
+        std::fs::create_dir(&data_dir).unwrap();
+        let script = format!(
+            "#!/bin/sh\nset -eu\ncase \"$HOME\" in {}/agent-runs/*/home) ;; *) exit 1 ;; esac\nfor name in XDG_DATA_HOME XDG_CONFIG_HOME XDG_CACHE_HOME XDG_STATE_HOME XDG_RUNTIME_DIR TMPDIR; do eval value=\\\"\\$$name\\\"; case \"$value\" in {}/agent-runs/*) ;; *) exit 1 ;; esac; done\n[ -z \"${{CARGO_MANIFEST_DIR+x}}\" ]\n[ \"$(readlink /proc/self/ns/net)\" != \"$(cat {})\" ]\nprintf '%b' 'FLAGS\\n  --standalone\\n'\n",
+            data_dir.display(),
+            data_dir.display(),
+            marker.display(),
+        );
+        std::fs::write(&executable, script).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        assert_eq!(
+            probe_local_opencode_v2(&data_dir, &executable).await,
+            Some(true)
+        );
+        assert!(
+            std::fs::read_dir(data_dir.join("agent-runs"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn classifies_opencode_delete_help_surface() {
+        for (help, expected) in [
+            (b"Options:\n  --pure\n".as_slice(), Some(false)),
+            (b"FLAGS\n  --standalone\n".as_slice(), Some(true)),
+            (b"FLAGS\n  --standalone-mode\n  --purely\n".as_slice(), None),
+            (b"FLAGS\n  --standalone\n  --pure\n".as_slice(), None),
+            (b"usage".as_slice(), None),
+        ] {
+            assert_eq!(classify_opencode_help(help), expected);
+        }
+    }
+
+    #[test]
+    fn normalizes_agent_version_output() {
+        assert_eq!(
+            parse_version(AgentKind::OpenCode, b"v2.0.20\n"),
+            Some("2.0.20".into())
+        );
+        assert_eq!(
+            parse_version(AgentKind::OpenCode, b"opencode 1.18.34\n"),
+            Some("1.18.34".into())
+        );
+        assert_eq!(
+            parse_version(AgentKind::OpenCode, b"local\n"),
+            Some("local".into())
+        );
+        assert_eq!(
+            parse_version(AgentKind::Codex, b"codex-cli 0.153.4\n"),
+            Some("0.153.4".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn prepares_v2_plugin_telemetry_without_a_v1_plugin_path() {
+        let root = tempfile::tempdir().unwrap();
+        let v1_dir = root.path().join("v1");
+        let v2_dir = root.path().join("v2");
+        std::fs::create_dir(&v1_dir).unwrap();
+        std::fs::create_dir(&v2_dir).unwrap();
+
+        assert!(
+            prepare_opencode_telemetry(&v1_dir, &uuid::Uuid::new_v4().to_string(), false).is_none()
+        );
+        assert_eq!(std::fs::read_dir(&v1_dir).unwrap().count(), 0);
+
+        let telemetry =
+            prepare_opencode_telemetry(&v2_dir, &uuid::Uuid::new_v4().to_string(), true).unwrap();
+        assert!(telemetry.0.descriptor_path().is_file());
+        assert!(telemetry.2.starts_with("file://"));
+        assert!(v2_dir.join("devhatch-opencode-plugin/server.mjs").is_file());
+    }
+
+    #[test]
+    fn removes_inherited_opencode_runtime_injection_before_generation_setup() {
+        let root = tempfile::tempdir().unwrap();
+        let stale_runtime = root.path().join("stale-bin");
+        let stale_plugin = "file:///tmp/stale-devhatch-plugin.mjs";
+        let mut command = portable_pty::CommandBuilder::new("opencode");
+        command.env(
+            "PATH",
+            std::env::join_paths([stale_runtime.as_path(), Path::new("/usr/bin")]).unwrap(),
+        );
+        command.env("DEVHATCH_RUNTIME_BIN", &stale_runtime);
+        command.env("DEVHATCH_IMAGE_CLIPBOARD_DIR", "/tmp/stale-clipboard");
+        command.env("DEVHATCH_ACTIVITY_DESCRIPTOR", "/tmp/stale-activity.json");
+        command.env("DEVHATCH_SERVER_EXECUTABLE", "/tmp/stale-server");
+        command.env("DEVHATCH_OPENCODE_PLUGIN_URL", stale_plugin);
+        command.env("DEVHATCH_OPENCODE_PLUGIN_KEY", "plugin");
+        command.env("DEVHATCH_OPENCODE_DB", "/tmp/stale.db");
+        command.env("DEVHATCH_OPENCODE_SESSION_ID", "ses_stale");
+        command.env("DEVHATCH_PI_IMAGE_PASSWORD", "stale");
+        command.env("OPENCODE_SERVER_USERNAME", "stale");
+        command.env("OPENCODE_SERVER_PASSWORD", "stale");
+        command.env(
+            "OPENCODE_CONFIG_CONTENT",
+            format!("{{plugin: ['npm:user-plugin', '{stale_plugin}']}}"),
+        );
+
+        sanitize_opencode_environment(&mut command).unwrap();
+
+        let path = command.get_env("PATH").unwrap();
+        assert_eq!(
+            std::env::split_paths(path).collect::<Vec<_>>(),
+            [Path::new("/usr/bin")]
+        );
+        for variable in [
+            "DEVHATCH_RUNTIME_BIN",
+            "DEVHATCH_IMAGE_CLIPBOARD_DIR",
+            "DEVHATCH_ACTIVITY_DESCRIPTOR",
+            "DEVHATCH_SERVER_EXECUTABLE",
+            "DEVHATCH_OPENCODE_PLUGIN_URL",
+            "DEVHATCH_OPENCODE_PLUGIN_KEY",
+            "DEVHATCH_OPENCODE_DB",
+            "DEVHATCH_OPENCODE_SESSION_ID",
+            "DEVHATCH_PI_IMAGE_PASSWORD",
+            "OPENCODE_SERVER_USERNAME",
+            "OPENCODE_SERVER_PASSWORD",
+        ] {
+            assert!(
+                command.get_env(variable).is_none(),
+                "{variable} was retained"
+            );
+        }
+        let config: serde_json::Value = serde_json::from_str(
+            command
+                .get_env("OPENCODE_CONFIG_CONTENT")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(config["plugin"], serde_json::json!(["npm:user-plugin"]));
+    }
+
+    #[test]
+    fn rejects_unparseable_inherited_inline_config_without_discarding_it() {
+        let stale_plugin = "file:///tmp/stale-devhatch-plugin.mjs";
+        let mut command = portable_pty::CommandBuilder::new("opencode");
+        command.env("DEVHATCH_OPENCODE_PLUGIN_URL", stale_plugin);
+        command.env("OPENCODE_CONFIG_CONTENT", "{not valid");
+
+        assert!(sanitize_opencode_environment(&mut command).is_err());
+        assert_eq!(
+            command.get_env("OPENCODE_CONFIG_CONTENT").unwrap(),
+            "{not valid"
+        );
+    }
+
+    #[test]
+    fn prepares_legacy_opencode_image_bridge_for_v1_only() {
+        let root = tempfile::tempdir().unwrap();
+        let v1_dir = root.path().join("v1");
+        let v2_dir = root.path().join("v2");
+        std::fs::create_dir(&v1_dir).unwrap();
+        std::fs::create_dir(&v2_dir).unwrap();
+
+        let mut v1 = portable_pty::CommandBuilder::new("opencode");
+        prepare_opencode_runtime(&v1_dir, &mut v1, false).unwrap();
+        assert!(v1_dir.join("image-clipboard").is_dir());
+        assert!(v1_dir.join("bin/wl-paste").is_file());
+        let v1_debug = format!("{v1:?}");
+        assert!(v1_debug.contains("DEVHATCH_IMAGE_CLIPBOARD_DIR"));
+        assert!(v1_debug.contains("DEVHATCH_RUNTIME_BIN"));
+
+        let mut v2 = portable_pty::CommandBuilder::new("opencode");
+        prepare_opencode_runtime(&v2_dir, &mut v2, true).unwrap();
+        assert!(!v2_dir.join("image-clipboard").exists());
+        assert!(!v2_dir.join("bin").exists());
+        let v2_debug = format!("{v2:?}");
+        assert!(!v2_debug.contains("DEVHATCH_IMAGE_CLIPBOARD_DIR"));
+        assert!(!v2_debug.contains("DEVHATCH_RUNTIME_BIN"));
+    }
+
+    #[test]
+    fn builds_versioned_opencode_args() {
+        let mut v1 = portable_pty::CommandBuilder::new("opencode");
+        let endpoint = configure_opencode_command(&mut v1, false, Some("ses_v1"))
+            .unwrap()
+            .unwrap();
+        assert_ne!(endpoint.0, 0);
+        let v1_debug = format!("{v1:?}");
+        assert!(v1_debug.contains("--auto"));
+        assert!(v1_debug.contains("-s"));
+        assert!(v1_debug.contains("--hostname"));
+        assert!(v1_debug.contains("--port"));
+        assert!(!v1_debug.contains("--standalone"));
+
+        let mut v2 = portable_pty::CommandBuilder::new("opencode");
+        assert!(
+            configure_opencode_command(&mut v2, true, Some("ses_v2"))
+                .unwrap()
+                .is_none()
+        );
+        let v2_debug = format!("{v2:?}");
+        assert!(v2_debug.contains("--auto"));
+        assert!(v2_debug.contains("--standalone"));
+        assert!(v2_debug.contains("--session"));
+        assert!(!v2_debug.contains("--hostname"));
+        assert!(!v2_debug.contains("--port"));
     }
 
     #[test]

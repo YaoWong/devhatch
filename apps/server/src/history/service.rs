@@ -35,6 +35,7 @@ impl HistoryBackend {
         self,
         state: &AppState,
         requested_id: Option<&str>,
+        opencode_v2: bool,
     ) -> Result<PreparedLaunch, HistoryError> {
         let agent_id = match self {
             Self::Codex => AgentKind::Codex,
@@ -58,7 +59,7 @@ impl HistoryBackend {
         }
         match self {
             Self::Codex => codex::prepare(requested_id).await,
-            Self::OpenCode => opencode::prepare(state, requested_id).await,
+            Self::OpenCode => opencode::prepare(state, requested_id, opencode_v2).await,
             Self::Pi => {
                 let mut workspaces = crate::launch_path::paths(state)
                     .await
@@ -70,10 +71,20 @@ impl HistoryBackend {
         }
     }
 
-    pub(super) async fn delete(self, state: &AppState, id: String) -> Result<(), DeleteError> {
+    pub(super) async fn delete(
+        self,
+        state: &AppState,
+        id: String,
+        opencode_deletion: Option<&mut crate::state::HistoryDeletionGuard>,
+    ) -> Result<(), DeleteError> {
         match self {
             Self::Codex => codex::delete(state, id).await,
-            Self::OpenCode => opencode::delete(state, id).await,
+            Self::OpenCode => {
+                let Some(deletion) = opencode_deletion else {
+                    return Err(DeleteError::History(HistoryError::Unavailable));
+                };
+                opencode::delete(state, id, deletion).await
+            }
             Self::Pi => {
                 let mut workspaces = crate::launch_path::paths(state)
                     .await

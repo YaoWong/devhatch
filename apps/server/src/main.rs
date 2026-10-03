@@ -30,7 +30,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         [mode, plugin] if mode == std::ffi::OsStr::new("--append-opencode-plugin") => {
-            let content = agent::append_opencode_plugin(&plugin.to_string_lossy())?;
+            let content = agent::append_opencode_plugin(&plugin.to_string_lossy(), "plugin")?;
+            print!("{content}");
+            Ok(())
+        }
+        [mode, plugin, config_key] if mode == std::ffi::OsStr::new("--append-opencode-plugin") => {
+            let content = agent::append_opencode_plugin(
+                &plugin.to_string_lossy(),
+                &config_key.to_string_lossy(),
+            )?;
             print!("{content}");
             Ok(())
         }

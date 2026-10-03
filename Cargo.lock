@@ -388,6 +388,7 @@ dependencies = [
  "indexmap",
  "json5",
  "libc",
+ "libsqlite3-sys",
  "password-hash",
  "path-clean",
  "png",

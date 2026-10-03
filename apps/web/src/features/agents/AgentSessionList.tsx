@@ -37,6 +37,7 @@ export function AgentSessionList({
   sessionCount,
   historyCount,
   supportsHistory,
+  supportsResume,
   historyAvailable,
   historyDiagnostic,
   historyLoading,
@@ -62,6 +63,7 @@ export function AgentSessionList({
   sessionCount: number;
   historyCount: number;
   supportsHistory: boolean;
+  supportsResume: boolean;
   historyAvailable: boolean;
   historyDiagnostic: string | null;
   historyLoading: boolean;
@@ -222,16 +224,18 @@ export function AgentSessionList({
                   </div>
                 )}
                 <span className={`${sessionActionsClass} session-actions-history`}>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    className={`session-direct-action ${resumeButtonClass}`}
-                    disabled={resumeHistory && launching}
-                    onClick={selectHistory}
-                  >
-                    Resume
-                  </Button>
+                  {(live || supportsResume) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className={`session-direct-action ${resumeButtonClass}`}
+                      disabled={resumeHistory && launching}
+                      onClick={selectHistory}
+                    >
+                      Resume
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -259,13 +263,15 @@ export function AgentSessionList({
                       <Ellipsis />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent portalOwner={portalOwnerId} align="end" side="bottom" sideOffset={6} className="tw:w-44">
-                      <DropdownMenuItem disabled={resumeHistory && launching} onClick={() => {
-                        menuTriggerRef.current?.focus();
-                        queueMicrotask(selectHistory);
-                      }}>
-                        <Play />
-                        Resume
-                      </DropdownMenuItem>
+                      {(live || supportsResume) && (
+                        <DropdownMenuItem disabled={resumeHistory && launching} onClick={() => {
+                          menuTriggerRef.current?.focus();
+                          queueMicrotask(selectHistory);
+                        }}>
+                          <Play />
+                          Resume
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={() => {
