@@ -16,6 +16,7 @@ import { displayPath } from "../../shared/lib/utils";
 import { dispatchCustomSelectOpenChange } from "../../shared/ui/customSelectPortal";
 import { LiveRegion } from "../../shared/ui/LiveRegion";
 import { historyStatusClass, RailQuietMessage, railMenuLabelClass, railMenuSectionClass } from "../../shared/ui/railStyles";
+import { displayAgentHistoryPath, readAgentHistoryRelativePaths, writeAgentHistoryRelativePaths } from "./historyPathDisplay";
 import { shouldShowAgentSessionSearch } from "./selectors";
 import { useDelayedLoading } from "../../shared/ui/useDelayedLoading";
 import { useScrollEdgeFade } from "../../shared/ui/useScrollEdgeFade";
@@ -29,6 +30,7 @@ const sessionMainClass = `${buttonFocus} tw:flex tw:h-auto tw:min-h-10 tw:min-w-
 const historySessionActionSpace = "session-main session-main-history";
 const resumeButtonClass = `${buttonFocus} tw:h-10 tw:rounded-lg tw:border-[color-mix(in_srgb,var(--color-border-strong)_58%,transparent)]! tw:bg-[color-mix(in_srgb,var(--color-surface)_38%,transparent)]! tw:px-2.5 tw:py-0 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:font-semibold tw:text-[var(--color-text-muted)] tw:transition-[background,color,border-color] tw:hover:border-[color-mix(in_srgb,var(--color-border-strong)_76%,transparent)]! tw:hover:bg-[color-mix(in_srgb,var(--color-surface)_62%,transparent)]! tw:hover:text-inherit! tw:focus-visible:border-[color-mix(in_srgb,var(--color-border-strong)_76%,transparent)]! tw:disabled:pointer-events-auto tw:disabled:opacity-100 tw:[@media(pointer:coarse)]:h-11`;
 const deleteButtonClass = `${buttonFocus} tw:grid tw:size-10 tw:flex-none tw:place-items-center tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-0 tw:text-[var(--color-text-faint)] tw:transition-[background,color] tw:duration-150 tw:ease-[ease] tw:hover:bg-card! tw:hover:text-destructive! tw:focus-visible:border-transparent! tw:[@media(pointer:coarse)]:size-11 tw:[&_svg]:size-3.5`;
+const compactSwitchClass = "tw:h-5! tw:w-[34px]! tw:border-0! tw:bg-[var(--color-border-strong)]! tw:p-0.5 tw:transition-[background-color]! tw:duration-[180ms] tw:ease-[ease] tw:after:-inset-x-1 tw:after:-inset-y-2.5 tw:focus-visible:ring-0! tw:focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] tw:data-checked:bg-[var(--color-success-fg)]! tw:dark:data-unchecked:bg-[var(--color-border-strong)]! tw:[@media(pointer:coarse)]:after:-inset-y-3 tw:[&_[data-slot=switch-thumb]]:size-4! tw:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]! tw:[&_[data-slot=switch-thumb]]:shadow-[0_1px_3px_rgb(0_0_0/22%)] tw:[&_[data-slot=switch-thumb]]:transition-transform tw:[&_[data-slot=switch-thumb]]:duration-[180ms] tw:[&_[data-slot=switch-thumb]]:ease-[ease] tw:[&_[data-slot=switch-thumb][data-checked]]:translate-x-3.5! tw:dark:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]!";
 const sessionActionsClass = "session-actions tw:pointer-events-none tw:absolute tw:top-1/2 tw:right-[5px] tw:z-[1] tw:flex tw:translate-x-[9px] tw:-translate-y-1/2 tw:items-center tw:justify-end tw:gap-1 tw:overflow-hidden tw:bg-transparent tw:opacity-0 tw:[transition:opacity_150ms_ease,translate_220ms_cubic-bezier(.2,1,.35,1)] tw:group-hover/session-row:pointer-events-auto tw:group-hover/session-row:translate-x-0 tw:group-hover/session-row:opacity-100 tw:group-focus-within/session-row:pointer-events-auto tw:group-focus-within/session-row:translate-x-0 tw:group-focus-within/session-row:opacity-100 tw:[@media(hover:none)]:pointer-events-auto tw:[@media(hover:none)]:translate-x-0 tw:[@media(hover:none)]:opacity-100";
 
 export function AgentSessionList({
@@ -85,6 +87,7 @@ export function AgentSessionList({
   onRetryHistory: () => Promise<void>;
 }) {
   const [retrying, setRetrying] = useState(false);
+  const [relativePaths, setRelativePaths] = useState(readAgentHistoryRelativePaths);
   const portalOwnerId = useId();
   const portalOwnerRef = useRef<HTMLDivElement | null>(null);
   const sessionListRef = useScrollEdgeFade<HTMLDivElement>();
@@ -141,6 +144,13 @@ export function AgentSessionList({
       });
     }
   };
+  const historyPath = (path: string) => displayAgentHistoryPath(
+    path,
+    selectedPath?.path ?? null,
+    relativePaths,
+    homePaths?.home,
+    homePaths?.resolvedHome,
+  );
   useLayoutEffect(() => {
     const owner = portalOwnerRef.current;
     return () => {
@@ -158,15 +168,28 @@ export function AgentSessionList({
               <span>Subdirectories</span>
               <Switch
                 checked={includeSubdirectories}
-                className="tw:h-5! tw:w-[34px]! tw:border-0! tw:bg-[var(--color-border-strong)]! tw:p-0.5 tw:transition-[background-color]! tw:duration-[180ms] tw:ease-[ease] tw:after:-inset-x-1 tw:after:-inset-y-2.5 tw:focus-visible:ring-0! tw:focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent)_20%,transparent)] tw:data-checked:bg-[var(--color-success-fg)]! tw:dark:data-unchecked:bg-[var(--color-border-strong)]! tw:[@media(pointer:coarse)]:after:-inset-y-3 tw:[&_[data-slot=switch-thumb]]:size-4! tw:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]! tw:[&_[data-slot=switch-thumb]]:shadow-[0_1px_3px_rgb(0_0_0/22%)] tw:[&_[data-slot=switch-thumb]]:transition-transform tw:[&_[data-slot=switch-thumb]]:duration-[180ms] tw:[&_[data-slot=switch-thumb]]:ease-[ease] tw:[&_[data-slot=switch-thumb][data-checked]]:translate-x-3.5! tw:dark:[&_[data-slot=switch-thumb]]:bg-[var(--color-surface)]!"
+                className={compactSwitchClass}
                 onCheckedChange={onIncludeSubdirectoriesChange}
               />
             </label>
           )}
         </div>
         {selectedPath && (
-          <div className="tw:overflow-hidden tw:rounded-[6px] tw:bg-background tw:px-[8px] tw:py-[6px] tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.25] tw:text-muted-foreground tw:text-ellipsis tw:whitespace-nowrap" title={selectedPath.path}>
-            {displayPath(selectedPath.path, homePaths?.home, homePaths?.resolvedHome)}
+          <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:rounded-[6px] tw:bg-background tw:px-[8px] tw:py-[6px]">
+            <div className="tw:min-w-0 tw:flex-1 tw:overflow-hidden tw:font-mono tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.25] tw:text-muted-foreground tw:text-ellipsis tw:whitespace-nowrap" title={selectedPath.path}>
+              {displayPath(selectedPath.path, homePaths?.home, homePaths?.resolvedHome)}
+            </div>
+            <label className="tw:inline-flex tw:min-h-7 tw:flex-none tw:cursor-pointer tw:items-center tw:gap-1.5 tw:text-[calc(10px*var(--app-font-scale))] tw:leading-[1.2] tw:text-[var(--color-text-muted)] tw:[@media(pointer:coarse)]:min-h-8">
+              <span>Relative paths</span>
+              <Switch
+                checked={relativePaths}
+                className={compactSwitchClass}
+                onCheckedChange={(checked) => {
+                  setRelativePaths(checked);
+                  writeAgentHistoryRelativePaths(checked);
+                }}
+              />
+            </label>
           </div>
         )}
         {shouldShowAgentSessionSearch(sessionCount, historyCount, search) && (
@@ -216,11 +239,11 @@ export function AgentSessionList({
               >
                 {live ? (
                   <Button type="button" variant="ghost" className={`${sessionMainClass} ${historySessionActionSpace}`} aria-current={live.id === activeId ? "true" : undefined} onClick={() => onActivate(live.id)}>
-                    <SessionSummary presence={presence} name={live.name} path={live.cwd} detail={history ? new Date(history.timeUpdated).toLocaleString() : "Default"} label={label} homePaths={homePaths} />
+                    <SessionSummary presence={presence} name={live.name} displayedPath={historyPath(live.cwd)} detail={history ? new Date(history.timeUpdated).toLocaleString() : "Default"} label={label} />
                   </Button>
                 ) : (
                   <div className={`${sessionMainClass} ${historySessionActionSpace}`}>
-                    <SessionSummary presence={presence} name={history!.title} path={history!.directory} detail={new Date(history!.timeUpdated).toLocaleString()} label={label} homePaths={homePaths} />
+                    <SessionSummary presence={presence} name={history!.title} displayedPath={historyPath(history!.directory)} detail={new Date(history!.timeUpdated).toLocaleString()} label={label} />
                   </div>
                 )}
                 <span className={`${sessionActionsClass} session-actions-history`}>
@@ -310,24 +333,22 @@ export function AgentSessionList({
 function SessionSummary({
   presence,
   name,
-  path,
+  displayedPath,
   detail,
   label,
-  homePaths,
 }: {
   presence: string;
   name: string;
-  path: string;
+  displayedPath: string;
   detail: string;
   label: string;
-  homePaths: HomePaths;
 }) {
   return (
     <>
       <span className={`tw:size-[7px] tw:flex-none tw:rounded-full ${presence === "active-here" ? "tw:bg-[var(--color-success-fg)]" : presence === "possibly-active-elsewhere" ? "tw:bg-[var(--color-warning-fg)]" : "tw:bg-[var(--color-text-faint)]"}`} aria-hidden="true" />
       <span>
         <strong>{name}</strong>
-        <small>{displayPath(path, homePaths?.home, homePaths?.resolvedHome)} · {detail}</small>
+        <small>{displayedPath} · {detail}</small>
         <em>{label}</em>
       </span>
     </>
