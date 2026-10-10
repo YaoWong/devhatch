@@ -1,4 +1,5 @@
 use std::{
+    panic::{AssertUnwindSafe, catch_unwind},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -143,33 +144,63 @@ enum TerminalSequenceState {
     StringEscape,
 }
 
+// vt100 can panic when a one-column screen contains wide characters and the
+// next draw tries to clear the missing continuation cell. Keep the PTY's actual
+// dimensions unchanged, but never ask vt100 to model fewer than two columns.
+const MIN_RELIABLE_TERMINAL_COLS: u16 = 2;
+
 pub(super) struct TerminalState {
     parser: vt100::Parser<TerminalModes>,
     sequence_state: TerminalSequenceState,
     pending_sequence: Vec<u8>,
+    terminal_snapshot_unavailable: bool,
 }
 
 impl TerminalState {
     pub(super) fn new(rows: u16, cols: u16) -> Self {
         Self {
-            parser: vt100::Parser::new_with_callbacks(rows, cols, 0, TerminalModes::default()),
+            parser: vt100::Parser::new_with_callbacks(
+                rows,
+                cols.max(MIN_RELIABLE_TERMINAL_COLS),
+                0,
+                TerminalModes::default(),
+            ),
             sequence_state: TerminalSequenceState::Ground,
             pending_sequence: Vec::new(),
+            terminal_snapshot_unavailable: false,
         }
     }
 
     pub(super) fn process(&mut self, bytes: &[u8]) {
-        self.parser.process(bytes);
+        if !self.terminal_snapshot_unavailable
+            && catch_unwind(AssertUnwindSafe(|| self.parser.process(bytes))).is_err()
+        {
+            self.terminal_snapshot_unavailable = true;
+        }
         for &byte in bytes {
             self.process_sequence_byte(byte);
         }
     }
 
     pub(super) fn resize(&mut self, rows: u16, cols: u16) {
-        self.parser.screen_mut().set_size(rows, cols);
+        if self.terminal_snapshot_unavailable {
+            return;
+        }
+        if catch_unwind(AssertUnwindSafe(|| {
+            self.parser
+                .screen_mut()
+                .set_size(rows, cols.max(MIN_RELIABLE_TERMINAL_COLS));
+        }))
+        .is_err()
+        {
+            self.terminal_snapshot_unavailable = true;
+        }
     }
 
-    pub(super) fn snapshot(&self) -> String {
+    pub(super) fn snapshot(&self, fallback: &str) -> String {
+        if self.terminal_snapshot_unavailable {
+            return fallback.to_string();
+        }
         let screen = self.parser.screen();
         let mut output = Vec::new();
         if screen.alternate_screen() {
@@ -656,7 +687,7 @@ impl Session {
             output: state
                 .terminal
                 .as_ref()
-                .map(TerminalState::snapshot)
+                .map(|terminal| terminal.snapshot(&state.output))
                 .unwrap_or_else(|| state.output.clone()),
             activity: state.agent_activity.clone(),
             status: state.status,
@@ -714,7 +745,7 @@ mod tests {
             b"primary\x1b[?1049h\x1b[2J\x1b[Hhello\x1b[2;3Hworld\x1b[?1004h\x1b[?2004h\x1b[?2026h\x1b[?2027h\x1b[?2031h",
         );
 
-        let snapshot = terminal.snapshot();
+        let snapshot = terminal.snapshot("");
         let mut restored = vt100::Parser::new_with_callbacks(3, 12, 0, TerminalModes::default());
         restored.process(snapshot.as_bytes());
 
@@ -735,7 +766,7 @@ mod tests {
         terminal.process(b"\x1b[2;1Hnext");
 
         let mut restored = vt100::Parser::new(3, 12, 0);
-        restored.process(terminal.snapshot().as_bytes());
+        restored.process(terminal.snapshot("").as_bytes());
 
         assert_eq!(restored.screen().contents(), "first\nnextnd\nthird");
     }
@@ -744,13 +775,26 @@ mod tests {
     fn terminal_snapshot_preserves_an_incomplete_escape_sequence() {
         let mut terminal = TerminalState::new(2, 12);
         terminal.process(b"\x1b[?1049h\x1b[Hready\x1b[");
-        let snapshot = terminal.snapshot();
+        let snapshot = terminal.snapshot("");
 
         let mut restored = vt100::Parser::new(2, 12, 0);
         restored.process(snapshot.as_bytes());
         restored.process(b"2;1Hdone");
 
         assert_eq!(restored.screen().contents(), "ready\ndone");
+    }
+
+    #[test]
+    fn terminal_parser_handles_one_column_resizes_after_wide_characters() {
+        let mut terminal = TerminalState::new(2, 2);
+        terminal.process("表".as_bytes());
+        terminal.resize(2, 1);
+        terminal.process(b"x");
+
+        let snapshot = terminal.snapshot("fallback");
+        assert_ne!(snapshot, "fallback");
+        terminal.process(b"y");
+        assert_ne!(terminal.snapshot("fallback-y"), "fallback-y");
     }
 
     #[tokio::test]

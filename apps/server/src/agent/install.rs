@@ -562,6 +562,17 @@ mod tests {
         state::{AppState, OpenCodeHistoryPool},
     };
 
+    #[cfg(target_os = "linux")]
+    fn user_net_namespace_available() -> bool {
+        std::path::Path::new("/usr/bin/unshare").is_file()
+            && std::process::Command::new("/usr/bin/unshare")
+                .args(["--user", "--map-root-user", "--net", "--", "/bin/true"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+    }
+
     async fn state() -> (tempfile::TempDir, Arc<AppState>) {
         let temp = tempfile::tempdir().unwrap();
         let pool = SqlitePoolOptions::new()
@@ -666,6 +677,13 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn opencode_install_validation_uses_isolated_environment() {
+        if !user_net_namespace_available() {
+            eprintln!(
+                "skipping isolated OpenCode install validation test: user/network namespaces unavailable"
+            );
+            return;
+        }
+
         let (temp, state) = state().await;
         let executable = temp.path().join("staged-opencode");
         let host_namespace = std::fs::read_link("/proc/self/ns/net").unwrap();

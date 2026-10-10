@@ -1024,6 +1024,17 @@ mod tests {
     };
     use crate::agent::AgentKind;
 
+    #[cfg(target_os = "linux")]
+    fn user_net_namespace_available() -> bool {
+        std::path::Path::new("/usr/bin/unshare").is_file()
+            && std::process::Command::new("/usr/bin/unshare")
+                .args(["--user", "--map-root-user", "--net", "--", "/bin/true"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+    }
+
     #[cfg(unix)]
     #[test]
     fn canonicalizes_agent_working_directories() {
@@ -1075,6 +1086,11 @@ mod tests {
     #[tokio::test]
     async fn probes_unknown_opencode_in_private_environment_and_network_namespace() {
         use std::os::unix::fs::PermissionsExt;
+
+        if !user_net_namespace_available() {
+            eprintln!("skipping isolated OpenCode probe test: user/network namespaces unavailable");
+            return;
+        }
 
         let root = tempfile::tempdir().unwrap();
         let host_namespace = std::fs::read_link("/proc/self/ns/net").unwrap();
