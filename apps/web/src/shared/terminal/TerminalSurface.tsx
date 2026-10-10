@@ -236,16 +236,19 @@ export function TerminalSurface({
     terminalRef.current = terminal;
     const snapshotReplayGuard = new TerminalSnapshotReplayGuard();
     const snapshotReplayHandlers = registerTerminalSnapshotReplayHandlers(terminal.parser, snapshotReplayGuard);
-    const clipboardHandler = agentId === "opencode" ? registerTerminalClipboardHandler(
+    const canWriteClipboard = () => visibleRef.current
+      && focusedRef.current
+      && window.isSecureContext
+      && document.visibilityState === "visible"
+      && document.hasFocus()
+      && typeof navigator.clipboard?.writeText === "function";
+    const writeClipboard = (text: string) => navigator.clipboard.writeText(text);
+    const clipboardHandler = registerTerminalClipboardHandler(
       terminal.parser,
       snapshotReplayGuard,
-      () => visibleRef.current
-        && focusedRef.current
-        && window.isSecureContext
-        && document.hasFocus()
-        && Boolean(navigator.clipboard),
-      (text) => navigator.clipboard.writeText(text),
-    ) : null;
+      canWriteClipboard,
+      writeClipboard,
+    );
     const terminalWriter = new TerminalWriteQueue(
       (data, onComplete) => terminal.write(data, onComplete),
       (generation) => {
@@ -483,6 +486,24 @@ export function TerminalSurface({
       if (protocolReady && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data }));
       else inputBuffer = (inputBuffer + data).slice(-64 * 1024);
     });
+    let lastCopiedSelection = "";
+    let selectionCopyTimer: number | null = null;
+    const copySelection = () => {
+      selectionCopyTimer = null;
+      if (disposed || !canWriteClipboard()) return;
+      const text = terminal.getSelection();
+      if (!text) {
+        lastCopiedSelection = "";
+        return;
+      }
+      if (text === lastCopiedSelection) return;
+      lastCopiedSelection = text;
+      void writeClipboard(text).catch(() => undefined);
+    };
+    const selection = terminal.onSelectionChange(() => {
+      if (selectionCopyTimer !== null) window.clearTimeout(selectionCopyTimer);
+      selectionCopyTimer = window.setTimeout(copySelection, 120);
+    });
     let pasteInProgress = false;
     let pasteController: AbortController | null = null;
     const paste = (event: ClipboardEvent) => {
@@ -536,11 +557,13 @@ export function TerminalSurface({
       if (fontUpdateFrameRef.current !== null) cancelAnimationFrame(fontUpdateFrameRef.current);
       fontUpdateFrameRef.current = null;
       if (thumbnailTimer !== null) window.clearTimeout(thumbnailTimer);
+      if (selectionCopyTimer !== null) window.clearTimeout(selectionCopyTimer);
       thumbnailCapture.reset();
       thumbnailGenerationRef.current += 1;
       observer.disconnect();
       container.removeEventListener("paste", paste, true);
       input.dispose();
+      selection.dispose();
       render.dispose();
       clipboardHandler?.dispose();
       snapshotReplayHandlers.dispose();

@@ -150,7 +150,11 @@ describe("terminal write queue", () => {
     registerTerminalClipboardHandler(parser, guard, () => true, write);
 
     expect(runOsc(52, "c;SGVsbG8sIOS4lueVjCE=")).toBe(true);
-    expect(write).toHaveBeenCalledWith("Hello, 世界!");
+    expect(runOsc(52, ";aGVsbG8=")).toBe(true);
+    expect(runOsc(52, "pc;8J+Zgg==")).toBe(true);
+    expect(write).toHaveBeenNthCalledWith(1, "Hello, 世界!");
+    expect(write).toHaveBeenNthCalledWith(2, "hello");
+    expect(write).toHaveBeenNthCalledWith(3, "🙂");
     await Promise.resolve();
   });
 
@@ -177,6 +181,8 @@ describe("terminal write queue", () => {
     for (const data of [
       "c;?",
       "p;aGVsbG8=",
+      "q;aGVsbG8=",
+      "x;aGVsbG8=",
       "c;",
       "c;aGVsbG8",
       "c;/w==",

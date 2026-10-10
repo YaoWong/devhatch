@@ -126,6 +126,12 @@ const MAX_CLIPBOARD_BYTES = 64 * 1024;
 const MAX_CLIPBOARD_BASE64_CHARACTERS = 4 * Math.ceil(MAX_CLIPBOARD_BYTES / 3);
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
+const CLIPBOARD_SELECTOR = /^[cpsq0-7]*$/;
+
+function targetsClipboard(selector: string) {
+  return CLIPBOARD_SELECTOR.test(selector) && (selector === "" || selector.includes("c"));
+}
+
 export function registerTerminalClipboardHandler(
   parser: OscParser,
   guard: TerminalSnapshotReplayGuard,
@@ -135,7 +141,7 @@ export function registerTerminalClipboardHandler(
   return parser.registerOscHandler(52, (data) => {
     if (guard.active || !canWrite()) return true;
     const separator = data.indexOf(";");
-    if (separator < 0 || data.slice(0, separator) !== "c") return true;
+    if (separator < 0 || !targetsClipboard(data.slice(0, separator))) return true;
     const encoded = data.slice(separator + 1);
     if (
       !encoded

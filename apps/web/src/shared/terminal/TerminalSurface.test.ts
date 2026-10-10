@@ -41,6 +41,15 @@ describe("terminal transport", () => {
     expect(terminalKeyInput("opencode", { ...shiftEnter, shiftKey: false })).toBeNull();
     expect(terminalKeyInput("opencode", { ...shiftEnter, type: "keyup" })).toBeNull();
   });
+
+  it("registers OSC 52 and selection clipboard writes for terminal and agent sessions", () => {
+    expect(terminalSurfaceSource).toContain("const clipboardHandler = registerTerminalClipboardHandler(");
+    expect(terminalSurfaceSource).not.toContain("agentId === \"opencode\" ? registerTerminalClipboardHandler");
+    expect(terminalSurfaceSource).toContain("const selection = terminal.onSelectionChange(");
+    expect(terminalSurfaceSource).toContain("terminal.getSelection()");
+    expect(terminalSurfaceSource).toContain("typeof navigator.clipboard?.writeText === \"function\"");
+    expect(terminalSurfaceSource).toContain("document.visibilityState === \"visible\"");
+  });
 });
 
 describe("terminal renderer recovery", () => {
